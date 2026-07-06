@@ -175,6 +175,8 @@ a{ color:inherit; text-decoration:none; }
   border:1px solid var(--md-outline);
 }
 .btn--text{ background:transparent; color:var(--md-primary); padding:0 var(--md-space-3); }
+/* Enlace de navegación activo en la app-bar (T4): resalta la sección actual. */
+.btn--active{ background:var(--md-secondary-container); color:var(--md-on-secondary-container); }
 
 /* ===== Text-field (outlined) ===== */
 .field{ display:flex; flex-direction:column; gap:var(--md-space-1); }
@@ -192,6 +194,9 @@ a{ color:inherit; text-decoration:none; }
 }
 textarea.field__control{ height:auto; min-height:120px; padding:var(--md-space-3) var(--md-space-4);
                          resize:vertical; line-height:1.4; }
+/* Variante monoespaciada para editar JSON de flujos (T4): tab de 2 espacios, sin ajuste de línea. */
+.field__control--code{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+                       font-size:.8125rem; line-height:1.5; tab-size:2; white-space:pre; overflow-wrap:normal; }
 .field__input:focus,
 .field__control:focus{
   outline:none;
@@ -245,6 +250,7 @@ textarea.field__control{ height:auto; min-height:120px; padding:var(--md-space-3
 }
 .snackbar--success{ background:var(--md-secondary-container); color:var(--md-on-secondary-container); }
 .snackbar--error{ background:var(--md-error-container); color:var(--md-on-error-container); }
+.snackbar--info{ background:var(--md-tertiary-container); color:var(--md-on-tertiary-container); }
 
 /* ===== Centro de autenticación (login, T2) ===== */
 .auth-center{

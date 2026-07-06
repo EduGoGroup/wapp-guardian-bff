@@ -34,6 +34,9 @@
         </a>
         {{ if .IsAuthenticated }}
         <nav class="app-bar__actions">
+            <a href="/" class="btn btn--text{{ if eq .CurrentPath "/" }} btn--active{{ end }}">Sesiones</a>
+            <a href="/flows" class="btn btn--text{{ if hasPrefix .CurrentPath "/flows" }} btn--active{{ end }}">Flujos</a>
+            <a href="/triggers" class="btn btn--text{{ if hasPrefix .CurrentPath "/triggers" }} btn--active{{ end }}">Triggers</a>
             <a href="/logout" class="btn btn--text">Cerrar sesión</a>
         </nav>
         {{ end }}

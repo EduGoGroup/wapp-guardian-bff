@@ -12,6 +12,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -64,6 +65,9 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	// de página (pages/*.html) que le indica ContentTemplate.
 	var err error
 	templates = template.New("").Funcs(template.FuncMap{
+		// hasPrefix resalta el enlace activo de la navegación (app-bar): la sección se decide por el
+		// prefijo del path (p. ej. "/flows/menu" activa "Flujos").
+		"hasPrefix": strings.HasPrefix,
 		"yield": func(name string, data interface{}) (template.HTML, error) {
 			if name == "" {
 				return "", nil
@@ -112,9 +116,18 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	protected := router.Group("/")
 	protected.Use(h.AuthMiddleware())
 	// Dashboard: listado de sesiones del tenant + formulario de envío (T3). POST /send procesa el envío y
-	// re-renderiza el dashboard con el resultado. T4 añadirá los editores de flows/triggers.
+	// re-renderiza el dashboard con el resultado.
 	protected.GET("/", h.ShowDashboard)
 	protected.POST("/send", h.DoSend)
+
+	// Editor de menú/encuestas (T4): flujos (inmutables versionados) + triggers (crear/borrar). "Editar"
+	// un flujo = publicar versión N+1 (POST /flows); "editar" un trigger = borrar + crear.
+	protected.GET("/flows", h.ShowFlows)
+	protected.GET("/flows/:id", h.ShowFlowDetail)
+	protected.POST("/flows", h.DoPublishFlow)
+	protected.GET("/triggers", h.ShowTriggers)
+	protected.POST("/triggers", h.DoCreateTrigger)
+	protected.POST("/triggers/:id/delete", h.DoDeleteTrigger)
 
 	return router, rateLimiter
 }

@@ -1,0 +1,52 @@
+{{ define "flows.html" }}
+<section class="stack">
+
+    {{ if .Notice }}
+    <div class="snackbar {{ if .Notice.Success }}snackbar--success{{ else }}snackbar--error{{ end }}" role="alert">
+        <span>{{ .Notice.Message }}</span>
+    </div>
+    {{ end }}
+
+    <div class="card">
+        <h1 class="headline">Flujos (menús y encuestas)</h1>
+        <p class="supporting">
+            Un menú y una encuesta son ambos flujos versionados. Publicar guarda una versión nueva:
+            los flujos son inmutables, no se editan en sitio.
+        </p>
+        <div class="row">
+            <a href="/flows/new" class="btn btn--filled">Nuevo flujo</a>
+        </div>
+
+        {{ if .FlowsError }}
+        <div class="snackbar snackbar--error" role="alert">
+            No se pudieron cargar los flujos ahora mismo. Inténtalo de nuevo en un momento.
+        </div>
+        {{ else if .Flows }}
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Flujo</th>
+                        <th>Versión</th>
+                        <th>Creado</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ range .Flows }}
+                    <tr>
+                        <td>{{ .FlowID }}</td>
+                        <td><span class="chip chip--info">v{{ .Version }}</span></td>
+                        <td>{{ if .CreatedAt }}{{ .CreatedAt }}{{ else }}—{{ end }}</td>
+                        <td><a href="/flows/{{ .FlowID }}" class="btn btn--text">Ver / editar</a></td>
+                    </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+        {{ else }}
+        <p class="body">Este tenant todavía no tiene flujos. Crea uno nuevo para empezar.</p>
+        {{ end }}
+    </div>
+</section>
+{{ end }}
