@@ -1,0 +1,89 @@
+{{ define "dashboard.html" }}
+<section class="stack">
+
+    {{ if .Send }}
+    <div class="snackbar {{ if .Send.Success }}snackbar--success{{ else }}snackbar--error{{ end }}" role="alert">
+        <span>{{ .Send.Message }}</span>
+        {{ if .Send.CommandID }}<span class="chip chip--info">{{ .Send.CommandID }}</span>{{ end }}
+    </div>
+    {{ end }}
+
+    <div class="card">
+        <h1 class="headline">Sesiones vinculadas</h1>
+        <p class="supporting">Teléfonos del tenant y su estado. Solo lectura: el emparejamiento vive en el Edge.</p>
+
+        {{ if .SessionsError }}
+        <div class="snackbar snackbar--error" role="alert">
+            No se pudieron cargar las sesiones ahora mismo. Puedes enviar un mensaje introduciendo el
+            identificador de sesión a mano.
+        </div>
+        {{ else if .Sessions }}
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Teléfono / sesión</th>
+                        <th>Edge</th>
+                        <th>Estado</th>
+                        <th>Rol</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ range .Sessions }}
+                    <tr>
+                        <td>{{ if .SelfPn }}{{ .SelfPn }}{{ else }}{{ .SessionID }}{{ end }}</td>
+                        <td>{{ .EdgeID }}</td>
+                        <td>
+                            {{ if eq .State "online" }}<span class="chip chip--ok">online</span>
+                            {{ else if eq .State "offline" }}<span class="chip chip--error">offline</span>
+                            {{ else }}<span class="chip chip--neutral">{{ .State }}</span>{{ end }}
+                        </td>
+                        <td><span class="chip chip--neutral">{{ .Role }}</span></td>
+                    </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+        {{ else }}
+        <p class="body">Este tenant todavía no tiene sesiones vinculadas. Empareja un Edge para empezar.</p>
+        {{ end }}
+    </div>
+
+    <div class="card">
+        <h2 class="title">Enviar un mensaje</h2>
+        <p class="supporting">Elige la sesión de salida, el número de destino y el texto.</p>
+
+        <form method="POST" action="/send" class="stack" autocomplete="off">
+            <div class="field">
+                <label class="field__label" for="session_id">Sesión de salida</label>
+                {{ if and (not .SessionsError) .Sessions }}
+                <select class="field__control" id="session_id" name="session_id" required>
+                    <option value="" disabled {{ if not .FormSessionID }}selected{{ end }}>Elige una sesión…</option>
+                    {{ range .Sessions }}
+                    <option value="{{ .SessionID }}" {{ if eq $.FormSessionID .SessionID }}selected{{ end }}>
+                        {{ if .SelfPn }}{{ .SelfPn }}{{ else }}{{ .SessionID }}{{ end }} · {{ .EdgeID }} ({{ .State }})
+                    </option>
+                    {{ end }}
+                </select>
+                {{ else }}
+                <input class="field__input" type="text" id="session_id" name="session_id" required
+                       value="{{ .FormSessionID }}" placeholder="identificador de sesión">
+                {{ end }}
+            </div>
+            <div class="field">
+                <label class="field__label" for="to">Número de destino</label>
+                <input class="field__input" type="text" id="to" name="to" required
+                       value="{{ .FormTo }}" placeholder="+593 99 000 0000">
+            </div>
+            <div class="field">
+                <label class="field__label" for="text">Mensaje</label>
+                <textarea class="field__control" id="text" name="text" required
+                          placeholder="Escribe el texto a enviar…">{{ .FormText }}</textarea>
+            </div>
+            <div class="row">
+                <button type="submit" class="btn btn--filled">Enviar</button>
+            </div>
+        </form>
+    </div>
+</section>
+{{ end }}

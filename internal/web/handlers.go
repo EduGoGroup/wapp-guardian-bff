@@ -81,15 +81,6 @@ func sameSiteMode(mode string, secure bool) http.SameSite {
 	}
 }
 
-// ShowHome pinta la home del BFF. Va tras el AuthMiddleware (ruta protegida): si se llega aquí, la sesión
-// es válida. El dashboard real (tabla de sesiones + envío) lo materializa T3; hoy sigue siendo el
-// placeholder SSR de T1.
-func (h *Handler) ShowHome(c *gin.Context) {
-	h.render(c, http.StatusOK, "index.html", gin.H{
-		"Title": "Consola",
-	})
-}
-
 // ShowLogin pinta la página de login. Si ya hay sesión válida, salta directo a la home (evita re-login).
 func (h *Handler) ShowLogin(c *gin.Context) {
 	if h.hasValidSession(c) {

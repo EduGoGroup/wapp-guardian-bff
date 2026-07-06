@@ -141,6 +141,99 @@ func (c *Client) Logout(ctx context.Context, accessToken, refreshToken string) e
 }
 
 // ---------------------------------------------------------------------------
+// Endpoints de negocio (T3: dashboard de sesiones + envío)
+// ---------------------------------------------------------------------------
+
+// Session es una fila del listado GET /api/v1/sessions. Espeja el sessionDTO de la API pública
+// (internal/publicapi/sessions.go): SOLO metadatos de operación, jamás credenciales ni PII más allá del
+// número propio (SelfPn). Los campos opcionales se omiten si la API aún no los conoce. State ∈
+// online|offline|loggedout; Role ∈ bot|passive.
+type Session struct {
+	SessionID       string `json:"session_id"`
+	EdgeID          string `json:"edge_id"`
+	State           string `json:"state"`
+	Role            string `json:"role"`
+	SelfPn          string `json:"self_pn,omitempty"`
+	LastConnectedAt string `json:"last_connected_at,omitempty"`
+	LastSeenAt      string `json:"last_seen_at,omitempty"`
+}
+
+// ListSessions lista las sesiones/teléfonos del tenant del token vía GET /api/v1/sessions (REQ-D1). El
+// aislamiento por tenant lo garantiza la API (sale del Bearer, INV-8): el BFF no filtra. 401 →
+// ErrUnauthorized (el llamador puede refrescar y reintentar); otros no-2xx → *APIError.
+func (c *Client) ListSessions(ctx context.Context, accessToken string) ([]Session, error) {
+	req, err := c.newAuthedRequest(ctx, http.MethodGet, "/api/v1/sessions", nil, accessToken)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("apiclient: sessions: %w", err)
+	}
+	defer drainClose(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, statusError("sessions", resp.StatusCode)
+	}
+	var out []Session
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("apiclient: sessions: decodificar respuesta: %w", err)
+	}
+	return out, nil
+}
+
+// sendMessageRequest es el cuerpo JSON de POST /api/v1/messages (wire format estable de la API pública,
+// internal/publicapi/messages.go): los tres campos son requeridos. El tenant NO viaja aquí: sale del token.
+type sendMessageRequest struct {
+	SessionID string `json:"session_id"`
+	To        string `json:"to"`
+	Text      string `json:"text"`
+}
+
+// SendResult refleja la respuesta 200 de POST /api/v1/messages (el Ack del Edge). OK=false significa que el
+// Edge recibió el comando pero su ejecución falló (Error trae el detalle del Edge). El BFF decide qué
+// mostrar sin filtrar trazas internas (REQ-D3).
+type SendResult struct {
+	AckedCommandID string `json:"acked_command_id"`
+	OK             bool   `json:"ok"`
+	Error          string `json:"error,omitempty"`
+}
+
+// SendMessage envía un texto por una sesión del Edge vía POST /api/v1/messages (REQ-D2). En 200 devuelve el
+// *SendResult con el Ack (incluso ok=false). Los códigos de negocio (400/404/502/504/500) vuelven como
+// *APIError con su StatusCode para que el handler los mapee a un mensaje legible (REQ-D3); 401 →
+// ErrUnauthorized (refresh + reintento, REQ-C6).
+func (c *Client) SendMessage(ctx context.Context, accessToken, sessionID, to, text string) (*SendResult, error) {
+	req, err := c.newAuthedJSONRequest(ctx, http.MethodPost, "/api/v1/messages",
+		sendMessageRequest{SessionID: sessionID, To: to, Text: text}, accessToken)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("apiclient: messages: %w", err)
+	}
+	defer drainClose(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, statusError("messages", resp.StatusCode)
+	}
+	var out SendResult
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("apiclient: messages: decodificar respuesta: %w", err)
+	}
+	return &out, nil
+}
+
+// StatusCodeOf extrae el status HTTP del upstream de un error de *APIError (0 si no lo es). Los handlers
+// lo usan para mapear 400/404/502/504/500 a mensajes legibles sin acoplarse al tipo concreto.
+func StatusCodeOf(err error) int {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.StatusCode
+	}
+	return 0
+}
+
+// ---------------------------------------------------------------------------
 // Helpers de transporte (los reusan T3/T4 para las llamadas de negocio)
 // ---------------------------------------------------------------------------
 

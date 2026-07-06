@@ -111,8 +111,10 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	// --- Rutas protegidas (AuthMiddleware: cookie válida o redirect a /login) ---
 	protected := router.Group("/")
 	protected.Use(h.AuthMiddleware())
-	// Home/dashboard. T3 añadirá aquí el listado de sesiones y el envío; T4 los editores de flows/triggers.
-	protected.GET("/", h.ShowHome)
+	// Dashboard: listado de sesiones del tenant + formulario de envío (T3). POST /send procesa el envío y
+	// re-renderiza el dashboard con el resultado. T4 añadirá los editores de flows/triggers.
+	protected.GET("/", h.ShowDashboard)
+	protected.POST("/send", h.DoSend)
 
 	return router, rateLimiter
 }
