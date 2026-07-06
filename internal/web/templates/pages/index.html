@@ -1,0 +1,48 @@
+{{ define "index.html" }}
+<section class="stack">
+    <div class="card card--hero">
+        <p class="eyebrow">Consola de operación</p>
+        <h1 class="headline">Bienvenido a wApp</h1>
+        <p class="body">
+            Terminal web de operación de negocio. Desde aquí gestionarás sesiones, envíos, flujos y
+            disparadores contra la API pública de la plataforma. El emparejamiento de WhatsApp y las
+            llaves viven en el Edge del cliente: esta consola nunca los toca.
+        </p>
+        <div class="row">
+            <a href="/healthz" class="btn btn--filled">Estado del servicio</a>
+            <a href="/logout" class="btn btn--outlined">Cerrar sesión</a>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2 class="title">Sesiones vinculadas</h2>
+        <p class="supporting">Vista previa del inventario del tenant (se poblará en el dashboard).</p>
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Teléfono</th>
+                        <th>Edge</th>
+                        <th>Estado</th>
+                        <th>Rol</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>+593 99 000 0000</td>
+                        <td>edge-demo</td>
+                        <td><span class="chip chip--ok">online</span></td>
+                        <td><span class="chip chip--neutral">bot</span></td>
+                    </tr>
+                    <tr>
+                        <td>—</td>
+                        <td>edge-demo</td>
+                        <td><span class="chip chip--error">offline</span></td>
+                        <td><span class="chip chip--neutral">passive</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+{{ end }}

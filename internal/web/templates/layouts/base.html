@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <title>wApp Consola · {{ .Title }}</title>
+
+    <!-- Design system Material Design 3 propio (mismo-origen, embebido con //go:embed). Sin CDNs. -->
+    <link rel="stylesheet" href="/static/css/app.css">
+
+    <!-- CSS crítico anti-flash: fija el color de fondo según el tema antes de que cargue app.css. Lleva
+         el nonce de la CSP de esta petición; así el nonce aparece en TODAS las páginas. NO usa
+         'unsafe-inline'. -->
+    <style nonce="{{ .Nonce }}">
+        html { background: #F4FBF8; }
+        @media (prefers-color-scheme: dark) { html:not([data-theme="light"]) { background: #0E1513; } }
+        :root[data-theme="dark"] html { background: #0E1513; }
+    </style>
+</head>
+<body>
+
+    <header class="app-bar">
+        <a href="/" class="app-bar__brand">
+            <span class="app-bar__logo" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                    <path d="M12 2a10 10 0 0 0-8.5 15.3L2 22l4.8-1.5A10 10 0 1 0 12 2Zm0 2a8 8 0 1 1-4.2 14.8l-.3-.2-2.7.8.8-2.6-.2-.3A8 8 0 0 1 12 4Zm-2.2 3.7c-.2 0-.5.1-.7.4-.3.3-.9.9-.9 2.1s.9 2.4 1 2.6c.1.2 1.8 2.9 4.5 3.9 2.2.8 2.7.7 3.2.6.6-.1 1.7-.7 2-1.4.2-.7.2-1.3.2-1.4-.1-.1-.3-.2-.6-.4-.3-.1-1.7-.8-1.9-.9-.3-.1-.4-.1-.6.1-.2.3-.7.9-.8 1-.1.2-.3.2-.5.1-.3-.1-1.2-.5-2.3-1.4-.8-.7-1.4-1.6-1.5-1.9-.2-.3 0-.4.1-.5l.4-.5c.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5 0-.1-.6-1.5-.8-2-.2-.5-.4-.4-.6-.5h-.4Z"/>
+                </svg>
+            </span>
+            <span class="app-bar__titles">
+                <span class="app-bar__name">wApp</span>
+                <span class="app-bar__sub">Consola</span>
+            </span>
+        </a>
+        {{ if .IsAuthenticated }}
+        <nav class="app-bar__actions">
+            <a href="/logout" class="btn btn--text">Cerrar sesión</a>
+        </nav>
+        {{ end }}
+    </header>
+
+    <main class="app-main">
+        {{ yield .ContentTemplate . }}
+    </main>
+
+</body>
+</html>
