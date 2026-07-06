@@ -87,7 +87,8 @@ func TestHSTSOmittedWhenDisabled(t *testing.T) {
 func TestNonceInjectedIntoTemplate(t *testing.T) {
 	router := NewRouter(hardenedCfg())
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	// /login es la página SSR pública (T2 protegió "/"): renderiza base.html con el <style> nonce.
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
 	router.ServeHTTP(rec, req)
 
 	nonce := extractCSPNonce(t, rec.Header().Get("Content-Security-Policy"))

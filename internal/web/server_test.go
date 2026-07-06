@@ -46,15 +46,17 @@ func TestCSSServedSameOrigin(t *testing.T) {
 	}
 }
 
-// TestHomeRenders verifica que la home renderiza el layout SSR con el CSS enlazado mismo-origen.
+// TestHomeRenders verifica que una página SSR pública renderiza el layout con el CSS enlazado mismo-origen.
+// T2 protegió "/" con el AuthMiddleware, así que se usa /login (público) para comprobar el render del
+// layout maestro (base.html + marca wApp + CSS).
 func TestHomeRenders(t *testing.T) {
 	router := NewRouter(hardenedCfg())
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
 	router.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("la home debía responder 200, got %d", rec.Code)
+		t.Fatalf("la página de login debía responder 200, got %d", rec.Code)
 	}
 	body := rec.Body.String()
 	if !strings.Contains(body, `href="/static/css/app.css"`) {

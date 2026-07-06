@@ -100,14 +100,19 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy", "time": time.Now().UTC().Format(time.RFC3339)})
 	})
 
-	// Página de inicio (placeholder de T1: verifica el render SSR + CSP con nonce). T2 monta el login y
-	// las rutas protegidas por AuthMiddleware.
-	router.GET("/", h.ShowHome)
-	// Logout: borra la cookie de sesión y vuelve al inicio. Disponible desde T1 (idempotente).
-	router.GET("/logout", func(c *gin.Context) {
-		h.clearSessionCookie(c)
-		c.Redirect(http.StatusSeeOther, "/")
-	})
+	// --- Rutas públicas (sin sesión) ---
+	// Login server-to-server contra la API pública. GET pinta el form; POST autentica y custodia el JWT.
+	router.GET("/login", h.ShowLogin)
+	router.POST("/login", h.DoLogin)
+	// Logout: borra la cookie de sesión (best-effort en la API) y vuelve al login. GET y POST, idempotente.
+	router.GET("/logout", h.DoLogout)
+	router.POST("/logout", h.DoLogout)
+
+	// --- Rutas protegidas (AuthMiddleware: cookie válida o redirect a /login) ---
+	protected := router.Group("/")
+	protected.Use(h.AuthMiddleware())
+	// Home/dashboard. T3 añadirá aquí el listado de sesiones y el envío; T4 los editores de flows/triggers.
+	protected.GET("/", h.ShowHome)
 
 	return router, rateLimiter
 }
