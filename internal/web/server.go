@@ -118,12 +118,17 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy", "time": time.Now().UTC().Format(time.RFC3339)})
 	})
 
+	// Defensa CSRF double-submit (H2): a partir de aquí toda ruta que renderiza formularios o muta estado
+	// lleva el token. Se registra DESPUÉS de /static y /healthz (que no renderizan formularios ni mutan) para
+	// no ensuciar sus respuestas cacheables con una cookie de token.
+	router.Use(CSRFMiddleware(cfg))
+
 	// --- Rutas públicas (sin sesión) ---
 	// Login server-to-server contra la API pública. GET pinta el form; POST autentica y custodia el JWT.
 	router.GET("/login", h.ShowLogin)
 	router.POST("/login", h.DoLogin)
-	// Logout: borra la cookie de sesión (best-effort en la API) y vuelve al login. GET y POST, idempotente.
-	router.GET("/logout", h.DoLogout)
+	// Logout: borra la cookie de sesión (best-effort en la API) y vuelve al login. SOLO POST (muta estado):
+	// un GET no debe cerrar sesión (evita cierres por prefetch/enlaces cruzados) y va con token CSRF.
 	router.POST("/logout", h.DoLogout)
 
 	// --- Rutas protegidas (AuthMiddleware: cookie válida o redirect a /login) ---

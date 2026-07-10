@@ -10,6 +10,7 @@
         {{ end }}
 
         <form method="POST" action="/login" class="stack" autocomplete="on">
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
             <div class="field">
                 <label class="field__label" for="email">Correo</label>
                 <input class="field__input" type="email" id="email" name="email"

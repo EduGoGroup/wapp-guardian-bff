@@ -44,6 +44,7 @@ func (h *Handler) render(c *gin.Context, status int, contentTemplate string, dat
 	}
 	data["ContentTemplate"] = contentTemplate
 	data["Nonce"] = nonceFromCtx(c)
+	data["CSRFToken"] = csrfTokenFromCtx(c)
 	c.HTML(status, "base.html", data)
 }
 
@@ -120,7 +121,7 @@ func (h *Handler) DoLogin(c *gin.Context) {
 }
 
 // DoLogout cierra la sesión (REQ-C5): borra la cookie SIEMPRE y, best-effort, invalida los tokens en la
-// API. Un fallo del upstream no impide el logout local. Sirve GET y POST (enlace o form).
+// API. Un fallo del upstream no impide el logout local. SOLO por POST (muta estado) y con token CSRF.
 func (h *Handler) DoLogout(c *gin.Context) {
 	if raw, err := c.Cookie(sessionCookieName); err == nil && raw != "" {
 		if sess, derr := decodeSession(raw); derr == nil && sess.AccessToken != "" {

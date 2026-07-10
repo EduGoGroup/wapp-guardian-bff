@@ -76,10 +76,27 @@ func sessionSetCookie(rec *httptest.ResponseRecorder) string {
 	return ""
 }
 
+// mintCSRF obtiene una cookie CSRF válida haciendo un GET público (el CSRFMiddleware la siembra). Su valor
+// ES el token double-submit que los POST deben reflejar en el campo del formulario.
+func mintCSRF(router http.Handler) *http.Cookie {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
+	router.ServeHTTP(rec, req)
+	for _, sc := range rec.Result().Cookies() {
+		if sc.Name == csrfCookieName {
+			return sc
+		}
+	}
+	return &http.Cookie{Name: csrfCookieName, Value: ""}
+}
+
 func postForm(router http.Handler, path string, form url.Values) *httptest.ResponseRecorder {
+	csrf := mintCSRF(router)
+	form.Set(csrfFieldName, csrf.Value)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(csrf)
 	router.ServeHTTP(rec, req)
 	return rec
 }

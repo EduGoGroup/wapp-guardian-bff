@@ -18,6 +18,7 @@
         </div>
 
         <form method="POST" action="/flows" class="stack" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
             <input type="hidden" name="flow_id" value="{{ .FlowID }}">
             <input type="hidden" name="is_new" value="{{ if .IsNew }}1{{ else }}0{{ end }}">
             <div class="field">

@@ -45,6 +45,7 @@
                         <td>{{ if .Enabled }}<span class="chip chip--ok">sí</span>{{ else }}<span class="chip chip--neutral">no</span>{{ end }}</td>
                         <td>
                             <form method="POST" action="/triggers/{{ .TriggerID }}/delete">
+                                <input type="hidden" name="csrf_token" value="{{ $.CSRFToken }}">
                                 <button type="submit" class="btn btn--text">Borrar</button>
                             </form>
                         </td>
@@ -66,6 +67,7 @@
         </p>
 
         <form method="POST" action="/triggers" class="stack" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
             <div class="field">
                 <label class="field__label" for="kind">Tipo</label>
                 <select class="field__control" id="kind" name="kind" required>

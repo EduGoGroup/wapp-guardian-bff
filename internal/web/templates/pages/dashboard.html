@@ -54,6 +54,7 @@
         <p class="supporting">Elige la sesión de salida, el número de destino y el texto.</p>
 
         <form method="POST" action="/send" class="stack" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
             <div class="field">
                 <label class="field__label" for="session_id">Sesión de salida</label>
                 {{ if and (not .SessionsError) .Sessions }}

@@ -50,9 +50,12 @@ func getWithCookie(router http.Handler, path string, cookie *http.Cookie) *httpt
 }
 
 func postFormWithCookie(router http.Handler, path string, form url.Values, cookie *http.Cookie) *httptest.ResponseRecorder {
+	csrf := mintCSRF(router)
+	form.Set(csrfFieldName, csrf.Value)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(csrf)
 	if cookie != nil {
 		req.AddCookie(cookie)
 	}
