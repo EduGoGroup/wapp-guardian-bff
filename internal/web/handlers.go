@@ -17,16 +17,23 @@ import (
 // setSessionCookie/clearSessionCookie (las consume T2 en el login).
 const sessionCookieName = "wapp_guardian_session"
 
-// Handler agrupa las dependencias de los controladores web: la config y el cliente de la API pública
-// (relay server-to-server con el Bearer JWT custodiado en cookie).
+// Handler agrupa las dependencias de los controladores web: la config y el puerto de la API pública
+// (relay server-to-server con el Bearer JWT custodiado en cookie). Depende de APIPort, no del cliente
+// concreto, para invertir la dependencia (DIP) y permitir dobles en test sin HTTP real.
 type Handler struct {
 	cfg *config.Config
-	api *apiclient.Client
+	api APIPort
 }
 
-// NewHandler construye el Handler con un apiclient apuntando a la API pública de la config.
+// NewHandler construye el Handler con el cliente real de la API pública de la config.
 func NewHandler(cfg *config.Config) *Handler {
-	return &Handler{cfg: cfg, api: apiclient.New(cfg.PublicAPIBaseURL)}
+	return NewHandlerWithAPI(cfg, apiclient.New(cfg.PublicAPIBaseURL))
+}
+
+// NewHandlerWithAPI construye el Handler con un APIPort inyectado. Producción usa apiclient.Client vía
+// NewHandler; los tests pueden pasar un doble en memoria.
+func NewHandlerWithAPI(cfg *config.Config, api APIPort) *Handler {
+	return &Handler{cfg: cfg, api: api}
 }
 
 // render pinta una página completa dentro del layout maestro base.html (navegación clásica de páginas,
