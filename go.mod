@@ -3,8 +3,8 @@ module github.com/wApp/wapp-guardian-bff
 go 1.26.0
 
 require (
-	github.com/EduGoGroup/wapp-shared/auth v0.1.0
-	github.com/EduGoGroup/wapp-shared/config v0.1.0
+	github.com/EduGoGroup/wapp-shared/auth v0.1.1
+	github.com/EduGoGroup/wapp-shared/config v0.2.0
 	github.com/EduGoGroup/wapp-shared/logger v0.1.0
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
