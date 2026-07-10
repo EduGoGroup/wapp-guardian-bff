@@ -8,11 +8,15 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"embed"
 	"html/template"
 	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -142,20 +146,62 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	return router, rateLimiter
 }
 
-// Run arranca el servidor web sobre un http.Server endurecido (anti-slowloris) y bloquea hasta que
-// termine.
+// Run arranca el servidor web sobre un http.Server endurecido (anti-slowloris) y bloquea hasta recibir
+// SIGINT/SIGTERM, momento en que apaga de forma graceful. Solo traduce señales del SO a la cancelación
+// del contexto; el ciclo de vida serve/shutdown vive en serveWithContext (testeable sin señales).
 func Run(cfg *config.Config) error {
+	// El contexto se cancela con la primera SIGINT/SIGTERM; stop restaura el manejo por defecto para que
+	// una segunda señal (p. ej. si el drenado se atasca) mate el proceso de inmediato.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return serveWithContext(ctx, cfg, stop)
+}
+
+// serveWithContext levanta el servidor y bloquea hasta que ctx se cancela (señal del SO) o el propio
+// servidor termina (típicamente, fallo al bindear el puerto). Al cancelarse ctx apaga de forma graceful:
+// deja de aceptar conexiones y espera hasta ShutdownTimeout a que terminen las peticiones en vuelo antes
+// de forzar el cierre (cada deploy dejaba de cortar peticiones a mitad). onSignal, si no es nil, se
+// invoca al recibir la cancelación para restaurar el manejo por defecto de la señal.
+func serveWithContext(ctx context.Context, cfg *config.Config, onSignal func()) error {
 	router, rateLimiter := newRouterWithLimiter(cfg)
 	if rateLimiter != nil {
 		defer rateLimiter.close()
 	}
 
 	srv := newHTTPServer(cfg, router)
-	slog.Info("consola BFF escuchando",
-		"addr", cfg.HTTPAddr, "public_api", cfg.PublicAPIBaseURL, "ambiente", cfg.Environment)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+
+	// ListenAndServe corre en su propia goroutine; su error (fallo al bindear el puerto) viaja por el
+	// canal para no perderlo mientras el hilo principal espera la señal.
+	serveErr := make(chan error, 1)
+	go func() {
+		slog.Info("consola BFF escuchando",
+			"addr", cfg.HTTPAddr, "public_api", cfg.PublicAPIBaseURL, "ambiente", cfg.Environment)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serveErr <- err
+			return
+		}
+		serveErr <- nil
+	}()
+
+	select {
+	case err := <-serveErr:
+		// El servidor terminó por sí solo (típicamente, no pudo bindear el puerto).
+		return err
+	case <-ctx.Done():
+		if onSignal != nil {
+			onSignal() // segunda señal a partir de aquí = terminación inmediata por defecto.
+		}
+		slog.Info("señal de apagado recibida, drenando peticiones en vuelo",
+			"timeout", cfg.ShutdownTimeout)
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("apagado graceful excedió el plazo; forzando cierre", "error", err)
 		return err
 	}
+	slog.Info("consola BFF apagada limpiamente")
 	return nil
 }
 

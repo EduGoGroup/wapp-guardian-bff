@@ -69,6 +69,11 @@ type Config struct {
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
 	IdleTimeout       time.Duration
+
+	// ShutdownTimeout acota el apagado graceful: al recibir SIGINT/SIGTERM el servidor deja de aceptar
+	// conexiones nuevas y espera hasta este plazo a que las peticiones en vuelo terminen antes de forzar
+	// el cierre. Default 10s.
+	ShutdownTimeout time.Duration
 }
 
 // Load resuelve la configuración desde variables de entorno (prefijo WAPP_) con defaults de desarrollo
@@ -101,5 +106,7 @@ func Load() Config {
 		ReadTimeout:       time.Duration(l.GetInt("GUARDIAN_READ_TIMEOUT_SECS", 15)) * time.Second,
 		WriteTimeout:      time.Duration(l.GetInt("GUARDIAN_WRITE_TIMEOUT_SECS", 30)) * time.Second,
 		IdleTimeout:       time.Duration(l.GetInt("GUARDIAN_IDLE_TIMEOUT_SECS", 60)) * time.Second,
+
+		ShutdownTimeout: time.Duration(l.GetInt("GUARDIAN_SHUTDOWN_TIMEOUT_SECS", 10)) * time.Second,
 	}
 }
