@@ -65,7 +65,7 @@ func (h *Handler) DoSend(c *gin.Context) {
 func sendResultView(result *apiclient.SendResult, err error) *sendView {
 	if err != nil {
 		if errors.Is(err, apiclient.ErrUnauthorized) {
-			return &sendView{Success: false, Message: "Tu sesión expiró. Vuelve a iniciar sesión e inténtalo de nuevo."}
+			return &sendView{Success: false, Message: sessionExpiredMessage}
 		}
 		switch apiclient.StatusCodeOf(err) {
 		case http.StatusBadRequest:

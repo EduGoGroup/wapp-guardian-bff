@@ -44,11 +44,11 @@ func (h *Handler) render(c *gin.Context, status int, contentTemplate string, dat
 		data = gin.H{}
 	}
 	data["CurrentPath"] = c.Request.URL.Path
-	if _, err := c.Cookie(sessionCookieName); err == nil {
-		data["IsAuthenticated"] = true
-	} else {
-		data["IsAuthenticated"] = false
-	}
+	// IsAuthenticated se deriva del contexto que valida el AuthMiddleware (token presente == sesión
+	// vigente), NO de la mera presencia de la cookie: una cookie caducada o ilegible ya no pinta la barra
+	// autenticada (en rutas públicas el middleware no corre y no siembra el token → false).
+	_, authenticated := c.Get(ctxAccessToken)
+	data["IsAuthenticated"] = authenticated
 	data["ContentTemplate"] = contentTemplate
 	data["Nonce"] = nonceFromCtx(c)
 	data["CSRFToken"] = csrfTokenFromCtx(c)

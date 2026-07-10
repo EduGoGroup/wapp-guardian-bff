@@ -24,10 +24,6 @@ import (
 	"github.com/wApp/wapp-guardian-bff/internal/config"
 )
 
-// templates es el puntero global de plantillas para el helper dinámico `yield` (el layout maestro
-// ejecuta el fragmento de página por nombre en tiempo de render).
-var templates *template.Template
-
 //go:embed templates
 var templatesFS embed.FS
 
@@ -76,9 +72,11 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	}
 
 	// Motor de plantillas con el helper `yield`: base.html es el layout maestro y ejecuta el fragmento
-	// de página (pages/*.html) que le indica ContentTemplate.
-	var err error
-	templates = template.New("").Funcs(template.FuncMap{
+	// de página (pages/*.html) que le indica ContentTemplate. El conjunto es LOCAL a este router (no un
+	// global mutable): el helper `yield` cierra sobre `tmpl`, que se asigna tras el parse, así cada router
+	// tiene su propio motor y los tests pueden montar routers en paralelo sin compartir estado.
+	var tmpl *template.Template
+	root := template.New("").Funcs(template.FuncMap{
 		// hasPrefix resalta el enlace activo de la navegación (app-bar): la sección se decide por el
 		// prefijo del path (p. ej. "/flows/menu" activa "Flujos").
 		"hasPrefix": strings.HasPrefix,
@@ -87,14 +85,14 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 				return "", nil
 			}
 			var buf bytes.Buffer
-			if err := templates.ExecuteTemplate(&buf, name, data); err != nil {
+			if err := tmpl.ExecuteTemplate(&buf, name, data); err != nil {
 				slog.Error("error al renderizar plantilla yield", "nombre", name, "error", err)
 				return "", err
 			}
 			return template.HTML(buf.String()), nil // #nosec G203 -- fragmento de plantilla propia.
 		},
 	})
-	templates, err = templates.ParseFS(templatesFS,
+	tmpl, err := root.ParseFS(templatesFS,
 		"templates/layouts/*.html",
 		"templates/pages/*.html",
 	)
@@ -102,7 +100,7 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 		slog.Error("no se pudieron compilar las plantillas HTML", "error", err)
 		panic(err)
 	}
-	router.SetHTMLTemplate(templates)
+	router.SetHTMLTemplate(tmpl)
 
 	h := NewHandler(cfg)
 

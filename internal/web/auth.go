@@ -35,6 +35,13 @@ type sessionData struct {
 
 // encodeSession serializa la sesión a un valor de cookie seguro: base64-URL sin padding, así el JSON (con
 // comas, comillas y dos puntos) no lo sanea ni descarta http.SetCookie.
+//
+// Nota de diseño (H9): el valor NO lleva MAC/firma propia —es base64(JSON), no un token sellado por el
+// BFF—. Es aceptable porque la integridad NO recae en la cookie: el contenido útil es el access token (un
+// JWT) y la API pública REVALIDA ese Bearer en CADA llamada server-side (parse-unverified + exp en el BFF
+// es solo un filtro barato, no el gate). Un valor manipulado produce un JWT que la API rechaza (401) → se
+// fuerza logout; el BFF es zero-secret (no comparte WAPP_JWT_SECRET), así que no podría firmar la cookie
+// aunque quisiera. Si en el futuro se guardara estado sensible propio en la cookie, habría que sellarla.
 func encodeSession(s sessionData) (string, error) {
 	raw, err := json.Marshal(s)
 	if err != nil {

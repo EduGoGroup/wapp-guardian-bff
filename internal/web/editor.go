@@ -22,6 +22,58 @@ type editorNotice struct {
 	Message string
 }
 
+// sessionExpiredMessage es el aviso común cuando la API responde 401 (sesión
+// caducada): idéntico en todo el editor (y en el dashboard).
+const sessionExpiredMessage = "Tu sesión expiró. Vuelve a iniciar sesión e inténtalo de nuevo."
+
+// upstreamErrorSpec parametriza el mapeo error→(status, aviso) de una acción del
+// editor con los mensajes propios de esa entidad. Un campo vacío desactiva su caso.
+type upstreamErrorSpec struct {
+	rejectionPrefix string // aviso (→400) cuando la plataforma RECHAZA el contenido; "" lo omite.
+	notFoundMessage string // aviso (→404) cuando la API responde 404; "" lo omite.
+	logMessage      string // qué loguear (slog.Warn) en el caso genérico.
+	fallbackMessage string // aviso genérico (→502) cuando no encaja ningún caso específico.
+}
+
+// mapEditorError unifica el patrón "error upstream → (status, editorNotice)" que se
+// repetía en publicar-flujo / crear-trigger / borrar-trigger. Preserva los mismos
+// mensajes y códigos: 401→sesión expirada; rechazo de la plataforma→400 (se muestra,
+// REQ-E4); 404→aviso de "no existe"; el resto→502 sin filtrar trazas.
+func mapEditorError(err error, spec upstreamErrorSpec) (int, *editorNotice) {
+	if errors.Is(err, apiclient.ErrUnauthorized) {
+		return http.StatusUnauthorized, &editorNotice{Success: false, Message: sessionExpiredMessage}
+	}
+	if spec.notFoundMessage != "" && apiclient.StatusCodeOf(err) == http.StatusNotFound {
+		return http.StatusNotFound, &editorNotice{Success: false, Message: spec.notFoundMessage}
+	}
+	if spec.rejectionPrefix != "" {
+		if msg, ok := apiclient.RejectionMessageOf(err); ok {
+			return http.StatusBadRequest, &editorNotice{Success: false, Message: spec.rejectionPrefix + msg}
+		}
+	}
+	slog.Warn(spec.logMessage, "error", err)
+	return http.StatusBadGateway, &editorNotice{Success: false, Message: spec.fallbackMessage}
+}
+
+// Specs por acción del editor (los mensajes específicos que consume mapEditorError).
+var (
+	publishFlowErrorSpec = upstreamErrorSpec{
+		rejectionPrefix: "La plataforma rechazó la definición: ",
+		logMessage:      "no se pudo publicar el flujo",
+		fallbackMessage: "No se pudo publicar el flujo. Inténtalo más tarde.",
+	}
+	createTriggerErrorSpec = upstreamErrorSpec{
+		rejectionPrefix: "La plataforma rechazó la regla: ",
+		logMessage:      "no se pudo crear el trigger",
+		fallbackMessage: "No se pudo crear la regla de disparo. Inténtalo más tarde.",
+	}
+	deleteTriggerErrorSpec = upstreamErrorSpec{
+		notFoundMessage: "Esa regla ya no existe o no es tuya.",
+		logMessage:      "no se pudo borrar el trigger",
+		fallbackMessage: "No se pudo borrar la regla de disparo. Inténtalo más tarde.",
+	}
+)
+
 // newFlowStarter es la plantilla mínima que se ofrece al crear un flujo desde cero
 // (/flows/new): un menú con dos opciones y un cierre. Da al operador una estructura
 // válida que editar en vez de un textarea en blanco. No se envía sola: solo se
@@ -137,7 +189,8 @@ func (h *Handler) DoPublishFlow(c *gin.Context) {
 		return perr
 	})
 	if err != nil {
-		h.renderFlowDetail(c, publishErrorStatus(err), flowID, isNew, definition, publishErrorNotice(err))
+		status, notice := mapEditorError(err, publishFlowErrorSpec)
+		h.renderFlowDetail(c, status, flowID, isNew, definition, notice)
 		return
 	}
 
@@ -145,32 +198,6 @@ func (h *Handler) DoPublishFlow(c *gin.Context) {
 		Success: true,
 		Message: "Publicada la versión " + strconv.Itoa(result.Version) + " del flujo " + result.FlowID + ".",
 	})
-}
-
-// publishErrorStatus mapea el error de PublishFlow a un status HTTP para el
-// re-render (400 en validación, 401/502 en sesión/upstream).
-func publishErrorStatus(err error) int {
-	if errors.Is(err, apiclient.ErrUnauthorized) {
-		return http.StatusUnauthorized
-	}
-	if _, ok := apiclient.RejectionMessageOf(err); ok {
-		return http.StatusBadRequest
-	}
-	return http.StatusBadGateway
-}
-
-// publishErrorNotice traduce el error de PublishFlow a un aviso legible. El rechazo
-// de la plataforma (validación del contenido propio) SÍ se muestra (REQ-E4); un
-// fallo genérico del upstream no filtra trazas.
-func publishErrorNotice(err error) *editorNotice {
-	if errors.Is(err, apiclient.ErrUnauthorized) {
-		return &editorNotice{Success: false, Message: "Tu sesión expiró. Vuelve a iniciar sesión e inténtalo de nuevo."}
-	}
-	if msg, ok := apiclient.RejectionMessageOf(err); ok {
-		return &editorNotice{Success: false, Message: "La plataforma rechazó la definición: " + msg}
-	}
-	slog.Warn("no se pudo publicar el flujo", "error", err)
-	return &editorNotice{Success: false, Message: "No se pudo publicar el flujo. Inténtalo más tarde."}
 }
 
 // prettyJSON re-indenta el JSON para mostrarlo legible en el textarea. Si no
@@ -262,7 +289,8 @@ func (h *Handler) DoCreateTrigger(c *gin.Context) {
 		return cerr
 	})
 	if err != nil {
-		h.renderTriggers(c, createTriggerErrorStatus(err), createTriggerErrorNotice(err), form)
+		status, notice := mapEditorError(err, createTriggerErrorSpec)
+		h.renderTriggers(c, status, notice, form)
 		return
 	}
 	// Éxito: re-lista (la nueva regla aparece) con aviso, sin repoblar el form.
@@ -292,31 +320,6 @@ func validateTriggerForm(kind, keyword, flowID string) string {
 	return ""
 }
 
-// createTriggerErrorStatus mapea el error de CreateTrigger a un status para el
-// re-render.
-func createTriggerErrorStatus(err error) int {
-	if errors.Is(err, apiclient.ErrUnauthorized) {
-		return http.StatusUnauthorized
-	}
-	if _, ok := apiclient.RejectionMessageOf(err); ok {
-		return http.StatusBadRequest
-	}
-	return http.StatusBadGateway
-}
-
-// createTriggerErrorNotice traduce el error de CreateTrigger a un aviso legible. El
-// rechazo de la plataforma SÍ se muestra (REQ-E4).
-func createTriggerErrorNotice(err error) *editorNotice {
-	if errors.Is(err, apiclient.ErrUnauthorized) {
-		return &editorNotice{Success: false, Message: "Tu sesión expiró. Vuelve a iniciar sesión e inténtalo de nuevo."}
-	}
-	if msg, ok := apiclient.RejectionMessageOf(err); ok {
-		return &editorNotice{Success: false, Message: "La plataforma rechazó la regla: " + msg}
-	}
-	slog.Warn("no se pudo crear el trigger", "error", err)
-	return &editorNotice{Success: false, Message: "No se pudo crear la regla de disparo. Inténtalo más tarde."}
-}
-
 // DoDeleteTrigger borra una regla (REQ-E3, "editar" = borrar + crear) y re-lista con
 // un aviso. Un 404 (regla ajena o ya borrada) se trata como aviso, no como fallo
 // duro: la lista simplemente ya no la tendrá.
@@ -331,33 +334,10 @@ func (h *Handler) DoDeleteTrigger(c *gin.Context) {
 		return h.api.DeleteTrigger(c.Request.Context(), accessToken, id)
 	})
 	if err != nil {
-		h.renderTriggers(c, deleteTriggerErrorStatus(err), deleteTriggerErrorNotice(err), gin.H{})
+		status, notice := mapEditorError(err, deleteTriggerErrorSpec)
+		h.renderTriggers(c, status, notice, gin.H{})
 		return
 	}
 	h.renderTriggers(c, http.StatusOK,
 		&editorNotice{Success: true, Message: "Regla de disparo borrada."}, gin.H{})
-}
-
-// deleteTriggerErrorStatus mapea el error de DeleteTrigger a un status para el
-// re-render.
-func deleteTriggerErrorStatus(err error) int {
-	if errors.Is(err, apiclient.ErrUnauthorized) {
-		return http.StatusUnauthorized
-	}
-	if apiclient.StatusCodeOf(err) == http.StatusNotFound {
-		return http.StatusNotFound
-	}
-	return http.StatusBadGateway
-}
-
-// deleteTriggerErrorNotice traduce el error de DeleteTrigger a un aviso legible.
-func deleteTriggerErrorNotice(err error) *editorNotice {
-	if errors.Is(err, apiclient.ErrUnauthorized) {
-		return &editorNotice{Success: false, Message: "Tu sesión expiró. Vuelve a iniciar sesión e inténtalo de nuevo."}
-	}
-	if apiclient.StatusCodeOf(err) == http.StatusNotFound {
-		return &editorNotice{Success: false, Message: "Esa regla ya no existe o no es tuya."}
-	}
-	slog.Warn("no se pudo borrar el trigger", "error", err)
-	return &editorNotice{Success: false, Message: "No se pudo borrar la regla de disparo. Inténtalo más tarde."}
 }
