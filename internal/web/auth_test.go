@@ -27,6 +27,7 @@ func authTestCfg(apiURL string) *config.Config {
 		CookieSecure:     false,
 		CookieSameSite:   "lax",
 		RateLimitEnabled: false,
+		UpstreamTimeout:  5 * time.Second, // holgado: los fakes responden al instante.
 	}
 }
 

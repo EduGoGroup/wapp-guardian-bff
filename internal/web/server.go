@@ -129,6 +129,9 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	// --- Rutas protegidas (AuthMiddleware: cookie válida o redirect a /login) ---
 	protected := router.Group("/")
 	protected.Use(h.AuthMiddleware())
+	// Deadline por petición: acota TODA la cadena withAuthRetry hacia la API pública (H4) para que un
+	// upstream lento no cuelgue el handler más allá del presupuesto (bajo el WriteTimeout del servidor).
+	protected.Use(RequestDeadlineMiddleware(cfg))
 	// Dashboard: listado de sesiones del tenant + formulario de envío (T3). POST /send procesa el envío y
 	// re-renderiza el dashboard con el resultado.
 	protected.GET("/", h.ShowDashboard)

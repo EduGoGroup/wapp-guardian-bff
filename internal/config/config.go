@@ -74,6 +74,13 @@ type Config struct {
 	// conexiones nuevas y espera hasta este plazo a que las peticiones en vuelo terminen antes de forzar
 	// el cierre. Default 10s.
 	ShutdownTimeout time.Duration
+
+	// UpstreamTimeout acota, por petición entrante, TODA la cadena de llamadas a la API pública (incluida
+	// la secuencia withAuthRetry: intento → refresh → reintento). Sin este tope la cadena podía encadenar
+	// hasta 3 llamadas de 15s (45s) bajo un WriteTimeout de 30s y romper el render a mitad. DEBE quedar por
+	// debajo de WriteTimeout para que el modo degradado alcance a pintarse. 0 o negativo lo desactiva.
+	// Default 20s.
+	UpstreamTimeout time.Duration
 }
 
 // Load resuelve la configuración desde variables de entorno (prefijo WAPP_) con defaults de desarrollo
@@ -108,5 +115,6 @@ func Load() Config {
 		IdleTimeout:       time.Duration(l.GetInt("GUARDIAN_IDLE_TIMEOUT_SECS", 60)) * time.Second,
 
 		ShutdownTimeout: time.Duration(l.GetInt("GUARDIAN_SHUTDOWN_TIMEOUT_SECS", 10)) * time.Second,
+		UpstreamTimeout: time.Duration(l.GetInt("GUARDIAN_UPSTREAM_TIMEOUT_SECS", 20)) * time.Second,
 	}
 }
