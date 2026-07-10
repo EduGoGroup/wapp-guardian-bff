@@ -44,6 +44,13 @@ type Config struct {
 	// en profundidad (fail-closed).
 	AllowedOrigins string
 
+	// TrustedProxies es la lista (CSV de IPs o CIDRs) de proxies de confianza cuyo X-Forwarded-For se
+	// honra para resolver ClientIP(). Vacío == NO se confía en ningún proxy: ClientIP() ignora las
+	// cabeceras de reenvío y usa la IP de la conexión, blindando el rate-limit por IP de /login contra
+	// suplantación del header. La topología del Plan 026 es TCP directo sin L7, así que el default vacío
+	// es el correcto; se configura solo si el BFF queda detrás de un proxy de confianza.
+	TrustedProxies string
+
 	// HSTSEnabled emite Strict-Transport-Security. Solo tiene sentido tras TLS; default sigue a
 	// CookieSecure (true salvo local) para no enviar HSTS sobre http:// en desarrollo.
 	HSTSEnabled bool
@@ -83,6 +90,7 @@ func Load() Config {
 		CookieSecure:   l.GetBool("GUARDIAN_COOKIE_SECURE", secureDefault),
 		CookieSameSite: l.GetString("GUARDIAN_COOKIE_SAMESITE", "lax"),
 		AllowedOrigins: l.GetString("GUARDIAN_ALLOWED_ORIGINS", ""), // vacío == same-origin; NUNCA "*".
+		TrustedProxies: l.GetString("GUARDIAN_TRUSTED_PROXIES", ""), // vacío == no se confía en ningún proxy.
 		HSTSEnabled:    l.GetBool("GUARDIAN_HSTS_ENABLED", secureDefault),
 
 		RateLimitEnabled: l.GetBool("GUARDIAN_RATE_ENABLED", true),

@@ -46,6 +46,16 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	gin.SetMode(gin.ReleaseMode)
 
 	router := gin.New()
+	// Proxies de confianza: por defecto (lista vacía) NO se confía en ninguno, de modo que ClientIP()
+	// ignora X-Forwarded-For y usa la IP de la conexión. Esto blinda el rate-limit por IP de /login
+	// (única defensa anti fuerza-bruta) contra la suplantación del header. Solo se confía en la lista
+	// explícita cuando el BFF queda detrás de un proxy de confianza (WAPP_GUARDIAN_TRUSTED_PROXIES).
+	if err := router.SetTrustedProxies(parseTrustedProxies(cfg.TrustedProxies)); err != nil {
+		// Config inválida en el arranque: fail-closed (como el panic al compilar plantillas). Mejor no
+		// arrancar que hacerlo con una allowlist de proxies malformada y un ClientIP() no fiable.
+		slog.Error("lista de proxies de confianza inválida", "valor", cfg.TrustedProxies, "error", err)
+		panic(err)
+	}
 	router.Use(gin.Recovery())
 	router.Use(slogMiddleware())
 	// Cabeceras de seguridad + nonce CSP por petición (antes de los handlers que renderizan).
@@ -161,6 +171,21 @@ func newHTTPServer(cfg *config.Config, handler http.Handler) *http.Server {
 		WriteTimeout:      cfg.WriteTimeout,
 		IdleTimeout:       cfg.IdleTimeout,
 	}
+}
+
+// parseTrustedProxies convierte el CSV de proxies de confianza (IPs o CIDRs) a una lista, descartando
+// vacíos. Devuelve nil cuando no hay ninguno: SetTrustedProxies(nil) hace que Gin no confíe en ningún
+// proxy y resuelva ClientIP() desde la IP de la conexión (ignorando X-Forwarded-For).
+func parseTrustedProxies(csv string) []string {
+	var proxies []string
+	for _, raw := range strings.Split(csv, ",") {
+		p := strings.TrimSpace(raw)
+		if p == "" {
+			continue
+		}
+		proxies = append(proxies, p)
+	}
+	return proxies
 }
 
 // slogMiddleware envía cada petición HTTP a slog (diagnóstico).

@@ -6,6 +6,8 @@
 *.dylib
 *.test
 *.out
+# Binario compilado en la raíz (go build ./cmd/guardian-bff)
+/guardian-bff
 
 # Directorios de salida
 bin/
