@@ -1,5 +1,5 @@
-github.com/EduGoGroup/wapp-shared/auth v0.1.1 h1:J+k200z3cUNE07mMEUxZoqgToLTHBGsapJjy+d8wnnw=
-github.com/EduGoGroup/wapp-shared/auth v0.1.1/go.mod h1:GoGrP951B4CrDZ8yOcF64+JiVp6KsRQr2BYduiPN0kw=
+github.com/EduGoGroup/wapp-shared/auth v0.2.0 h1:9l+m23WntmxQLSd/UjXQmQxFw6Tm48hx4CTrA1XKsns=
+github.com/EduGoGroup/wapp-shared/auth v0.2.0/go.mod h1:GoGrP951B4CrDZ8yOcF64+JiVp6KsRQr2BYduiPN0kw=
 github.com/EduGoGroup/wapp-shared/config v0.2.0 h1:1vymPAXFgX/KyhImAT4CZ8ldt5KfTTGEG+V/LIYLRik=
 github.com/EduGoGroup/wapp-shared/config v0.2.0/go.mod h1:WCDy0MET1u/9rnKAWZwEHa1JQ7HA7rxXwWLqBJHS92w=
 github.com/EduGoGroup/wapp-shared/logger v0.1.0 h1:TvhP//jWzX14fD9uM2ghl6M0lpMhyUDZ8uQfEvR8154=
