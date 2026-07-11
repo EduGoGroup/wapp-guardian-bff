@@ -19,7 +19,7 @@ ve el token). **No** empareja teléfonos ni custodia DEK.
 | Área | Qué hace | Endpoint `/api/v1` consumido |
 |---|---|---|
 | Login/sesión | Login server-side, JWT en cookie HttpOnly, refresh+reintento, logout | `auth/{login,refresh,logout}` |
-| Sesiones (solo lectura) | Lista los teléfonos/sesiones vinculados del tenant (self_pn/state/role) | `GET sessions` |
+| Sesiones | Lista los teléfonos/sesiones vinculados del tenant (self_pn/state/role) y cambia el **rol** `bot|passive` por sesión | `GET sessions`, `POST sessions/{id}/role` |
 | Enviar mensaje | Elegir sesión + destino + texto y despachar | `POST messages` |
 | Editar menú/encuestas | Listar/ver flows y **publicar versión nueva** (inmutables); triggers listar/crear/borrar | `flows`, `flows/{id}`, `triggers` |
 
@@ -69,6 +69,6 @@ go.mod                     — módulo: github.com/wApp/wapp-guardian-bff
 
 ## Puntos abiertos relevantes
 
-- Multi-teléfono: la consola opera N sesiones por Edge (ADR-0008); hoy solo lectura del listado.
+- Multi-teléfono: la consola opera N sesiones por Edge (ADR-0008); hoy listado + cambio de rol (`bot|passive`); el resto de la operación de sesión (status/retiro) sigue fuera.
 - Recuperación ante pérdida de DEK implica re-emparejar (sin backdoor) — fuera del BFF (local del Edge).
 - Alcance diferido (campañas, plantillas/contactos, editor visual, media) — futuros planes.
