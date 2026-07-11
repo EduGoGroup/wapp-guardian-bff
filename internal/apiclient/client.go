@@ -181,6 +181,36 @@ func (c *Client) ListSessions(ctx context.Context, accessToken string) ([]Sessio
 	return out, nil
 }
 
+// setSessionRoleRequest es el cuerpo JSON de POST /api/v1/sessions/{id}/role (espeja el
+// sessionRoleRequest de la API, internal/flujos/admin/sessions.go). El tenant y el session_id NO viajan
+// aquí: salen del token (INV-8) y del path.
+type setSessionRoleRequest struct {
+	Role string `json:"role"`
+}
+
+// SetSessionRole fija el rol (bot|passive) de una sesión del tenant del token vía
+// POST /api/v1/sessions/{id}/role (Plan 020 · T1, scope sessions.write). Una sesión passive
+// escucha/transporta pero NO dispara triggers ni auto-responde. 200 → nil (el body {session_id, role} se
+// descarta: el llamador re-lista). 400 (rol inválido) y 404 (sesión ajena/inexistente, opaco) →
+// *APIError con el código para que el handler los mapee a un mensaje legible; 401 → ErrUnauthorized
+// (refresh + reintento, REQ-C6).
+func (c *Client) SetSessionRole(ctx context.Context, accessToken, sessionID, role string) error {
+	req, err := c.newAuthedJSONRequest(ctx, http.MethodPost, "/api/v1/sessions/"+sessionID+"/role",
+		setSessionRoleRequest{Role: role}, accessToken)
+	if err != nil {
+		return err
+	}
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("apiclient: session role: %w", err)
+	}
+	defer drainClose(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return statusError("session role", resp.StatusCode)
+	}
+	return nil
+}
+
 // sendMessageRequest es el cuerpo JSON de POST /api/v1/messages (wire format estable de la API pública,
 // internal/publicapi/messages.go): los tres campos son requeridos. El tenant NO viaja aquí: sale del token.
 type sendMessageRequest struct {

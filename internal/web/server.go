@@ -139,6 +139,9 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	// re-renderiza el dashboard con el resultado.
 	protected.GET("/", h.ShowDashboard)
 	protected.POST("/send", h.DoSend)
+	// Rol de sesión bot|passive (Plan 020 · T1): select por fila de la tabla del dashboard. POST clásico
+	// SSR con CSRF; re-renderiza el dashboard con el rol ya cambiado.
+	protected.POST("/sessions/:id/role", h.DoSetSessionRole)
 
 	// Editor de menú/encuestas (T4): flujos (inmutables versionados) + triggers (crear/borrar). "Editar"
 	// un flujo = publicar versión N+1 (POST /flows); "editar" un trigger = borrar + crear.

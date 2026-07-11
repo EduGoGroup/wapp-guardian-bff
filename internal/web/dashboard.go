@@ -21,8 +21,9 @@ type sendView struct {
 }
 
 // ShowDashboard pinta el dashboard tras el AuthMiddleware (ruta protegida): lista las sesiones del tenant
-// (REQ-D1) y ofrece el formulario de envío (REQ-D2). Si el listado falla, degrada (REQ-D4): avisa y deja
-// introducir el session_id a mano en el form. Solo lectura: no empareja ni desvincula.
+// (REQ-D1) con su rol editable (bot|passive, Plan 020 · T1) y ofrece el formulario de envío (REQ-D2). Si
+// el listado falla, degrada (REQ-D4): avisa y deja introducir el session_id a mano en el form. No
+// empareja ni desvincula: el emparejamiento vive en el Edge.
 func (h *Handler) ShowDashboard(c *gin.Context) {
 	h.renderDashboard(c, http.StatusOK, nil, gin.H{})
 }
@@ -89,6 +90,58 @@ func sendResultView(result *apiclient.SendResult, err error) *sendView {
 		return &sendView{Success: false, Message: "El Edge recibió el mensaje pero no pudo entregarlo. Inténtalo de nuevo."}
 	}
 	return &sendView{Success: true, Message: "Mensaje aceptado por el Edge.", CommandID: result.AckedCommandID}
+}
+
+// validRoles son los roles de sesión que la consola permite fijar (Plan 020 · T1): bot dispara
+// triggers/auto-responde; passive solo escucha/transporta. Espeja fleet.ValidRole de la plataforma.
+var validRoles = map[string]bool{"bot": true, "passive": true}
+
+// DoSetSessionRole procesa el formulario de cambio de rol de una sesión (select bot|passive por fila de
+// la tabla): valida el rol client-side, llama a POST /api/v1/sessions/{id}/role (con refresh + reintento
+// ante 401, REQ-C6) y re-renderiza el dashboard con el resultado en un snackbar. El re-render re-lista
+// las sesiones, así que la tabla ya muestra el rol nuevo. Nunca expone el detalle crudo del upstream.
+func (h *Handler) DoSetSessionRole(c *gin.Context) {
+	sessionID := strings.TrimSpace(c.Param("id"))
+	role := strings.TrimSpace(c.PostForm("role"))
+
+	if sessionID == "" || !validRoles[role] {
+		h.renderDashboard(c, http.StatusBadRequest,
+			&sendView{Success: false, Message: "Elige un rol válido para la sesión (bot o passive)."},
+			gin.H{})
+		return
+	}
+
+	err := h.withAuthRetry(c, func(accessToken string) error {
+		return h.api.SetSessionRole(c.Request.Context(), accessToken, sessionID, role)
+	})
+
+	view := roleResultView(role, err)
+	status := http.StatusOK
+	if !view.Success {
+		status = http.StatusBadRequest
+	}
+	h.renderDashboard(c, status, view, gin.H{})
+}
+
+// roleResultView traduce el error de SetSessionRole a un mensaje legible (mismo criterio que
+// sendResultView, REQ-D3): los códigos de negocio se mapean uno a uno; jamás se filtra la traza/detalle
+// interno del upstream.
+func roleResultView(role string, err error) *sendView {
+	if err == nil {
+		return &sendView{Success: true, Message: "Rol de la sesión cambiado a " + role + "."}
+	}
+	if errors.Is(err, apiclient.ErrUnauthorized) {
+		return &sendView{Success: false, Message: sessionExpiredMessage}
+	}
+	switch apiclient.StatusCodeOf(err) {
+	case http.StatusBadRequest:
+		return &sendView{Success: false, Message: "La plataforma rechazó el rol. Usa bot o passive."}
+	case http.StatusNotFound:
+		return &sendView{Success: false, Message: "Esa sesión no es tuya o no existe. Elige una del listado."}
+	default:
+		slog.Warn("cambio de rol de sesión falló", "error", err)
+		return &sendView{Success: false, Message: "No se pudo cambiar el rol de la sesión. Inténtalo más tarde."}
+	}
 }
 
 // renderDashboard carga las sesiones y pinta el dashboard con un posible resultado de envío. Centraliza el

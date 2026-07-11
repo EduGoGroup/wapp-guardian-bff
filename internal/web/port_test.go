@@ -36,6 +36,7 @@ func (f *fakeAPIPort) Logout(context.Context, string, string) error { return nil
 func (f *fakeAPIPort) ListSessions(context.Context, string) ([]apiclient.Session, error) {
 	return nil, nil
 }
+func (f *fakeAPIPort) SetSessionRole(context.Context, string, string, string) error { return nil }
 func (f *fakeAPIPort) SendMessage(ctx context.Context, at, sid, to, text string) (*apiclient.SendResult, error) {
 	if f.sendMessage != nil {
 		return f.sendMessage(ctx, at, sid, to, text)
