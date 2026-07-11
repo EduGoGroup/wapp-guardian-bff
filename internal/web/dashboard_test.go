@@ -210,6 +210,117 @@ func TestSendValidatesEmptyFields(t *testing.T) {
 	}
 }
 
+// TestSetRoleSuccess: POST /sessions/{id}/role con la API devolviendo 200 → snackbar de éxito y la tabla
+// re-listada ya pinta el rol nuevo (el fixture del GET responde el estado post-cambio).
+func TestSetRoleSuccess(t *testing.T) {
+	api := routedAPI(map[string]struct {
+		status int
+		body   string
+	}{
+		"POST /api/v1/sessions/s-1/role": {http.StatusOK, `{"session_id":"s-1","role":"passive"}`},
+		"GET /api/v1/sessions": {http.StatusOK,
+			`[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","role":"passive"}]`},
+	})
+	defer api.Close()
+
+	router := NewRouter(authTestCfg(api.URL))
+	form := url.Values{"role": {"passive"}}
+	rec := postFormWithCookie(router, "/sessions/s-1/role", form, validSessionCookie(t))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("cambio de rol OK debía renderizar 200, got %d", rec.Code)
+	}
+	out := rec.Body.String()
+	if !strings.Contains(out, "snackbar--success") {
+		t.Error("cambio de rol OK debía mostrar un snackbar de éxito")
+	}
+	if !strings.Contains(out, "Rol de la sesión cambiado a passive") {
+		t.Error("el snackbar debía nombrar el rol nuevo")
+	}
+	// El re-render re-lista: el <select> de la fila trae passive seleccionado.
+	if !strings.Contains(out, `<option value="passive" selected>`) {
+		t.Error("la tabla re-listada debía preseleccionar el rol nuevo")
+	}
+}
+
+// TestSetRoleRejectsInvalidRole: un rol fuera de {bot, passive} se rechaza client-side (400) SIN llamar a
+// la API (la ruta del POST no está mapeada en el fake: si se llamara, el 500 rompería el mensaje esperado).
+func TestSetRoleRejectsInvalidRole(t *testing.T) {
+	api := routedAPI(map[string]struct {
+		status int
+		body   string
+	}{
+		"GET /api/v1/sessions": {http.StatusOK, `[]`},
+	})
+	defer api.Close()
+
+	router := NewRouter(authTestCfg(api.URL))
+	form := url.Values{"role": {"admin"}}
+	rec := postFormWithCookie(router, "/sessions/s-1/role", form, validSessionCookie(t))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("rol inválido debía responder 400, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Elige un rol válido") {
+		t.Error("rol inválido debía pedir bot o passive")
+	}
+}
+
+// TestSetRoleMapsUpstreamErrors: 400/404/500 del upstream se traducen a mensajes legibles, sin filtrar el
+// detalle crudo (mismo criterio REQ-D3 que /send).
+func TestSetRoleMapsUpstreamErrors(t *testing.T) {
+	cases := []struct {
+		name       string
+		status     int
+		wantSubstr string
+	}{
+		{"rechazo", http.StatusBadRequest, "La plataforma rechazó el rol"},
+		{"ajena", http.StatusNotFound, "no es tuya o no existe"},
+		{"upstream", http.StatusInternalServerError, "No se pudo cambiar el rol"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			api := routedAPI(map[string]struct {
+				status int
+				body   string
+			}{
+				"POST /api/v1/sessions/s-1/role": {tc.status, `{"error":"detalle interno que no debe verse"}`},
+				"GET /api/v1/sessions":           {http.StatusOK, `[]`},
+			})
+			defer api.Close()
+
+			router := NewRouter(authTestCfg(api.URL))
+			form := url.Values{"role": {"bot"}}
+			rec := postFormWithCookie(router, "/sessions/s-1/role", form, validSessionCookie(t))
+
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("%s debía responder 400, got %d", tc.name, rec.Code)
+			}
+			out := rec.Body.String()
+			if !strings.Contains(out, "snackbar--error") {
+				t.Errorf("%s debía mostrar un snackbar de error", tc.name)
+			}
+			if !strings.Contains(out, tc.wantSubstr) {
+				t.Errorf("%s debía mostrar %q", tc.name, tc.wantSubstr)
+			}
+			if strings.Contains(out, "detalle interno que no debe verse") {
+				t.Errorf("%s no debía filtrar el detalle del upstream", tc.name)
+			}
+		})
+	}
+}
+
+// TestSetRoleWithoutCookieRedirects: POST /sessions/{id}/role sin cookie → redirect a /login (ruta
+// protegida por el AuthMiddleware, como el resto del dashboard).
+func TestSetRoleWithoutCookieRedirects(t *testing.T) {
+	router := NewRouter(authTestCfg("http://api.invalid"))
+	rec := postFormWithCookie(router, "/sessions/s-1/role", url.Values{"role": {"bot"}}, nil)
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/login" {
+		t.Errorf("POST /sessions/{id}/role sin cookie debía redirigir a /login, got %d %q",
+			rec.Code, rec.Header().Get("Location"))
+	}
+}
+
 // TestDashboardWithoutCookieRedirects: GET / y POST /send sin cookie → redirect a /login (AuthMiddleware de
 // T2).
 func TestDashboardWithoutCookieRedirects(t *testing.T) {

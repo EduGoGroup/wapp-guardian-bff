@@ -87,6 +87,7 @@ llamador es un handler del dashboard/editor.
 | Método y ruta | Request | Response 2xx | Códigos de error relevantes | Cliente (`apiclient`) |
 |---|---|---|---|---|
 | `GET /api/v1/sessions` | — | `[]Session{session_id, edge_id, state, role, self_pn?, last_connected_at?, last_seen_at?}` | `401` | `ListSessions` (`client.go:164-182`) |
+| `POST /api/v1/sessions/{id}/role` | `{role}` con `role ∈ {bot, passive}` (`setSessionRoleRequest`) | `{session_id, role}` (200; este BFF descarta el body y re-lista) | `400` rol inválido · `401` · `404` sesión ajena/inexistente (opaco) · `500` | `SetSessionRole` (`client.go`) |
 | `POST /api/v1/messages` | `{session_id, to, text}` (`sendMessageRequest`) | `SendResult{acked_command_id, ok, error?}` (200 **incluso si `ok:false`**) | `400` datos inválidos · `401` · `404` sesión ajena · `502` Edge offline · `504` timeout · `500` | `SendMessage` (`client.go:205-224`) |
 | `GET /api/v1/flows` | — | `[]FlowSummary{flow_id, version, created_at?}` | `401` | `ListFlows` (`flows.go:35-53`) |
 | `GET /api/v1/flows/{id}` | — | `model.Flow` crudo (`{flow_id, version, initial, nodes}`), devuelto sin re-serializar | `401` · `404` (ajeno/inexistente, opaco) | `GetFlow` (`flows.go:60-78`) |
@@ -100,6 +101,11 @@ Notas de contrato:
   hay `PUT`/`DELETE`; "editar" = publicar con `POST /api/v1/flows` una definición nueva, que el
   servidor versiona como `version+1`.
 - **Triggers no tienen edición in-place**: no hay `PUT`. "Editar" = `DELETE` + `POST`.
+- **Rol de sesión** (`POST /api/v1/sessions/{id}/role`, scope `sessions.write`, Plan 020 · T1):
+  `bot` dispara triggers/auto-responde; `passive` solo escucha/transporta. El tenant sale del token
+  (INV-8) y el `session_id` del path; el body solo lleva `{role}`. Este BFF valida el rol
+  client-side antes de enviar (ver §4) y tras el 200 re-lista las sesiones (el rol nuevo se ve en
+  la tabla).
 - **`kind` de trigger** ∈ `{keyword, fallback, escape}`; **`match_type`** ∈ `{exact, contains}`.
   Campos requeridos según `kind` (este BFF los valida client-side antes de enviar, ver §4):
   `keyword` → `keyword`+`flow_id`; `fallback` → `flow_id`; `escape` → `keyword`.

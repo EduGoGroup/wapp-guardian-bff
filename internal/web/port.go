@@ -20,8 +20,9 @@ type APIPort interface {
 	Refresh(ctx context.Context, refreshToken string) (*apiclient.AuthResult, error)
 	Logout(ctx context.Context, accessToken, refreshToken string) error
 
-	// Dashboard: sesiones del tenant + envío de mensaje.
+	// Dashboard: sesiones del tenant (listar + fijar rol bot|passive) + envío de mensaje.
 	ListSessions(ctx context.Context, accessToken string) ([]apiclient.Session, error)
+	SetSessionRole(ctx context.Context, accessToken, sessionID, role string) error
 	SendMessage(ctx context.Context, accessToken, sessionID, to, text string) (*apiclient.SendResult, error)
 
 	// Editor: flujos (listar/ver/publicar) y triggers (listar/crear/borrar).

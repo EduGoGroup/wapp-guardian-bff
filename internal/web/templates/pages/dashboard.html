@@ -10,7 +10,8 @@
 
     <div class="card">
         <h1 class="headline">Sesiones vinculadas</h1>
-        <p class="supporting">Teléfonos del tenant y su estado. Solo lectura: el emparejamiento vive en el Edge.</p>
+        <p class="supporting">Teléfonos del tenant, su estado y su rol (bot responde; passive solo escucha).
+            El emparejamiento vive en el Edge.</p>
 
         {{ if .SessionsError }}
         <div class="snackbar snackbar--error" role="alert">
@@ -38,7 +39,17 @@
                             {{ else if eq .State "offline" }}<span class="chip chip--error">offline</span>
                             {{ else }}<span class="chip chip--neutral">{{ .State }}</span>{{ end }}
                         </td>
-                        <td><span class="chip chip--neutral">{{ .Role }}</span></td>
+                        <td>
+                            <form method="POST" action="/sessions/{{ .SessionID }}/role" class="row" autocomplete="off">
+                                <input type="hidden" name="csrf_token" value="{{ $.CSRFToken }}">
+                                <label class="field__label" for="role-{{ .SessionID }}" hidden>Rol de {{ .SessionID }}</label>
+                                <select class="field__control" id="role-{{ .SessionID }}" name="role">
+                                    <option value="bot" {{ if eq .Role "bot" }}selected{{ end }}>bot</option>
+                                    <option value="passive" {{ if eq .Role "passive" }}selected{{ end }}>passive</option>
+                                </select>
+                                <button type="submit" class="btn btn--outlined">Aplicar</button>
+                            </form>
+                        </td>
                     </tr>
                     {{ end }}
                 </tbody>
