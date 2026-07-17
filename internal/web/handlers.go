@@ -23,6 +23,10 @@ const sessionCookieName = "wapp_guardian_session"
 type Handler struct {
 	cfg *config.Config
 	api APIPort
+	// refresh serializa los refresh de token por sesión (single-flight): dos peticiones concurrentes de la
+	// MISMA sesión comparten UNA sola llamada a la API y reusan el par nuevo, en vez de refrescar ambas (el
+	// segundo perdería porque el IAM ya rotó/revocó el refresh anterior).
+	refresh *refreshGroup
 }
 
 // NewHandler construye el Handler con el cliente real de la API pública de la config.
@@ -33,7 +37,7 @@ func NewHandler(cfg *config.Config) *Handler {
 // NewHandlerWithAPI construye el Handler con un APIPort inyectado. Producción usa apiclient.Client vía
 // NewHandler; los tests pueden pasar un doble en memoria.
 func NewHandlerWithAPI(cfg *config.Config, api APIPort) *Handler {
-	return &Handler{cfg: cfg, api: api}
+	return &Handler{cfg: cfg, api: api, refresh: newRefreshGroup()}
 }
 
 // render pinta una página completa dentro del layout maestro base.html (navegación clásica de páginas,
