@@ -81,6 +81,10 @@ type Config struct {
 	// debajo de WriteTimeout para que el modo degradado alcance a pintarse. 0 o negativo lo desactiva.
 	// Default 20s.
 	UpstreamTimeout time.Duration
+
+	// EnableAlphaTestAccounts habilita el renderizado del selector de "Usuario de prueba (Alpha)" en la UI de login.
+	// Se activa mediante WAPP_ALPHA_TEST_ACCOUNTS=true o WAPP_ENABLE_ALPHA_LOGIN=true. Default: false (fail-closed).
+	EnableAlphaTestAccounts bool
 }
 
 // Load resuelve la configuración desde variables de entorno (prefijo WAPP_) con defaults de desarrollo
@@ -116,5 +120,7 @@ func Load() Config {
 
 		ShutdownTimeout: time.Duration(l.GetInt("GUARDIAN_SHUTDOWN_TIMEOUT_SECS", 10)) * time.Second,
 		UpstreamTimeout: time.Duration(l.GetInt("GUARDIAN_UPSTREAM_TIMEOUT_SECS", 20)) * time.Second,
+
+		EnableAlphaTestAccounts: l.GetBool("ALPHA_TEST_ACCOUNTS", l.GetBool("ENABLE_ALPHA_LOGIN", false)),
 	}
 }

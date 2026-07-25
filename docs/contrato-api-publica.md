@@ -147,14 +147,14 @@ operador".
 
 Este BFF es la consola **remota** de operación (Pieza 04), pero **no es la única superficie web**
 del ecosistema wApp. El Edge Agent (Pieza 01) expone su propio **plano de control local**
-(`wapp-ctl`, Plan 007): un servidor HTTP en **loopback** (`127.0.0.1:8765`) que corre **en la
+(`wapp-ctl`, Plan 007): un servidor HTTP en **loopback** (`127.0.0.1:8105`) que corre **en la
 máquina del cliente**, junto al daemon 24/7.
 
 Son dos superficies deliberadamente **separadas, no fusionables**:
 
 | | `wapp-guardian-bff` (este repo) | mini-web local del Edge (`wapp-ctl`) |
 |---|---|---|
-| Dónde corre | Nube (Pieza 04), remoto | Máquina del cliente, `127.0.0.1:8765` |
+| Dónde corre | Nube (Pieza 04), remoto | Máquina del cliente, `127.0.0.1:8105` |
 | A quién habla | API pública `/api/v1` (Pieza 03), server-to-server | Al propio Edge Agent, en proceso |
 | Para qué | Operación de negocio: sesiones, mensajes, flows, triggers | Emparejamiento QR local, estado del daemon, zero-knowledge |
 | Custodia de secretos | JWT de operación (cookie HttpOnly) | La DEK/llaves nunca salen de la máquina; el loopback es la frontera de confianza |

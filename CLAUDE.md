@@ -29,8 +29,9 @@ ve el token). **No** empareja teléfonos ni custodia DEK.
 ## Decisiones clave (Pieza 04 / ADRs)
 
 1. **El QR NO pasa por esta web.** En EduGo la consola era el terminal del QR (SSE).
-   En wApp el QR es local en el Edge (systray). El endpoint `/sessions/:id/stream`
-   y la excepción de `WriteTimeout` del BFF de EduGo se eliminan.
+   En wApp el QR es local en el Edge (terminal o web loopback de onboarding; **no hay
+   systray**). El endpoint `/sessions/:id/stream` y la excepción de `WriteTimeout` del
+   BFF de EduGo se eliminan.
 2. **Sin lógica de WhatsApp ni material criptográfico.** La nube (Pieza 03) arma
    el payload completo (ADR-0005); el Edge es despachador.
 3. **Media en la nube, no en el Edge.** PDF/archivos grandes viajan como URL
@@ -64,7 +65,9 @@ internal/apiclient/        — cliente HTTP → /api/v1 (Bearer server-side): cl
 internal/web/              — server (Gin, middlewares), auth (login/AuthMiddleware), dashboard, editor,
                              security (CSP+nonce), ratelimit; templates/ + static/css/app.css (//go:embed)
 docs/contrato-api-publica.md — el contrato consumido (referencia para clientes Android/iOS)
-go.mod                     — módulo: github.com/wApp/wapp-guardian-bff
+go.mod                     — módulo: github.com/wApp/wapp-guardian-bff (path placeholder:
+                             NO se publica como módulo importable; el repo vive en
+                             EduGoGroup/wapp-guardian-bff pero el go.mod aún no se renombró)
 ```
 
 ## Puntos abiertos relevantes
