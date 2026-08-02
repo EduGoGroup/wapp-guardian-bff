@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/EduGoGroup/wapp-shared/auth"
+	sharedjwt "github.com/EduGoGroup/wapp-shared/auth/jwt"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 
@@ -35,7 +35,7 @@ func authTestCfg(apiURL string) *config.Config {
 // es irrelevante; solo importa que el token sea parseable y lleve el claim exp.
 func makeToken(t *testing.T, exp time.Time) string {
 	t.Helper()
-	claims := auth.Claims{
+	claims := sharedjwt.Claims{
 		UserID:           "u-1",
 		TenantID:         "t-1",
 		Roles:            []string{"admin"},

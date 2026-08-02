@@ -3,16 +3,14 @@ module github.com/wApp/wapp-guardian-bff
 go 1.26.0
 
 require (
-	github.com/EduGoGroup/wapp-shared/auth v0.2.0
-	github.com/EduGoGroup/wapp-shared/config v0.2.0
+	github.com/EduGoGroup/wapp-shared/auth v0.3.0
+	github.com/EduGoGroup/wapp-shared/config v0.3.0
 	github.com/EduGoGroup/wapp-shared/logger v0.1.0
 	github.com/EduGoGroup/wapp-shared/ui v0.1.0
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	golang.org/x/time v0.6.0
 )
-
-replace github.com/EduGoGroup/wapp-shared/ui => ../../shared/wapp-shared/ui
 
 require (
 	github.com/bytedance/sonic v1.11.6 // indirect

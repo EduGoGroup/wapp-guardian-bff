@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/EduGoGroup/wapp-shared/auth"
+	sharedjwt "github.com/EduGoGroup/wapp-shared/auth/jwt"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -50,8 +50,8 @@ func decodeSession(value string) (sessionData, error) {
 var unverifiedParser = jwt.NewParser()
 
 // parseAccessClaims extrae los claims del access token sin verificar firma.
-func parseAccessClaims(accessToken string) (*auth.Claims, error) {
-	var claims auth.Claims
+func parseAccessClaims(accessToken string) (*sharedjwt.Claims, error) {
+	var claims sharedjwt.Claims
 	if _, _, err := unverifiedParser.ParseUnverified(accessToken, &claims); err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func parseAccessClaims(accessToken string) (*auth.Claims, error) {
 }
 
 // sessionValid es la validación mínima del BFF: exp presente y en el futuro.
-func sessionValid(claims *auth.Claims) bool {
+func sessionValid(claims *sharedjwt.Claims) bool {
 	exp := claims.ExpiresAt
 	if exp == nil {
 		return false
@@ -71,7 +71,7 @@ func sessionValid(claims *auth.Claims) bool {
 const refreshMargin = 2 * time.Minute
 
 // refreshDue indica si conviene refrescar la sesión.
-func refreshDue(claims *auth.Claims) bool {
+func refreshDue(claims *sharedjwt.Claims) bool {
 	exp := claims.ExpiresAt
 	if exp == nil {
 		return true
