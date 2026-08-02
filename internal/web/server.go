@@ -17,6 +17,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	identityjwt "github.com/EduGoGroup/identity-shared/auth/jwt"
+
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 	"github.com/EduGoGroup/wapp-shared/ui"
 )
@@ -30,16 +32,28 @@ var templatesFS embed.FS
 //go:embed static/css/app.css
 var appCSS []byte
 
-// NewRouter construye el *gin.Engine completo (plantillas + rutas + middlewares). Se expone para que los
-// tests lo monten con httptest sin levantar un puerto real. Run() lo usa y además escucha.
+// Deps agrupa las dependencias externas que el arranque (internal/bootstrap) construye y cablea al
+// router. Config son valores; Deps son colaboradores ya vivos, que pueden faltar.
+type Deps struct {
+	// IdentityVerifier verifica Identity Tokens emitidos por identity-core contra su JWKS. Es nil
+	// cuando el modo dual está apagado (WAPP_IDENTITY_JWKS_URL sin definir), que hoy es el default.
+	//
+	// Todavía no lo consume ningún flujo: el BFF sigue autenticando contra la API pública de wApp. Lo
+	// estrena la Ola 3 del Plan 003 de identity, cuando la autenticación pase a identity y el BFF
+	// tenga que distinguir un Identity Token (quién eres) de un Context Token (qué puedes hacer).
+	IdentityVerifier *identityjwt.MultiVerifier
+}
+
+// NewRouter construye el *gin.Engine completo (plantillas + rutas + middlewares) sin dependencias
+// externas opcionales. Se expone para que los tests lo monten con httptest sin levantar un puerto real.
 func NewRouter(cfg *config.Config) *gin.Engine {
-	router, _ := newRouterWithLimiter(cfg)
+	router, _ := newRouterWithLimiter(cfg, Deps{})
 	return router
 }
 
 // newRouterWithLimiter es como NewRouter pero además devuelve el rate-limiter para poder cerrar su
 // goroutine de barrido (lo usa Run para la vida del proceso y los tests para no filtrar goroutines).
-func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
+func newRouterWithLimiter(cfg *config.Config, deps Deps) (*gin.Engine, *keyedRateLimiter) {
 	gin.SetMode(gin.ReleaseMode)
 
 	router := gin.New()
@@ -99,7 +113,7 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	}
 	router.SetHTMLTemplate(tmpl)
 
-	h := NewHandler(cfg)
+	h := NewHandlerWithDeps(cfg, deps)
 
 	// CSS propio (Material Design 3) servido mismo-origen, sin CDNs. Cache moderada (1h): el contenido
 	// cambia solo con un deploy, así que un revalidate frecuente basta.
@@ -182,8 +196,8 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 }
 
 // NewRouterWithLimiter construye el engine y la función de limpieza para el rate-limiter.
-func NewRouterWithLimiter(cfg *config.Config) (*gin.Engine, func()) {
-	router, limiter := newRouterWithLimiter(cfg)
+func NewRouterWithLimiter(cfg *config.Config, deps Deps) (*gin.Engine, func()) {
+	router, limiter := newRouterWithLimiter(cfg, deps)
 	cleanup := func() {
 		if limiter != nil {
 			limiter.close()

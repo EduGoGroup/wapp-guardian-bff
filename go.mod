@@ -3,6 +3,7 @@ module github.com/EduGoGroup/wapp-guardian-bff
 go 1.26.5
 
 require (
+	github.com/EduGoGroup/identity-shared/auth v0.3.0
 	github.com/EduGoGroup/wapp-shared/auth v0.4.0
 	github.com/EduGoGroup/wapp-shared/config v0.3.0
 	github.com/EduGoGroup/wapp-shared/logger v0.2.0
@@ -13,7 +14,6 @@ require (
 )
 
 require (
-	github.com/EduGoGroup/identity-shared/auth v0.3.0 // indirect
 	github.com/bytedance/sonic v1.11.6 // indirect
 	github.com/bytedance/sonic/loader v0.1.1 // indirect
 	github.com/cloudwego/base64x v0.1.4 // indirect

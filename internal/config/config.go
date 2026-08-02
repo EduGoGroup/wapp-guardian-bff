@@ -85,11 +85,23 @@ type Config struct {
 	// EnableAlphaTestAccounts habilita el renderizado del selector de "Usuario de prueba (Alpha)" en la UI de login.
 	// Se activa mediante WAPP_ALPHA_TEST_ACCOUNTS=true o WAPP_ENABLE_ALPHA_LOGIN=true. Default: false (fail-closed).
 	EnableAlphaTestAccounts bool
+
+	// IdentityJWKSURL es el endpoint JWKS de identity-api (identity-core) del que salen las claves
+	// públicas para verificar Identity Tokens. Es la PUERTA del modo dual (identity Plan 003, T1.2):
+	// vacío == modo dual apagado y el BFF arranca sin identity, exactamente como hoy.
+	//
+	// Con valor, el verificador se construye en el arranque y es fail-closed: hace su primer fetch ahí
+	// mismo y, si identity-api no responde, el BFF NO arranca. Es deliberado —un verificador nacido con
+	// cero claves rechazaría todo token como si fuera credencial inválida— y es la razón de que la
+	// puerta exista: la Ola 1 no puede imponerle a wApp una dependencia de arranque contra identity.
+	//
+	// Local: http://localhost:8200/.well-known/jwks.json (http solo se admite contra loopback).
+	IdentityJWKSURL string
 }
 
 // Load resuelve la configuración desde variables de entorno (prefijo WAPP_) con defaults de desarrollo
-// local. Las claves quedan bajo WAPP_GUARDIAN_* salvo WAPP_PUBLIC_API_BASE (compartida con el resto del
-// ecosistema wApp).
+// local. Las claves quedan bajo WAPP_GUARDIAN_* salvo WAPP_PUBLIC_API_BASE y WAPP_IDENTITY_JWKS_URL,
+// compartidas con el resto del ecosistema wApp.
 func Load() Config {
 	l := sharedconfig.New(sharedconfig.WithEnvPrefix("WAPP_"))
 
@@ -122,5 +134,7 @@ func Load() Config {
 		UpstreamTimeout: time.Duration(l.GetInt("GUARDIAN_UPSTREAM_TIMEOUT_SECS", 20)) * time.Second,
 
 		EnableAlphaTestAccounts: l.GetBool("ALPHA_TEST_ACCOUNTS", l.GetBool("ENABLE_ALPHA_LOGIN", false)),
+
+		IdentityJWKSURL: l.GetString("IDENTITY_JWKS_URL", ""), // vacío == modo dual apagado.
 	}
 }
