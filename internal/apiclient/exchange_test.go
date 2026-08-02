@@ -60,6 +60,31 @@ func TestExchange401EsUsuarioNoMigrado(t *testing.T) {
 	}
 }
 
+// TestExchange409NoEsUnFalloDeCredencial: el usuario resultó tener más de un tenant, un estado que el
+// diseño difiere al Plan 005 y que el canje rechaza en vez de elegir uno en silencio.
+//
+// Que NO viaje como ErrUnauthorized es lo que hay que sostener: de ese error depende que el BFF
+// distinga «tu sesión ya no vale» —donde limpiar la cookie es lo correcto— de «tu sesión vale pero
+// wApp no sabe en qué tenant ponerte», donde echar al usuario no arregla nada y borra la pista. El
+// status se preserva para que el día que el Plan 005 aborde el caso siga siendo distinguible.
+func TestExchange409NoEsUnFalloDeCredencial(t *testing.T) {
+	srv, _ := stubServer(t, http.StatusConflict, `{"error":"multiple_tenants"}`)
+
+	_, err := NewExchangeClient(NewTransport(srv.URL)).Exchange(context.Background(), "idt-abc")
+	if err == nil {
+		t.Fatal("un 409 del canje debía devolver error")
+	}
+	if errors.Is(err, ErrUnauthorized) {
+		t.Error("el 409 multi-tenant NO es un fallo de credencial")
+	}
+	if errors.Is(err, ErrDualModeOff) {
+		t.Error("el 409 tampoco es el modo dual apagado")
+	}
+	if got := StatusCodeOf(err); got != http.StatusConflict {
+		t.Errorf("el error debía preservar el 409 de la plataforma, got %d", got)
+	}
+}
+
 // TestExchangeSinContextTokenEsError: un 200 vacío dejaría al BFF custodiando una cookie sin token y
 // el usuario descubriría el fallo en la siguiente llamada de negocio, no en el login.
 func TestExchangeSinContextTokenEsError(t *testing.T) {
