@@ -8,12 +8,17 @@ import (
 	"testing"
 )
 
-// TestExchangeDevuelveElContextToken: el canje presenta el Identity Token y recibe SOLO el Context
-// Token con su vencimiento. No hay refresh en la respuesta y no debe haberlo: el refresh es de
-// identity y vive donde vive la sesión.
+// TestExchangeDevuelveElContextToken: el canje presenta el Identity Token y recibe el Context Token
+// con su vencimiento. No hay refresh en la respuesta y no debe haberlo: el refresh es de identity y
+// vive donde vive la sesión.
+//
+// El cuerpo es el que emite la plataforma tal cual, con `token_type` y `context` incluidos. No se
+// consumen: el tenant se lee SIEMPRE de las claims del Context Token, no del sobre que lo trae, y esa
+// regla es la que mantiene a parseAccessClaims funcionando sin tocarlo.
 func TestExchangeDevuelveElContextToken(t *testing.T) {
 	srv, captured := stubServer(t, http.StatusOK,
-		`{"context_token":"ctx-abc","expires_at":"2026-08-02T18:00:00Z"}`)
+		`{"context_token":"ctx-abc","token_type":"Bearer","expires_at":"2026-08-02T18:00:00Z",`+
+			`"context":{"tenant_id":"t-1","user_id":"u-1","roles":["admin"]}}`)
 
 	res, err := NewExchangeClient(NewTransport(srv.URL)).Exchange(context.Background(), "idt-abc")
 	if err != nil {
