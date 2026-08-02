@@ -21,7 +21,14 @@ func Run(cfg *config.Config) error {
 
 // ServeWithContext levanta el servidor y bloquea hasta la cancelación del contexto.
 func ServeWithContext(ctx context.Context, cfg *config.Config, onSignal func()) error {
-	router, cleanup := web.NewRouterWithLimiter(cfg)
+	// Composition root: aquí se construye lo que vive fuera del proceso antes de montar el router. El
+	// verificador de Identity Tokens es fail-closed, así que un fallo suyo aborta el arranque.
+	identityVerifier, err := newIdentityVerifier(cfg)
+	if err != nil {
+		return err
+	}
+
+	router, cleanup := web.NewRouterWithLimiter(cfg, web.Deps{IdentityVerifier: identityVerifier})
 	if cleanup != nil {
 		defer cleanup()
 	}
