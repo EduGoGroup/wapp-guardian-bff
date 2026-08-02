@@ -23,12 +23,16 @@ func Run(cfg *config.Config) error {
 func ServeWithContext(ctx context.Context, cfg *config.Config, onSignal func()) error {
 	// Composition root: aquí se construye lo que vive fuera del proceso antes de montar el router. El
 	// verificador de Identity Tokens es fail-closed, así que un fallo suyo aborta el arranque.
-	identityVerifier, err := newIdentityVerifier(cfg)
-	if err != nil {
+	//
+	// El *identityjwt.MultiVerifier que devuelve se descarta a propósito: el BFF no verifica Identity
+	// Tokens (los canjea por un Context Token contra wapp-cloud-platform, que sí verifica), así que
+	// aquí no hay nada que cablear. Lo que sí importa, y por lo que se llama igual, es el efecto
+	// colateral: si WAPP_IDENTITY_JWKS_URL está puesta, valida en el arranque que el emisor responde.
+	if _, err := newIdentityVerifier(cfg); err != nil {
 		return err
 	}
 
-	router, cleanup := web.NewRouterWithLimiter(cfg, web.Deps{IdentityVerifier: identityVerifier})
+	router, cleanup := web.NewRouterWithLimiter(cfg)
 	if cleanup != nil {
 		defer cleanup()
 	}
