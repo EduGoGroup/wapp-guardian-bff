@@ -133,9 +133,12 @@ func identityLoginBody(identityToken, refreshToken string) string {
 		identityToken, refreshToken)
 }
 
-// exchangeBody arma la respuesta del canje de la plataforma.
+// exchangeBody arma la respuesta del canje tal como la emite la plataforma, con el sobre completo.
+// El BFF ignora `context` a propósito: el tenant sale de las claims del Context Token, no del sobre.
 func exchangeBody(contextToken string, exp time.Time) string {
-	return fmt.Sprintf(`{"context_token":%q,"expires_at":%q}`,
+	return fmt.Sprintf(
+		`{"context_token":%q,"token_type":"Bearer","expires_at":%q,`+
+			`"context":{"tenant_id":"t-1","user_id":"u-1","roles":["admin"]}}`,
 		contextToken, exp.UTC().Format(time.RFC3339))
 }
 
