@@ -11,8 +11,8 @@ import (
 
 	"github.com/EduGoGroup/wapp-shared/logger"
 
+	"github.com/wApp/wapp-guardian-bff/internal/bootstrap"
 	"github.com/wApp/wapp-guardian-bff/internal/config"
-	"github.com/wApp/wapp-guardian-bff/internal/web"
 )
 
 func main() {
@@ -37,7 +37,7 @@ func main() {
 		"ambiente", cfg.Environment,
 	)
 
-	if err := web.Run(&cfg); err != nil {
+	if err := bootstrap.Run(&cfg); err != nil {
 		log.Error("el servidor BFF terminó con error", "error", err)
 		os.Exit(1)
 	}

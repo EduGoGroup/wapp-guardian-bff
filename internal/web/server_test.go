@@ -66,3 +66,68 @@ func TestHomeRenders(t *testing.T) {
 		t.Error("la home debía renderizar la marca wApp")
 	}
 }
+
+// TestSharedCSSServedSameOrigin verifica que los nuevos tokens y componentes compartidos se sirven mismo-origen.
+func TestSharedCSSServedSameOrigin(t *testing.T) {
+	router := NewRouter(hardenedCfg())
+
+	cssFiles := []string{
+		"/static/css/wapp-tokens.css",
+		"/static/css/wapp-components.css",
+		"/static/css/theme-bff.css",
+	}
+
+	for _, path := range cssFiles {
+		t.Run(path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("%s debía responder 200, got %d", path, rec.Code)
+			}
+			if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/css") {
+				t.Errorf("%s debía tener Content-Type text/css, got %q", path, ct)
+			}
+		})
+	}
+}
+
+// TestKillSwitchAlphaUserSelect verifica el comportamiento fail-closed del Kill-Switch de cuentas Alpha.
+func TestKillSwitchAlphaUserSelect(t *testing.T) {
+	t.Run("KillSwitch_OFF_Default", func(t *testing.T) {
+		cfg := hardenedCfg()
+		cfg.EnableAlphaTestAccounts = false
+		router := NewRouter(cfg)
+
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/login", nil)
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /login debía responder 200, got %d", rec.Code)
+		}
+		body := rec.Body.String()
+		if strings.Contains(body, "alpha-user-container") || strings.Contains(body, "alpha-user-select") {
+			t.Errorf("FAIL-CLOSED VIOLATION: el selector Alpha se renderizó estando la flag deshabilitada")
+		}
+	})
+
+	t.Run("KillSwitch_ON", func(t *testing.T) {
+		cfg := hardenedCfg()
+		cfg.EnableAlphaTestAccounts = true
+		router := NewRouter(cfg)
+
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/login", nil)
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /login debía responder 200, got %d", rec.Code)
+		}
+		body := rec.Body.String()
+		if !strings.Contains(body, "alpha-user-container") || !strings.Contains(body, "alpha-user-select") {
+			t.Errorf("El selector Alpha debía renderizarse cuando EnableAlphaTestAccounts es true")
+		}
+	})
+}
