@@ -14,7 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/wApp/wapp-guardian-bff/internal/config"
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 )
 
 // authTestCfg arma una config apuntando al servidor API fake, con rate-limit apagado y cookie no-Secure

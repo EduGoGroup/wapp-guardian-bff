@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/wApp/wapp-guardian-bff/internal/apiclient"
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 )
 
 // Authenticator define el contrato para la autenticación contra la API pública.

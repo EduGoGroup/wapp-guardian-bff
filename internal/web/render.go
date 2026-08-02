@@ -9,7 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/wApp/wapp-guardian-bff/internal/config"
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 )
 
 const sessionCookieName = "wapp_guardian_session"

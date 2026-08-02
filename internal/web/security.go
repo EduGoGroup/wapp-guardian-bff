@@ -9,7 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/wApp/wapp-guardian-bff/internal/config"
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 )
 
 // cspNonceKey es la clave en el gin.Context donde vive el nonce CSP de la petición actual. El

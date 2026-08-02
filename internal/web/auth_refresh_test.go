@@ -13,7 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/wApp/wapp-guardian-bff/internal/apiclient"
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 )
 
 // stubAPI es un doble del APIPort que SOLO implementa Refresh (lo único que el AuthMiddleware invoca). Embebe
