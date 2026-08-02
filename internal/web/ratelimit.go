@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/time/rate"
 
-	"github.com/wApp/wapp-guardian-bff/internal/config"
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 )
 
 // keyedRateLimiter es un rate-limit en memoria por clave (IP o user_id), construido sobre el token

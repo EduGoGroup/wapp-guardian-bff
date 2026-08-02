@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wApp/wapp-guardian-bff/internal/config"
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 )
 
 // hardenedCfg arma una config con hardening explícito (HSTS on, rate-limit off) para los tests de

@@ -1,4 +1,4 @@
-module github.com/wApp/wapp-guardian-bff
+module github.com/EduGoGroup/wapp-guardian-bff
 
 go 1.26.0
 

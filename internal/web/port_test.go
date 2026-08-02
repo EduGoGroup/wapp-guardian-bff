@@ -10,7 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/wApp/wapp-guardian-bff/internal/apiclient"
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 )
 
 // fakeAPIPort es un doble en memoria de APIPort para tests que no necesitan HTTP real. Cada método delega

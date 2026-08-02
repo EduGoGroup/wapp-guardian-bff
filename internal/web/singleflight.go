@@ -3,7 +3,7 @@ package web
 import (
 	"sync"
 
-	"github.com/wApp/wapp-guardian-bff/internal/apiclient"
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 )
 
 // refreshGroup es un single-flight casero que serializa los refresh por clave (refresh token).

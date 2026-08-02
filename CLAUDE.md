@@ -65,9 +65,8 @@ internal/apiclient/        — cliente HTTP → /api/v1 (Bearer server-side): cl
 internal/web/              — server (Gin, middlewares), auth (login/AuthMiddleware), dashboard, editor,
                              security (CSP+nonce), ratelimit; templates/ + static/css/app.css (//go:embed)
 docs/contrato-api-publica.md — el contrato consumido (referencia para clientes Android/iOS)
-go.mod                     — módulo: github.com/wApp/wapp-guardian-bff (path placeholder:
-                             NO se publica como módulo importable; el repo vive en
-                             EduGoGroup/wapp-guardian-bff pero el go.mod aún no se renombró)
+go.mod                     — módulo: github.com/EduGoGroup/wapp-guardian-bff (coincide con el
+                             remoto; no se publica con tags, pero el path ya es resoluble)
 ```
 
 ## Puntos abiertos relevantes

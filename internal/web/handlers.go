@@ -3,8 +3,8 @@ package web
 import (
 	"github.com/gin-gonic/gin"
 
-	"github.com/wApp/wapp-guardian-bff/internal/apiclient"
-	"github.com/wApp/wapp-guardian-bff/internal/config"
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 )
 
 // Handler agrupa los controladores web especializados del BFF.

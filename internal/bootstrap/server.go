@@ -8,8 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/wApp/wapp-guardian-bff/internal/config"
-	"github.com/wApp/wapp-guardian-bff/internal/web"
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/web"
 )
 
 // Run arranca el servidor web sobre un http.Server endurecido y bloquea hasta recibir SIGINT/SIGTERM.

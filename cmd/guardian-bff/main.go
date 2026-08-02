@@ -11,8 +11,8 @@ import (
 
 	"github.com/EduGoGroup/wapp-shared/logger"
 
-	"github.com/wApp/wapp-guardian-bff/internal/bootstrap"
-	"github.com/wApp/wapp-guardian-bff/internal/config"
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/bootstrap"
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 )
 
 func main() {

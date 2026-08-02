@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wApp/wapp-guardian-bff/internal/config"
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 )
 
 func hardenedCfg() config.Config {

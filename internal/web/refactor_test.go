@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wApp/wapp-guardian-bff/internal/apiclient"
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 )
 
 // TestMapEditorError verifica que el mapper unificado (H6/T6) preserva status y mensaje por caso y spec:
