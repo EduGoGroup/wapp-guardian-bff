@@ -167,6 +167,18 @@ func sessionFromCookie(t *testing.T, rec *httptest.ResponseRecorder) (sessionDat
 	return sess, string(raw)
 }
 
+// sessionCookieMaxAge devuelve el Max-Age (segundos) de la cookie de sesión emitida.
+func sessionCookieMaxAge(t *testing.T, rec *httptest.ResponseRecorder) int {
+	t.Helper()
+	for _, sc := range rec.Result().Cookies() {
+		if sc.Name == sessionCookieName {
+			return sc.MaxAge
+		}
+	}
+	t.Fatal("no se emitió cookie de sesión")
+	return 0
+}
+
 // cookieWith arma la cookie de sesión con un par (access, refresh) dado.
 func cookieWith(t *testing.T, access, refresh string) *http.Cookie {
 	t.Helper()
@@ -231,7 +243,9 @@ func TestSinIdentityURLElLogoutSigueSiendoLegacy(t *testing.T) {
 // Context Token y el refresh de identity. El Identity Token NO se persiste: vive el instante
 // server-side del canje y no aparece en la sesión ni en claro ni codificado.
 func TestDelegacionLoginCanjeaYCustodiaSoloElContextToken(t *testing.T) {
-	exp := time.Now().Add(time.Hour)
+	// El canje vence en 30 min y el Identity Token declara 15 (expires_in: 900). Que no coincidan es
+	// deliberado: es lo que permite afirmar CUÁL de los dos vencimientos acabó en la cookie.
+	exp := time.Now().Add(30 * time.Minute)
 	identityToken := makeIdentityToken(t, exp)
 	contextToken := makeToken(t, exp)
 
@@ -272,6 +286,16 @@ func TestDelegacionLoginCanjeaYCustodiaSoloElContextToken(t *testing.T) {
 	}
 	if strings.Contains(rawJSON, identityToken) {
 		t.Error("el Identity Token NO debe persistirse en la sesión: muere en el canje")
+	}
+	// El tercer campo del contrato de la cookie: el exp que se custodia es el del CONTEXTO, el que la
+	// plataforma acotó al canjear, no el que declaró identity. Con 900 segundos en la respuesta de
+	// identity y 30 min en la del canje, guardar el equivocado se ve.
+	if want := exp.UTC().Format(time.RFC3339); sess.ExpiresAt != want {
+		t.Errorf("la cookie debía custodiar el exp del contexto (%s), got %q", want, sess.ExpiresAt)
+	}
+	// Y la vida de la cookie lo sigue: ~30 min, ni el default de 1h ni los 15 min de identity.
+	if maxAge := sessionCookieMaxAge(t, rec); maxAge < 1700 || maxAge > 1800 {
+		t.Errorf("la cookie debía vivir lo que el Context Token (~1800s), got %d", maxAge)
 	}
 	// El tenant se lee del Context Token; si el de identity hubiera llegado a la cookie, no habría.
 	claims, err := parseAccessClaims(sess.AccessToken)
