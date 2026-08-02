@@ -1,4 +1,4 @@
-package web
+package bootstrap
 
 import (
 	"context"
@@ -6,10 +6,20 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/wApp/wapp-guardian-bff/internal/config"
 )
 
-// freeAddr reserva un puerto efímero y lo libera, devolviendo host:port para que el servidor lo tome.
-// Hay una ventana de carrera teórica entre cerrar y reusar, aceptable para un test local.
+func hardenedCfg() config.Config {
+	return config.Config{
+		PublicAPIBaseURL: "http://api.invalid",
+		Environment:      "production",
+		CookieSecure:     true,
+		CookieSameSite:   "lax",
+		ShutdownTimeout:  2 * time.Second,
+	}
+}
+
 func freeAddr(t *testing.T) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -21,8 +31,6 @@ func freeAddr(t *testing.T) string {
 	return addr
 }
 
-// TestServeWithContextGracefulShutdown verifica el path de T2: el servidor sirve, y al cancelarse el
-// contexto (equivalente a SIGTERM) apaga de forma graceful y serveWithContext retorna nil sin colgarse.
 func TestServeWithContextGracefulShutdown(t *testing.T) {
 	cfg := hardenedCfg()
 	cfg.HTTPAddr = freeAddr(t)
@@ -32,9 +40,8 @@ func TestServeWithContextGracefulShutdown(t *testing.T) {
 	defer cancel()
 
 	errCh := make(chan error, 1)
-	go func() { errCh <- serveWithContext(ctx, cfg, nil) }()
+	go func() { errCh <- ServeWithContext(ctx, &cfg, nil) }()
 
-	// Espera a que el servidor esté aceptando conexiones (poll a /healthz).
 	url := "http://" + cfg.HTTPAddr + "/healthz"
 	deadline := time.Now().Add(2 * time.Second)
 	up := false
@@ -51,7 +58,6 @@ func TestServeWithContextGracefulShutdown(t *testing.T) {
 		t.Fatal("el servidor no llegó a aceptar conexiones")
 	}
 
-	// "SIGTERM": cancelar el contexto debe drenar y retornar nil dentro del plazo.
 	cancel()
 	select {
 	case err := <-errCh:
@@ -59,6 +65,6 @@ func TestServeWithContextGracefulShutdown(t *testing.T) {
 			t.Fatalf("el apagado graceful debía retornar nil, got %v", err)
 		}
 	case <-time.After(cfg.ShutdownTimeout + time.Second):
-		t.Fatal("serveWithContext no retornó tras cancelar el contexto (apagado colgado)")
+		t.Fatal("ServeWithContext no retornó tras cancelar el contexto (apagado colgado)")
 	}
 }

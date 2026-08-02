@@ -7,25 +7,22 @@ import (
 	"github.com/wApp/wapp-guardian-bff/internal/apiclient"
 )
 
-// APIPort es el contrato que el BFF necesita de la API pública (Pieza 03). El Handler depende de esta
-// interfaz —no del cliente concreto *apiclient.Client— para invertir la dependencia (DIP): la
-// implementación real es apiclient.Client (transporte HTTP + Bearer server-side), y los tests pueden
-// inyectar un doble en memoria sin levantar un servidor HTTP donde eso simplifique.
-//
-// Las firmas y los tipos del wire son los de apiclient (fuente de verdad del contrato REST); esta interfaz
-// solo enumera el subconjunto que el BFF consume.
-type APIPort interface {
-	// Autenticación (cookie de sesión server-side).
+// Authenticator define el contrato para la autenticación contra la API pública.
+type Authenticator interface {
 	Login(ctx context.Context, email, password string) (*apiclient.AuthResult, error)
 	Refresh(ctx context.Context, refreshToken string) (*apiclient.AuthResult, error)
 	Logout(ctx context.Context, accessToken, refreshToken string) error
+}
 
-	// Dashboard: sesiones del tenant (listar + fijar rol bot|passive) + envío de mensaje.
+// SessionManager define el contrato para administrar sesiones del tenant y envío de mensajes.
+type SessionManager interface {
 	ListSessions(ctx context.Context, accessToken string) ([]apiclient.Session, error)
 	SetSessionRole(ctx context.Context, accessToken, sessionID, role string) error
 	SendMessage(ctx context.Context, accessToken, sessionID, to, text string) (*apiclient.SendResult, error)
+}
 
-	// Editor: flujos (listar/ver/publicar) y triggers (listar/crear/borrar).
+// EditorManager define el contrato para la edición de flujos y la gestión de reglas de disparo.
+type EditorManager interface {
 	ListFlows(ctx context.Context, accessToken string) ([]apiclient.FlowSummary, error)
 	GetFlow(ctx context.Context, accessToken, id string) (json.RawMessage, error)
 	PublishFlow(ctx context.Context, accessToken string, flowJSON []byte) (*apiclient.PublishFlowResult, error)
@@ -34,5 +31,17 @@ type APIPort interface {
 	DeleteTrigger(ctx context.Context, accessToken, id string) error
 }
 
-// Verificación en compilación de que el cliente concreto satisface el puerto.
-var _ APIPort = (*apiclient.Client)(nil)
+// APIPort es el puerto compuesto por compatibilidad con el cliente unificado de la API pública.
+type APIPort interface {
+	Authenticator
+	SessionManager
+	EditorManager
+}
+
+// Verificación en compilación de que los clientes concretos satisfacen las interfaces segregadas.
+var (
+	_ Authenticator  = (*apiclient.AuthClient)(nil)
+	_ SessionManager = (*apiclient.DashboardClient)(nil)
+	_ EditorManager  = (*apiclient.EditorClient)(nil)
+	_ APIPort        = (*apiclient.Client)(nil)
+)

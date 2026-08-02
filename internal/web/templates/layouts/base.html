@@ -6,7 +6,10 @@
     <meta name="color-scheme" content="light dark">
     <title>wApp Consola · {{ .Title }}</title>
 
-    <!-- Design system Material Design 3 propio (mismo-origen, embebido con //go:embed). Sin CDNs. -->
+    <!-- Design system wApp UI Tokens & Material Design 3 propio (mismo-origen). Sin CDNs. -->
+    <link rel="stylesheet" href="/static/css/wapp-tokens.css">
+    <link rel="stylesheet" href="/static/css/wapp-components.css">
+    <link rel="stylesheet" href="/static/css/theme-bff.css">
     <link rel="stylesheet" href="/static/css/app.css">
 
     <!-- CSS crítico anti-flash: fija el color de fondo según el tema antes de que cargue app.css. Lleva
