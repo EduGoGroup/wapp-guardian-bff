@@ -447,6 +447,89 @@ func TestDelegacion409DelCanjeDegradaSinEcharAlUsuario(t *testing.T) {
 	}
 }
 
+// --- El 503 del canje no miente al usuario (T4.1) ---
+
+// TestDelegacion503DelCanjeNoSeDisfrazaDeCredencialesInvalidas: la plataforma responde 503 al canje
+// —no tiene cableado su verificador de Identity Tokens—, así que el login no puede completarse por
+// una razón que nada tiene que ver con lo que el usuario escribió.
+//
+// Un 401 «Credenciales inválidas» aquí es la peor mentira posible en un login: quien puso bien su
+// contraseña reintenta, agota sus intentos y acaba bloqueado por una avería de configuración ajena.
+// La respuesta correcta dice «el servicio no está», y lo dice sin filtrar por qué (REQ-C3): el
+// detalle —qué le falta a la plataforma— es del log del servidor, no de la página de login.
+func TestDelegacion503DelCanjeNoSeDisfrazaDeCredencialesInvalidas(t *testing.T) {
+	identity := newUpstreamStub(t)
+	identity.onJSON("/api/v1/auth/login",
+		identityLoginBody(makeIdentityToken(t, time.Now().Add(time.Hour)), "rt-identity"))
+
+	platform := newUpstreamStub(t)
+	platform.on("/api/v1/auth/exchange", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = io.WriteString(w, `{"error":"dual_mode_disabled"}`)
+	})
+
+	router := NewRouter(delegatedCfg(platform.url(), identity.url()))
+	rec := postForm(router, "/login", url.Values{"email": {"a@b.com"}, "password": {"la-correcta"}})
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("el canje apagado debía responder 503, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, "Credenciales") {
+		t.Error("una avería del servidor NO debe presentarse como un error de credenciales")
+	}
+	if !strings.Contains(body, "El servicio de identidad") {
+		t.Errorf("la página debía dar un mensaje de servicio, got %q", body)
+	}
+	// Las credenciales SÍ eran válidas: identity autenticó y el corte llegó después, en el canje.
+	if got := identity.hitsOf("/api/v1/auth/login"); got != 1 {
+		t.Errorf("identity debía haber autenticado una vez, got %d", got)
+	}
+	if got := platform.hitsOf("/api/v1/auth/exchange"); got != 1 {
+		t.Errorf("el canje debía intentarse una vez, got %d", got)
+	}
+	// Ni el cuerpo del upstream ni el motivo interno se le cuentan al usuario.
+	if strings.Contains(body, "dual_mode_disabled") || strings.Contains(body, "modo dual") {
+		t.Error("no debe filtrarse al usuario el detalle de por qué falló el canje")
+	}
+	if raw := sessionSetCookie(rec); raw != "" {
+		t.Errorf("un login que no se completó NO debía emitir cookie de sesión, got %q", raw)
+	}
+}
+
+// TestDelegacionCredencialesInvalidasSiguenSiendo401: la otra mitad de la distinción. Con la
+// delegación encendida, unas credenciales que identity rechaza siguen dando exactamente lo de
+// siempre —401 y «Credenciales inválidas»—, que es lo que impide que el arreglo del 503 se convierta
+// en una excusa para ablandar el mensaje de un login realmente fallido.
+func TestDelegacionCredencialesInvalidasSiguenSiendo401(t *testing.T) {
+	identity := newUpstreamStub(t)
+	identity.on("/api/v1/auth/login", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"error":"invalid_credentials"}`)
+	})
+	platform := newUpstreamStub(t)
+
+	router := NewRouter(delegatedCfg(platform.url(), identity.url()))
+	rec := postForm(router, "/login", url.Values{"email": {"a@b.com"}, "password": {"nope"}})
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unas credenciales rechazadas debían seguir dando 401, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Credenciales") {
+		t.Errorf("el mensaje de credenciales debía mantenerse, got %q", body)
+	}
+	if strings.Contains(body, "El servicio de identidad") {
+		t.Error("un login mal escrito NO debe excusarse como una caída del servicio")
+	}
+	if strings.Contains(body, "invalid_credentials") {
+		t.Error("no debe filtrarse el detalle del upstream al usuario")
+	}
+	if got := platform.hitsOf("/api/v1/auth/exchange"); got != 0 {
+		t.Errorf("sin autenticación no hay nada que canjear, got %d canjes", got)
+	}
+}
+
 // --- Logout modelo Google (T3.4) ---
 
 // TestLogoutDelegadoRevocaSoloLaSesionDelBFF: el logout de la consola cierra en identity SOLO la

@@ -51,6 +51,16 @@ func (h *AuthHandler) DoLogin(c *gin.Context) {
 
 	res, err := h.api.Login(c.Request.Context(), email, password)
 	if err != nil {
+		// El canje apagado en la plataforma NO es un fallo de credenciales, y decirlo importa: quien
+		// escribió bien su contraseña reintentaría hasta agotar sus intentos y acabaría bloqueado por
+		// una avería de configuración que no es suya. Se distingue arriba porque abajo ya no se puede:
+		// la respuesta de credenciales es deliberadamente ciega para no filtrar detalle (REQ-C3).
+		if errors.Is(err, apiclient.ErrDualModeOff) {
+			slog.Error("login imposible: la plataforma no tiene el canje cableado", "error", err)
+			h.renderLoginError(c, http.StatusServiceUnavailable,
+				"El servicio de identidad no está disponible en este momento. Inténtalo de nuevo en unos minutos.")
+			return
+		}
 		slog.Warn("login rechazado", "error", err)
 		h.renderLoginError(c, http.StatusUnauthorized,
 			"Credenciales inválidas. Revisa tus datos e inténtalo de nuevo.")
