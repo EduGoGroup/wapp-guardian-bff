@@ -6,8 +6,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	identityjwt "github.com/EduGoGroup/identity-shared/auth/jwt"
-
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 )
@@ -18,27 +16,15 @@ type Handler struct {
 	api     APIPort
 	refresh *refreshGroup
 
-	// IdentityVerifier es el verificador de Identity Tokens de identity-core (nil si el modo dual está
-	// apagado). Ver Deps.IdentityVerifier: lo cablea el arranque y lo estrena la Ola 3.
-	IdentityVerifier *identityjwt.MultiVerifier
-
 	*AuthHandler
 	*DashboardHandler
 	*EditorHandler
 }
 
-// NewHandler construye el Handler con el cliente real de la API y sin dependencias externas
-// opcionales (modo dual apagado).
+// NewHandler construye el Handler de producción: cliente real de la API, eligiendo entre login directo
+// contra wApp o delegado a identity según la PUERTA de newAPIClient.
 func NewHandler(cfg *config.Config) *Handler {
 	return NewHandlerWithAPI(cfg, newAPIClient(cfg))
-}
-
-// NewHandlerWithDeps construye el Handler de producción: cliente real de la API más las dependencias
-// que trae el arranque.
-func NewHandlerWithDeps(cfg *config.Config, deps Deps) *Handler {
-	h := NewHandlerWithAPI(cfg, newAPIClient(cfg))
-	h.IdentityVerifier = deps.IdentityVerifier
-	return h
 }
 
 // newAPIClient elige el cliente según la PUERTA de la delegación (WAPP_IDENTITY_URL).
