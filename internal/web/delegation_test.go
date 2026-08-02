@@ -396,6 +396,57 @@ func TestDelegacionRefrescaAnte401YReintenta(t *testing.T) {
 	}
 }
 
+// TestDelegacion409DelCanjeDegradaSinEcharAlUsuario: durante el refresco proactivo, la plataforma
+// responde 409 —el usuario tiene más de un tenant, el estado que el diseño difiere al Plan 005—.
+//
+// El BFF NO echa al usuario: el Context Token que tiene en la mano sigue vigente, así que continúa
+// con él y lo registra. Es la diferencia entre un 409 y un 401, y es la razón de que el cliente no los
+// colapse: ante «tu sesión ya no vale» limpiar la cookie es lo correcto; ante «wApp no sabe en qué
+// tenant ponerte» limpiarla no arregla nada, corta la sesión de quien estaba trabajando y borra la
+// pista de por qué. La sesión se acabará cuando el token venza de verdad, no antes.
+func TestDelegacion409DelCanjeDegradaSinEcharAlUsuario(t *testing.T) {
+	identity := newUpstreamStub(t)
+	identity.onJSON("/api/v1/auth/refresh",
+		identityLoginBody(makeIdentityToken(t, time.Now().Add(time.Hour)), "rt-2"))
+
+	platform := newUpstreamStub(t)
+	platform.on("/api/v1/auth/exchange", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = io.WriteString(w, `{"error":"el usuario pertenece a más de un tenant"}`)
+	})
+	platform.onJSON("/api/v1/sessions",
+		`[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","role":"bot"}]`)
+
+	router := NewRouter(delegatedCfg(platform.url(), identity.url()))
+	// Dentro del margen proactivo (vence en 1 min), pero AÚN VIGENTE: ahí está el matiz.
+	porVencer := makeToken(t, time.Now().Add(time.Minute))
+	rec := getWithCookie(router, "/", cookieWith(t, porVencer, "rt-1"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("con el Context Token aún vigente la página debía pintarse, got %d", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc == "/login" {
+		t.Error("un 409 del canje NO debe echar al usuario al login")
+	}
+	if raw := sessionSetCookie(rec); strings.Contains(raw, "Max-Age=0") {
+		t.Error("un 409 del canje NO debe destruir la sesión: el token en curso sigue valiendo")
+	}
+	// Se intentó el refresco y se canjeó una vez; el fallo fue del canje, no de identity.
+	if got := identity.hitsOf("/api/v1/auth/refresh"); got != 1 {
+		t.Errorf("debía intentarse el refresco contra identity una vez, got %d", got)
+	}
+	if got := platform.hitsOf("/api/v1/auth/exchange"); got != 1 {
+		t.Errorf("debía intentarse el canje una vez, got %d", got)
+	}
+	// Y el negocio siguió con el token viejo, que es lo que significa degradar aquí.
+	if got := platform.bearerOf("/api/v1/sessions"); got != "Bearer "+porVencer {
+		t.Error("el negocio debía continuar con el Context Token aún vigente")
+	}
+	if !strings.Contains(rec.Body.String(), "edge-alpha") {
+		t.Error("la consola debía seguir operando en modo degradado")
+	}
+}
+
 // --- Logout modelo Google (T3.4) ---
 
 // TestLogoutDelegadoRevocaSoloLaSesionDelBFF: el logout de la consola cierra en identity SOLO la
