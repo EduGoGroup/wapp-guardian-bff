@@ -67,7 +67,9 @@ Prefijo `WAPP_`; ver `.env.example` para el listado completo con comentarios. Re
 |---|---|---|
 | `WAPP_GUARDIAN_ENV` | `local` | Ambiente lógico; distinto de `local` endurece `Secure` cookie + HSTS |
 | `WAPP_GUARDIAN_HTTP_ADDR` | `:8104` | Dirección de escucha (banda 81xx de wApp) |
-| `WAPP_PUBLIC_API_BASE` | `http://localhost:8103` | URL base de la API pública `/api/v1` — único interlocutor del BFF |
+| `WAPP_PUBLIC_API_BASE` | `http://localhost:8103` | URL base de la API pública `/api/v1` — interlocutor del negocio y del canje |
+| `WAPP_IDENTITY_JWKS_URL` | `` (vacío = modo dual apagado) | JWKS de identity-api para verificar Identity Tokens; con valor, el arranque es fail-closed |
+| `WAPP_IDENTITY_URL` | `` (vacío = delegación apagada) | URL base de identity-api (`:8200`); con valor, login/refresh/logout viajan a identity y el token se canjea en la plataforma |
 | `WAPP_GUARDIAN_COOKIE_SECURE` | `true` salvo `ENV=local` | Cookie de sesión solo sobre TLS |
 | `WAPP_GUARDIAN_COOKIE_SAMESITE` | `lax` | `lax` \| `strict` \| `none` (`none` exige `Secure=true`) |
 | `WAPP_GUARDIAN_ALLOWED_ORIGINS` | `` (vacío = same-origin) | Allowlist CSV de orígenes CORS; nunca `*` |

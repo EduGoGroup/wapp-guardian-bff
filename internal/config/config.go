@@ -26,7 +26,9 @@ type Config struct {
 	HTTPAddr string
 
 	// PublicAPIBaseURL es la URL base de la API pública REST (:8103 /api/v1) que el BFF relaya
-	// server-to-server con el Bearer JWT del usuario. Único interlocutor del BFF (INV-1).
+	// server-to-server con el Bearer JWT del usuario. Único interlocutor del BFF mientras la
+	// delegación esté apagada; con IdentityBaseURL puesta, las credenciales viajan a identity y aquí
+	// se queda el canje del token y todo el tráfico de negocio.
 	PublicAPIBaseURL string
 
 	// --- Hardening público ---
@@ -97,6 +99,22 @@ type Config struct {
 	//
 	// Local: http://localhost:8200/.well-known/jwks.json (http solo se admite contra loopback).
 	IdentityJWKSURL string
+
+	// IdentityBaseURL es la URL base de identity-api (:8200), el único emisor de Identity Tokens del
+	// grupo. Es la PUERTA de la delegación (identity Plan 003, T3.2): vacía == delegación APAGADA y el
+	// BFF autentica contra la API pública de wApp exactamente como hasta hoy.
+	//
+	// Con valor, el login y el refresh viajan a identity con el system "wapp.bff" y el Identity Token
+	// resultante se canjea al instante por un Context Token de wApp (POST /api/v1/auth/exchange de la
+	// plataforma). El Identity Token NO se persiste: vive solo el instante server-side del canje, así
+	// que la cookie de sesión custodia SIEMPRE el Context Token —de donde sale el tenant— y el refresh
+	// de identity. El logout revoca en identity solo esa sesión: la del Edge sobrevive (T3.4).
+	//
+	// El canje exige que la plataforma tenga su propio verificador de Identity Tokens construido; si no
+	// lo tiene, responde 503 y el login no prospera. Son dos puertas independientes a propósito.
+	//
+	// Local: http://localhost:8200
+	IdentityBaseURL string
 }
 
 // Load resuelve la configuración desde variables de entorno (prefijo WAPP_) con defaults de desarrollo
@@ -136,5 +154,6 @@ func Load() Config {
 		EnableAlphaTestAccounts: l.GetBool("ALPHA_TEST_ACCOUNTS", l.GetBool("ENABLE_ALPHA_LOGIN", false)),
 
 		IdentityJWKSURL: l.GetString("IDENTITY_JWKS_URL", ""), // vacío == modo dual apagado.
+		IdentityBaseURL: l.GetString("IDENTITY_URL", ""),      // vacío == delegación apagada (flujo legacy).
 	}
 }

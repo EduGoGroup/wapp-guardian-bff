@@ -39,9 +39,15 @@ type APIPort interface {
 }
 
 // Verificación en compilación de que los clientes concretos satisfacen las interfaces segregadas.
+//
+// Los dos clientes completos —el legacy y el delegado— cumplen el MISMO puerto, y de ahí sale que
+// encender la delegación no obligue a tocar ni un handler: lo que cambia es quién autentica, no cómo
+// se le pide.
 var (
 	_ Authenticator  = (*apiclient.AuthClient)(nil)
+	_ Authenticator  = (*apiclient.DelegatedAuthenticator)(nil)
 	_ SessionManager = (*apiclient.DashboardClient)(nil)
 	_ EditorManager  = (*apiclient.EditorClient)(nil)
 	_ APIPort        = (*apiclient.Client)(nil)
+	_ APIPort        = (*apiclient.DelegatedClient)(nil)
 )

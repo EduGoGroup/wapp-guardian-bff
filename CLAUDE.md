@@ -11,20 +11,42 @@
 **Consola/BFF** — el terminal web de operación de negocio del cliente wApp, y el **primer consumidor real** de
 la **API pública** (`/api/v1`, `:8103`) como **implementación de referencia** (Plan 021). Es un front endurecido
 (Go / Gin, SSR con `html/template`) **sin lógica de dominio**: valida sesión, aplica hardening y habla **solo
-REST** con la Plataforma Cloud (Pieza 03). Custodia el JWT **server-side** en cookie HttpOnly (el navegador nunca
+REST** con la Plataforma Cloud (Pieza 03) —y, si la delegación está encendida, también con identity-api
+para las credenciales (ver más abajo)—. Custodia el JWT **server-side** en cookie HttpOnly (el navegador nunca
 ve el token). **No** empareja teléfonos ni custodia DEK.
 
 ## Responsabilidad (lo IMPLEMENTADO — Plan 021 MVP)
 
 | Área | Qué hace | Endpoint `/api/v1` consumido |
 |---|---|---|
-| Login/sesión | Login server-side, JWT en cookie HttpOnly, refresh+reintento, logout | `auth/{login,refresh,logout}` |
+| Login/sesión | Login server-side, JWT en cookie HttpOnly, refresh+reintento, logout | `auth/{login,refresh,logout}` (plataforma) o identity + `auth/exchange` si la delegación está encendida |
 | Sesiones | Lista los teléfonos/sesiones vinculados del tenant (self_pn/state/role) y cambia el **rol** `bot|passive` por sesión | `GET sessions`, `POST sessions/{id}/role` |
 | Enviar mensaje | Elegir sesión + destino + texto y despachar | `POST messages` |
 | Editar menú/encuestas | Listar/ver flows y **publicar versión nueva** (inmutables); triggers listar/crear/borrar | `flows`, `flows/{id}`, `triggers` |
 
 > **Diferido (NO implementado):** subida de contenido/PDF, campañas, plantillas/contactos/segmentos, editor
 > visual de nodos, `tenant-content`/`media`. Ver `../../docs/plans/021-cliente-web-referencia/` (REQ-E5).
+
+## La delegación de identidad (identity Plan 003 · Ola 3)
+
+El BFF tiene **dos destinos posibles para la autenticación**, y cuál se usa lo decide una env var:
+
+- **`WAPP_IDENTITY_URL` vacía (default)** — flujo legacy: credenciales contra la API pública de wApp.
+- **Con valor** — las credenciales viajan a **identity-api (`:8200`)** con el system **`wapp.bff`**, y el
+  **Identity Token se canjea al instante** por un Context Token de wApp (`POST /api/v1/auth/exchange`
+  de la plataforma). El canje exige que la plataforma tenga su `WAPP_IDENTITY_JWKS_URL`, o responde 503.
+
+**La regla que no se negocia: la cookie custodia SIEMPRE el Context Token.** El Identity Token dice
+quién eres y no tiene claims de negocio (no puede tenerlas); el Context Token dice qué puedes hacer en
+wApp y es de donde sale el `tenant_id`. Por eso el Identity Token no se persiste —muere dentro de
+`apiclient.DelegatedAuthenticator`— y `parseAccessClaims` (`internal/web/session.go`) sigue leyendo el
+tenant sin cambio alguno. Si alguna vez el token de identity acabara en la cookie, el tenant
+desaparecería sin más aviso: hay un test que lo vigila.
+
+Los dos clientes —`apiclient.Client` y `apiclient.DelegatedClient`— cumplen el mismo puerto `APIPort`,
+así que la cascada de refresco (proactiva a 2 min del vencimiento, pasiva ante 401) es la misma de
+siempre y ningún handler sabe quién autentica. El logout delegado revoca en identity **solo la sesión
+de esta aplicación**: la del Edge sobrevive (modelo Google).
 
 ## Decisiones clave (Pieza 04 / ADRs)
 
@@ -61,7 +83,8 @@ ve el token). **No** empareja teléfonos ni custodia DEK.
 ```
 cmd/guardian-bff/main.go   — punto de entrada (config + logger + web.Run en :8104)
 internal/config/           — Config desde env (WAPP_GUARDIAN_*, WAPP_PUBLIC_API_BASE)
-internal/apiclient/        — cliente HTTP → /api/v1 (Bearer server-side): client, flows, triggers
+internal/apiclient/        — clientes HTTP (Bearer server-side): plataforma /api/v1 (client, flows,
+                             triggers) + identity-api y canje (identity, exchange, delegated)
 internal/web/              — server (Gin, middlewares), auth (login/AuthMiddleware), dashboard, editor,
                              security (CSP+nonce), ratelimit; templates/ + static/css/app.css (//go:embed)
 docs/contrato-api-publica.md — el contrato consumido (referencia para clientes Android/iOS)
