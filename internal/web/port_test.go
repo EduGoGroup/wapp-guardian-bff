@@ -23,6 +23,7 @@ type fakeAPIPort struct {
 	listIntakes     func(ctx context.Context, accessToken string, f apiclient.IntakeFilter) (*apiclient.IntakePage, error)
 	getIntake       func(ctx context.Context, accessToken, id string) (*apiclient.IntakeDetail, error)
 	setIntakeStatus func(ctx context.Context, accessToken, id, status string) (*apiclient.Intake, error)
+	replaceItems    func(ctx context.Context, accessToken, id string, items []apiclient.IntakeItem) (*apiclient.IntakeDetail, error)
 
 	getTenantVariables     func(ctx context.Context, accessToken string) (*apiclient.TenantVariables, error)
 	replaceTenantVariables func(ctx context.Context, accessToken string, vars map[string]string) (*apiclient.TenantVariables, error)
@@ -94,6 +95,12 @@ func (f *fakeAPIPort) SetIntakeStatus(ctx context.Context, at, id, status string
 		return f.setIntakeStatus(ctx, at, id, status)
 	}
 	return &apiclient.Intake{}, nil
+}
+func (f *fakeAPIPort) ReplaceIntakeItems(ctx context.Context, at, id string, items []apiclient.IntakeItem) (*apiclient.IntakeDetail, error) {
+	if f.replaceItems != nil {
+		return f.replaceItems(ctx, at, id, items)
+	}
+	return &apiclient.IntakeDetail{}, nil
 }
 func (f *fakeAPIPort) GetTenantVariables(ctx context.Context, at string) (*apiclient.TenantVariables, error) {
 	if f.getTenantVariables != nil {

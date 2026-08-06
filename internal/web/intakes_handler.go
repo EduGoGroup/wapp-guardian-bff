@@ -75,6 +75,37 @@ type intakeDetailView struct {
 	// detalle: es información válida —misma fuente de verdad, el dominio— pero llega tarde y conviene
 	// que se note.
 	FromRejection bool
+	// Edit es el formulario de corrección manual de las líneas (Plan 041 · T4.10).
+	Edit *intakeEditForm
+}
+
+// intakeDetailRender son las variables con las que se pinta el detalle. Va como struct y no como
+// una lista de parámetros porque ya son siete y la mitad son opcionales: una llamada con cuatro
+// `nil` seguidos no dice cuál es cuál, y añadir la octava obligaría a tocar todos los sitios.
+type intakeDetailRender struct {
+	// status es el código con el que se responde (la página se pinta igual).
+	status int
+	// id es la solicitud a pintar.
+	id string
+	// notice es el aviso de la operación que trajo hasta aquí.
+	notice *intakeNotice
+	// allowedFromRejection son los destinos que devolvió un 422 del cambio de estado.
+	allowedFromRejection []string
+	// entitlements ya resueltas por quien llama (nil ⇒ se resuelven aquí). Existe para que un POST
+	// que ya preguntó por la feature —para no gastar el viaje a una ruta que va a dar 403— no la
+	// vuelva a preguntar al repintar.
+	entitlements *entitlementsView
+	// detail ya cargado (nil ⇒ se relee de la API). Lo usa el guardado de líneas, que recibe el
+	// detalle ya actualizado en la respuesta del PUT: releerlo abriría un hueco por el que cabe la
+	// edición de otro operador y pintaría un estado que nadie pidió.
+	detail *apiclient.IntakeDetail
+	// rows es lo que el operador tecleó en el formulario de líneas (nil ⇒ el formulario se arma con
+	// lo que dice la plataforma). Al repintar tras un rechazo su trabajo no se tira.
+	rows []intakeEditRow
+	// defects son los problemas de esa tentativa, ya redactados.
+	defects []intakeEditDefect
+	// editableIn son los estados desde los que la plataforma dice que sí se edita (salen del 422).
+	editableIn []string
 }
 
 // IntakesHandler sirve la bandeja de solicitudes: listado con filtros, detalle y cambio de estado.
@@ -139,55 +170,88 @@ func (h *IntakesHandler) ShowIntakes(c *gin.Context) {
 	render(h.cfg, c, http.StatusOK, "intakes.html", data)
 }
 
-// ShowIntakeDetail pinta una solicitud con sus líneas y el cambio de estado.
+// ShowIntakeDetail pinta una solicitud con sus líneas, el cambio de estado y la corrección manual.
 func (h *IntakesHandler) ShowIntakeDetail(c *gin.Context) {
-	h.renderIntakeDetail(c, http.StatusOK, strings.TrimSpace(c.Param("id")), nil, nil)
+	h.renderIntakeDetail(c, intakeDetailRender{
+		status: http.StatusOK, id: strings.TrimSpace(c.Param("id")),
+	})
 }
 
-// renderIntakeDetail recarga el detalle desde la API y lo pinta. `allowedFromRejection` son los
-// destinos que devolvió un 422 previo: se usan SOLO si el detalle no los trae.
-func (h *IntakesHandler) renderIntakeDetail(c *gin.Context, status int, id string, notice *intakeNotice, allowedFromRejection []string) {
-	entitlements := resolveEntitlements(c, h.auth, h.api)
+// renderIntakeDetail pinta el detalle: el que le den ya cargado o, si no, el que relee de la API.
+// `allowedFromRejection` son los destinos que devolvió un 422 previo: se usan SOLO si el detalle no
+// los trae.
+func (h *IntakesHandler) renderIntakeDetail(c *gin.Context, r intakeDetailRender) {
+	var entitlements entitlementsView
+	if r.entitlements != nil {
+		entitlements = *r.entitlements
+	} else {
+		entitlements = resolveEntitlements(c, h.auth, h.api)
+	}
 
 	data := gin.H{
 		"Title":                 "Solicitud",
-		"IntakeID":              id,
-		"Notice":                notice,
+		"IntakeID":              r.id,
+		"Notice":                r.notice,
 		entitlementsDataKey:     entitlements,
 		intakesNavDataKey:       entitlements.Has(intakesFeature),
 		catalogImportNavDataKey: entitlements.Has(catalogImportFeature),
 	}
 
 	if !entitlements.Has(intakesFeature) {
-		render(h.cfg, c, status, "intake-detail.html", data)
+		render(h.cfg, c, r.status, "intake-detail.html", data)
 		return
 	}
-	if id == "" {
+	if r.id == "" {
 		data["Notice"] = &intakeNotice{Message: "Falta el identificador de la solicitud."}
 		render(h.cfg, c, http.StatusBadRequest, "intake-detail.html", data)
 		return
 	}
 
-	var detail *apiclient.IntakeDetail
-	err := h.auth.withAuthRetry(c, func(accessToken string) error {
-		var gerr error
-		detail, gerr = h.api.GetIntake(c.Request.Context(), accessToken, id)
-		return gerr
-	})
-	if err != nil {
-		if errors.Is(err, apiclient.ErrUnauthorized) {
-			clearSessionCookie(h.cfg, c)
-			h.auth.redirectToLogin(c)
+	detail := r.detail
+	if detail == nil {
+		err := h.auth.withAuthRetry(c, func(accessToken string) error {
+			var gerr error
+			detail, gerr = h.api.GetIntake(c.Request.Context(), accessToken, r.id)
+			return gerr
+		})
+		if err != nil {
+			if errors.Is(err, apiclient.ErrUnauthorized) {
+				clearSessionCookie(h.cfg, c)
+				h.auth.redirectToLogin(c)
+				return
+			}
+			detailStatus, detailNotice := mapIntakeDetailError(err)
+			// El aviso de la operación que falló manda sobre el de la relectura: el operador
+			// necesita saber por qué no se guardó lo suyo, no que además no se pudo repintar.
+			if r.notice == nil {
+				data["Notice"] = detailNotice
+			}
+			render(h.cfg, c, detailStatus, "intake-detail.html", data)
 			return
 		}
-		detailStatus, detailNotice := mapIntakeDetailError(err)
-		data["Notice"] = detailNotice
-		render(h.cfg, c, detailStatus, "intake-detail.html", data)
-		return
 	}
 
-	data["View"] = transitionsOf(detail, allowedFromRejection)
-	render(h.cfg, c, status, "intake-detail.html", data)
+	view := transitionsOf(detail, r.allowedFromRejection)
+	view.Edit = editFormOf(detail, view.Transitions, r)
+	data["View"] = view
+	render(h.cfg, c, r.status, "intake-detail.html", data)
+}
+
+// editFormOf arma el formulario de corrección: con lo que el operador tecleó cuando venimos de un
+// rechazo, y con lo que dice la plataforma en cualquier otro caso.
+func editFormOf(detail *apiclient.IntakeDetail, transitions []string, r intakeDetailRender) *intakeEditForm {
+	form := editFormFromDetail(detail, transitions)
+	if r.rows != nil {
+		form = editFormFromRows(r.rows, detail, transitions, r.defects)
+	}
+	// Los estados editables que trae un 422 mandan sobre el espejo local por lo mismo que los
+	// destinos del cambio de estado: misma fuente de verdad —el dominio de la plataforma—, solo
+	// que llega tarde. Y que llegó tarde se dice, no se disimula.
+	if len(r.editableIn) > 0 {
+		form.EditableIn = labelsOf(r.editableIn)
+		form.FromRejection = true
+	}
+	return form
 }
 
 // transitionsOf decide qué destinos ofrece el desplegable, por orden de fiabilidad:
@@ -220,8 +284,10 @@ func (h *IntakesHandler) DoSetIntakeStatus(c *gin.Context) {
 	status := strings.TrimSpace(c.PostForm("status"))
 
 	if id == "" || status == "" {
-		h.renderIntakeDetail(c, http.StatusBadRequest, id,
-			&intakeNotice{Message: "Elige el estado al que quieres mover la solicitud."}, nil)
+		h.renderIntakeDetail(c, intakeDetailRender{
+			status: http.StatusBadRequest, id: id,
+			notice: &intakeNotice{Message: "Elige el estado al que quieres mover la solicitud."},
+		})
 		return
 	}
 
@@ -239,14 +305,19 @@ func (h *IntakesHandler) DoSetIntakeStatus(c *gin.Context) {
 		// otro operador movió la solicitud, así que lo que el operador tiene delante ya es viejo y
 		// re-pintarlo tal cual sería mentirle.
 		httpStatus, notice, allowed := mapSetStatusError(err)
-		h.renderIntakeDetail(c, httpStatus, id, notice, allowed)
+		h.renderIntakeDetail(c, intakeDetailRender{
+			status: httpStatus, id: id, notice: notice, allowedFromRejection: allowed,
+		})
 		return
 	}
 
-	h.renderIntakeDetail(c, http.StatusOK, id, &intakeNotice{
-		Success: true,
-		Message: "Solicitud movida a «" + intakeStatusLabel(status) + "».",
-	}, nil)
+	h.renderIntakeDetail(c, intakeDetailRender{
+		status: http.StatusOK, id: id,
+		notice: &intakeNotice{
+			Success: true,
+			Message: "Solicitud movida a «" + intakeStatusLabel(status) + "».",
+		},
+	})
 }
 
 // mapIntakeListError traduce el fallo del listado a un aviso legible sin filtrar el detalle del

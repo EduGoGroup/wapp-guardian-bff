@@ -192,11 +192,18 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	protected.GET("/variables", h.ShowTenantVariables)
 	protected.POST("/variables", h.DoSaveTenantVariables)
 
-	// Bandeja de solicitudes (Plan 041 · T1.5), gateada por la feature `cart_basic` en la plantilla y
-	// por RequireFeature en la plataforma. PANTALLA PROVISIONAL: migra a KMP (planes 045/047, ADR-0035).
+	// Bandeja de solicitudes (Plan 041 · T1.5 y T4.10), gateada por la feature `cart_basic` en la
+	// plantilla y por RequireFeature en la plataforma. PANTALLA PROVISIONAL: migra a KMP (planes
+	// 045/047, ADR-0035).
+	//
+	// El POST de líneas es POST y no PUT aunque la ruta de la API lo sea: un formulario HTML solo
+	// sabe emitir GET y POST, y fingir el verbo con un campo oculto añadiría una convención que
+	// esta consola no tiene en ninguna otra pantalla. La traducción a PUT la hace el apiclient,
+	// que es quien habla el contrato.
 	protected.GET("/intakes", h.ShowIntakes)
 	protected.GET("/intakes/:id", h.ShowIntakeDetail)
 	protected.POST("/intakes/:id/status", h.DoSetIntakeStatus)
+	protected.POST("/intakes/:id/items", h.DoEditIntakeItems)
 
 	// Import de catálogo (Plan 041 · T3.5), gateado por la feature `catalog_import` en la plantilla y
 	// por RequireFeature en la plataforma. El POST atiende los dos pasos —comprobar y aplicar— y cuál

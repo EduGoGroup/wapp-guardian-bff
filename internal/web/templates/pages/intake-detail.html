@@ -104,6 +104,95 @@
 
         <p class="body"><a href="/intakes" class="btn btn--text">Volver a la bandeja</a></p>
     </div>
+
+    {{/* CORRECCIÓN MANUAL DE LÍNEAS (Plan 041 · T4.10, D-041.26): aquí el dueño le pone precio a
+         lo que el cliente pidió por escrito y el catálogo no tenía —el «queso extra» anotado en la
+         personalización y cobrado a 0—. Va DENTRO del gate `cart_basic`, que es la misma feature
+         con la que la plataforma corta las cuatro rutas de la bandeja. */}}
+    {{ with .Edit }}
+    {{ if .Editable }}
+    <div class="card" id="section-intake-items-edit">
+        <h2 class="title">Corregir las líneas</h2>
+        <p class="supporting">Corrige cantidades y precios, quita lo que no va y añade en las filas
+            vacías lo que el cliente pidió y no estaba en el catálogo. Se guarda todo de una vez y
+            la plataforma deja constancia de la corrección.</p>
+
+        {{ if .Defects }}
+        <div class="snackbar snackbar--error" role="alert">
+            <span>No se guardó nada. Corrige lo siguiente y vuelve a intentarlo.</span>
+        </div>
+        <ul class="body">
+            {{ range .Defects }}
+            <li>{{ if .Line }}Línea {{ .Line }} · {{ end }}{{ .Field }}: {{ .Message }}</li>
+            {{ end }}
+        </ul>
+        {{ end }}
+
+        <form method="POST" action="/intakes/{{ $.IntakeID }}/items" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ $.CSRFToken }}">
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>SKU</th>
+                            <th>Artículo</th>
+                            <th>Personalización</th>
+                            <th>Cantidad</th>
+                            <th>Precio unitario</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{ range $i, $row := .Rows }}
+                        <tr>
+                            <td><input class="field__control" type="text" name="item_sku"
+                                       value="{{ $row.SKU }}" aria-label="SKU de la línea {{ $row.Number }}"></td>
+                            <td><input class="field__control" type="text" name="item_label"
+                                       value="{{ $row.Label }}" aria-label="Artículo de la línea {{ $row.Number }}"></td>
+                            <td><input class="field__control" type="text" name="item_customization"
+                                       value="{{ $row.Customization }}" aria-label="Personalización de la línea {{ $row.Number }}"></td>
+                            {{/* Los dos números van como texto y no como <input type="number"> a
+                                 propósito: con `number` el navegador decide en silencio si «8,50»
+                                 es un número —y en varios no lo es, así que manda el campo VACÍO—,
+                                 y un precio que llega vacío es un precio que se pierde. En texto
+                                 llega lo que la persona tecleó y lo lee el servidor, que sabe
+                                 rechazar lo que no entiende en vez de tragárselo. */}}
+                            <td><input class="field__control" type="text" inputmode="numeric" name="item_qty"
+                                       value="{{ $row.Qty }}" aria-label="Cantidad de la línea {{ $row.Number }}"></td>
+                            <td><input class="field__control" type="text" inputmode="decimal" name="item_price"
+                                       value="{{ $row.UnitPrice }}" aria-label="Precio unitario de la línea {{ $row.Number }}"></td>
+                            <td>{{ if not $row.Blank }}<button type="submit" class="btn btn--text"
+                                        name="remove" value="{{ $i }}">Quitar</button>{{ end }}</td>
+                        </tr>
+                        {{ end }}
+                    </tbody>
+                </table>
+            </div>
+            <p class="body"><button type="submit" class="btn btn--filled">Guardar líneas</button></p>
+        </form>
+
+        {{/* La línea de envío la pone wApp (D-041.11) y no viaja en este formulario: si estuviera,
+             la plataforma la rechazaría por su prefijo reservado. Se dice para que nadie la dé por
+             perdida al ver que no aparece arriba. */}}
+        {{ if .SystemLines }}
+        <p class="body">La línea de envío la pone wApp: no se edita desde aquí, no se pierde al
+            guardar y sigue contando en el total.</p>
+        {{ end }}
+    </div>
+    {{ else if .Reachable }}
+    {{/* Ni formulario ni botón: desde aquí la corrección no entra, y ofrecerla sería ofrecer un
+         rechazo (misma regla que el desplegable de un terminal, T4.6). Lo que sí se dice es el
+         camino, porque existe — y que existe lo dice `allowed_transitions` de la PLATAFORMA, no
+         una tabla de esta pantalla. Un terminal no llega hasta aquí y no lee ninguna promesa. */}}
+    <div class="card" id="section-intake-items-locked">
+        <h2 class="title">Corregir las líneas</h2>
+        <p class="body">Las líneas se corrigen desde {{ .EditableInText }}. Mueve la solicitud ahí
+            con el formulario de arriba y podrás cambiar cantidades y precios, o añadir lo que el
+            cliente pidió y no estaba en el catálogo.
+            {{ if .FromRejection }}(Lo dijo el último intento rechazado.){{ end }}</p>
+    </div>
+    {{ end }}
+    {{ end }}
     {{ end }}
     {{ if not .View }}
     <div class="card">
