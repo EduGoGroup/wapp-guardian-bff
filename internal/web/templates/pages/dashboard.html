@@ -8,6 +8,22 @@
     </div>
     {{ end }}
 
+    {{/* Plan y capacidades contratadas del tenant. Los chips salen de GET /api/v1/entitlements: son
+         las features EFECTIVAS (plan + overrides), no una lista fija de esta plantilla. */}}
+    <div class="card">
+        <h2 class="title">Plan y capacidades</h2>
+        {{ if .Entitlements.Resolved }}
+        <p class="supporting">Lo que este tenant tiene activo hoy. Las secciones que dependen de una
+            capacidad solo aparecen si está contratada.</p>
+        <div class="row">
+            <span class="chip chip--info">plan · {{ .Entitlements.Plan }}</span>
+            {{ range .Entitlements.Features }}<span class="chip chip--ok">{{ . }}</span>{{ end }}
+        </div>
+        {{ else }}
+        <div class="snackbar snackbar--error" role="alert">{{ .Entitlements.Notice }}</div>
+        {{ end }}
+    </div>
+
     <div class="card">
         <h1 class="headline">Sesiones vinculadas</h1>
         <p class="supporting">Teléfonos del tenant, su estado y su rol (bot responde; passive solo escucha).
@@ -97,5 +113,22 @@
             </div>
         </form>
     </div>
+
+    {{/* GATE SERVER-SIDE POR FEATURE (Plan 040 · T2.5). El bloque entero solo se emite si la feature
+         está en las efectivas del tenant: si falta —o si no se pudieron resolver— no llega al HTML,
+         no queda escondido por CSS. Este es el patrón que copian las secciones del Plan 041:
+             {{ if $.Entitlements.Has "intakes_export" }} … {{ end }}
+             {{ if $.Entitlements.Has "catalog_import" }} … {{ end }}
+         Ojo: el gate de plantilla decide lo que se PINTA; el que decide lo que se PUEDE es el
+         middleware RequireFeature de la plataforma, y esa sigue siendo la autoridad. */}}
+    {{ if .Entitlements.Has "llm_intent" }}
+    <div class="card" id="section-llm-intent">
+        <h2 class="title">Clasificador de intenciones</h2>
+        <p class="supporting">Este tenant tiene el clasificador LLM activo: el Edge interpreta el
+            mensaje entrante antes de que el flujo decida, y la nube recibe la intención ya sellada.</p>
+        <p class="body">Las frases de cada intención se administran hoy por la API pública
+            (<code>PUT /api/v1/intents</code>); esta consola todavía no las edita.</p>
+    </div>
+    {{ end }}
 </section>
 {{ end }}

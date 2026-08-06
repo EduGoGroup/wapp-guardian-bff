@@ -21,6 +21,20 @@ type SessionManager interface {
 	SendMessage(ctx context.Context, accessToken, sessionID, to, text string) (*apiclient.SendResult, error)
 }
 
+// EntitlementsReader define el contrato para leer el plan y las features efectivas del tenant del
+// token. Va segregado del resto porque no es una operación de negocio: es lo que decide QUÉ se pinta,
+// y lo consulta cualquier página que tenga secciones condicionadas por feature.
+type EntitlementsReader interface {
+	GetEntitlements(ctx context.Context, accessToken string) (*apiclient.Entitlements, error)
+}
+
+// DashboardAPI es lo que el dashboard consume: sesiones y envío, más las features efectivas con las
+// que decide qué secciones emite.
+type DashboardAPI interface {
+	SessionManager
+	EntitlementsReader
+}
+
 // EditorManager define el contrato para la edición de flujos y la gestión de reglas de disparo.
 type EditorManager interface {
 	ListFlows(ctx context.Context, accessToken string) ([]apiclient.FlowSummary, error)
@@ -35,6 +49,7 @@ type EditorManager interface {
 type APIPort interface {
 	Authenticator
 	SessionManager
+	EntitlementsReader
 	EditorManager
 }
 
@@ -44,10 +59,12 @@ type APIPort interface {
 // encender la delegación no obligue a tocar ni un handler: lo que cambia es quién autentica, no cómo
 // se le pide.
 var (
-	_ Authenticator  = (*apiclient.AuthClient)(nil)
-	_ Authenticator  = (*apiclient.DelegatedAuthenticator)(nil)
-	_ SessionManager = (*apiclient.DashboardClient)(nil)
-	_ EditorManager  = (*apiclient.EditorClient)(nil)
-	_ APIPort        = (*apiclient.Client)(nil)
-	_ APIPort        = (*apiclient.DelegatedClient)(nil)
+	_ Authenticator      = (*apiclient.AuthClient)(nil)
+	_ Authenticator      = (*apiclient.DelegatedAuthenticator)(nil)
+	_ SessionManager     = (*apiclient.DashboardClient)(nil)
+	_ EntitlementsReader = (*apiclient.DashboardClient)(nil)
+	_ DashboardAPI       = (*apiclient.DashboardClient)(nil)
+	_ EditorManager      = (*apiclient.EditorClient)(nil)
+	_ APIPort            = (*apiclient.Client)(nil)
+	_ APIPort            = (*apiclient.DelegatedClient)(nil)
 )

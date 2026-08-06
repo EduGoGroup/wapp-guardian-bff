@@ -17,8 +17,9 @@ import (
 // en un campo función si está puesto; si no, devuelve el cero correspondiente. Verifica en compilación que
 // cumple el puerto.
 type fakeAPIPort struct {
-	refresh     func(ctx context.Context, refreshToken string) (*apiclient.AuthResult, error)
-	sendMessage func(ctx context.Context, accessToken, sessionID, to, text string) (*apiclient.SendResult, error)
+	refresh         func(ctx context.Context, refreshToken string) (*apiclient.AuthResult, error)
+	sendMessage     func(ctx context.Context, accessToken, sessionID, to, text string) (*apiclient.SendResult, error)
+	getEntitlements func(ctx context.Context, accessToken string) (*apiclient.Entitlements, error)
 }
 
 var _ APIPort = (*fakeAPIPort)(nil)
@@ -40,6 +41,12 @@ func (f *fakeAPIPort) SetSessionRole(context.Context, string, string, string) er
 func (f *fakeAPIPort) SendMessage(ctx context.Context, at, sid, to, text string) (*apiclient.SendResult, error) {
 	if f.sendMessage != nil {
 		return f.sendMessage(ctx, at, sid, to, text)
+	}
+	return nil, nil
+}
+func (f *fakeAPIPort) GetEntitlements(ctx context.Context, at string) (*apiclient.Entitlements, error) {
+	if f.getEntitlements != nil {
+		return f.getEntitlements(ctx, at)
 	}
 	return nil, nil
 }

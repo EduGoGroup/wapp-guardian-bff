@@ -21,12 +21,12 @@ type sendView struct {
 // DashboardHandler maneja las peticiones del dashboard de sesiones y envíos.
 type DashboardHandler struct {
 	cfg  *config.Config
-	api  SessionManager
+	api  DashboardAPI
 	auth *AuthHandler
 }
 
-// NewDashboardHandler construye un DashboardHandler dependiente de SessionManager y AuthHandler.
-func NewDashboardHandler(cfg *config.Config, api SessionManager, auth *AuthHandler) *DashboardHandler {
+// NewDashboardHandler construye un DashboardHandler dependiente de DashboardAPI y AuthHandler.
+func NewDashboardHandler(cfg *config.Config, api DashboardAPI, auth *AuthHandler) *DashboardHandler {
 	return &DashboardHandler{
 		cfg:  cfg,
 		api:  api,
@@ -156,11 +156,17 @@ func (h *DashboardHandler) renderDashboard(c *gin.Context, status int, send *sen
 		slog.Warn("no se pudieron listar las sesiones (modo degradado)", "error", sessionsErr)
 	}
 
+	// Features efectivas del tenant: alimentan los chips y deciden qué secciones se emiten. No puede
+	// tumbar la página —devuelve la vista cero y el gate cierra— así que va después del listado, que
+	// es la llamada que sí manda sobre la sesión.
+	entitlements := resolveEntitlements(c, h.auth, h.api)
+
 	data := gin.H{
-		"Title":         "Consola",
-		"Sessions":      sessions,
-		"SessionsError": sessionsErr != nil,
-		"Send":          send,
+		"Title":             "Consola",
+		"Sessions":          sessions,
+		"SessionsError":     sessionsErr != nil,
+		"Send":              send,
+		entitlementsDataKey: entitlements,
 	}
 	for k, v := range extra {
 		data[k] = v
