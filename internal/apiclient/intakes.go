@@ -79,14 +79,17 @@ type IntakePage struct {
 //
 // El campo es un puntero deliberado, porque hay dos «sin destinos» que no
 // significan lo mismo y la UI tiene que decirlos distinto:
-//   - `nil` (la plataforma NO manda el campo): no se sabe. Hoy es el caso real —el
-//     detalle todavía no lo publica y solo viaja dentro del 422—, así que la
-//     pantalla lo declara en vez de fingir un estado terminal.
-//   - lista vacía (la plataforma manda `[]`): estado TERMINAL, no admite cambios.
+//   - `nil` (la plataforma NO manda el campo): no se sabe, así que la pantalla lo
+//     declara en vez de fingir un estado terminal. Ya no es el caso corriente —el
+//     detalle publica el campo SIEMPRE desde cloud `a804943`—, pero un servidor
+//     anterior a esa versión sigue cayendo aquí y hay que distinguirlo.
+//   - lista vacía (la plataforma manda `[]`): estado TERMINAL, no admite cambios. Es
+//     lo que devuelve `abandoned` (T4.6) y el resto de estados sin salida.
 //
-// El campo NO trae `revisions`: esa tabla nace en la Ola 4 y la plataforma la omite
-// a propósito para no afirmar «no hay revisiones» cuando la verdad es «todavía no
-// se registran».
+// El struct NO declara `revisions`, y eso ya no es porque la plataforma lo omita
+// —lo publica desde cloud `eb48245`, T4.1— sino porque esta consola no lo pinta: el
+// decodificador ignora lo que no conoce. Decláralo cuando haya una pantalla que lo
+// use, no antes.
 type IntakeDetail struct {
 	Intake
 	Items              []IntakeItem `json:"items"`
