@@ -1,0 +1,227 @@
+{{ define "catalog-import.html" }}
+<section class="stack">
+
+    {{/* Esta pantalla nace con fecha de caducidad y se dice en voz alta: la operación de catálogo se
+         va a la app KMP (planes 045/047, ADR-0035). Lo mínimo imprescindible para trabajar hoy,
+         nada que merezca cariño. */}}
+    <div class="snackbar snackbar--info" role="note">
+        <span>PROVISIONAL — migra a KMP (Plan 045/047, ADR-0035)</span>
+    </div>
+
+    {{ if .Notice }}
+    <div class="snackbar {{ if .Notice.Success }}snackbar--success{{ else }}snackbar--error{{ end }}" role="alert">
+        <span>{{ .Notice.Message }}</span>
+    </div>
+    {{ end }}
+
+    {{/* GATE SERVER-SIDE POR FEATURE (patrón del Plan 040 · T2.5). Sin `catalog_import` no se emite
+         NADA de lo de abajo: ni el formulario, ni el prompt, ni los enlaces de plantilla. No queda
+         escondido por CSS ni por JS, no está en el HTML. El gate decide lo que se PINTA; lo que se
+         PUEDE lo corta RequireFeature en la plataforma, que sigue siendo la autoridad. */}}
+    {{ if .Entitlements.Has "catalog_import" }}
+
+    {{/* PASO 2 — el diff. Es lo primero de la página cuando existe, porque es lo que hay que leer
+         antes de decidir. Se pinta igual tras comprobar y tras aplicar: la plataforma responde el
+         mismo objeto y lo que cambia es el tiempo verbal. */}}
+    {{ with .View.Result }}
+    <div class="card" id="section-catalog-diff">
+        <h1 class="headline">{{ if .Applied }}Catálogo aplicado{{ else }}Esto es lo que pasaría{{ end }}</h1>
+        <p class="supporting">{{ .Items }} artículo{{ if ne .Items 1 }}s{{ end }} en el documento ·
+            catálogo «{{ .Ref }}»{{ if .ArchivedVersion }} · el anterior quedó como versión {{ .ArchivedVersion }}{{ end }}</p>
+
+        {{/* AVISOS DEL CATÁLOGO VIGENTE. Van los PRIMEROS y con el estilo más ruidoso a propósito:
+             son artículos y campos del catálogo que está en uso que el motor ya descarta en
+             silencio, así que NO están en el lado viejo de la comparación y no aparecerán abajo en
+             «desaparecen» aunque se pierdan de verdad. Esconderlos sería deshacer la única
+             salvaguarda que tiene el operador contra una pérdida invisible. */}}
+        {{ with .Diff.CurrentWarnings }}
+        <div class="snackbar snackbar--error" role="alert">
+            <div>
+                <strong>Ojo con el catálogo que tienes ahora</strong>
+                <p class="body">Esto ya estaba mal en el catálogo vigente y el motor lo ignora sin decir nada.
+                    Por eso no sale en la comparación de abajo: si se pierde al aplicar, no lo verás en «desaparecen».</p>
+                <ul>
+                    {{ range . }}<li class="body">{{ . }}</li>{{ end }}
+                </ul>
+            </div>
+        </div>
+        {{ end }}
+
+        {{ if $.View.NoChanges }}
+        <p class="body">{{ if .Applied }}No cambió ni un artículo: el catálogo ya decía exactamente esto.
+            {{ else }}Aplicar este documento no cambiaría ni un artículo del catálogo.{{ end }}</p>
+        {{ else }}
+        <p class="body">
+            <span class="chip chip--neutral">{{ len .Diff.PriceChanges }} cambian de precio</span>
+            <span class="chip chip--ok">{{ len .Diff.Added }} nuevos</span>
+            <span class="chip chip--error">{{ len .Diff.Removed }} desaparecen</span>
+            <span class="chip chip--info">{{ len .Diff.ChangedDetails }} cambian en otros datos</span>
+            <span class="chip chip--neutral">{{ .Diff.Unchanged }} quedan igual</span>
+        </p>
+        {{ end }}
+
+        {{ with .Diff.Removed }}
+        <h2 class="title title--m">Dejan de venderse</h2>
+        <p class="supporting">Estos artículos están hoy en el catálogo y el documento no los trae.</p>
+        <div class="table-wrap">
+            <table class="table">
+                <thead><tr><th>SKU</th><th>Artículo</th></tr></thead>
+                <tbody>
+                    {{ range . }}<tr><td>{{ .SKU }}</td><td>{{ .Label }}</td></tr>{{ end }}
+                </tbody>
+            </table>
+        </div>
+        {{ end }}
+
+        {{ with .Diff.PriceChanges }}
+        <h2 class="title title--m">Cambian de precio</h2>
+        <div class="table-wrap">
+            <table class="table">
+                <thead><tr><th>SKU</th><th>Artículo</th><th>Antes</th><th>Ahora</th></tr></thead>
+                <tbody>
+                    {{ range . }}
+                    <tr>
+                        <td>{{ .SKU }}</td>
+                        <td>{{ .Label }}</td>
+                        <td>{{ printf "%.2f" .OldPrice }}</td>
+                        <td>{{ printf "%.2f" .NewPrice }}</td>
+                    </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+        {{ end }}
+
+        {{ with .Diff.Added }}
+        <h2 class="title title--m">Artículos nuevos</h2>
+        <div class="table-wrap">
+            <table class="table">
+                <thead><tr><th>SKU</th><th>Artículo</th></tr></thead>
+                <tbody>
+                    {{ range . }}<tr><td>{{ .SKU }}</td><td>{{ .Label }}</td></tr>{{ end }}
+                </tbody>
+            </table>
+        </div>
+        {{ end }}
+
+        {{ with .Diff.ChangedDetails }}
+        <h2 class="title title--m">Cambian en otros datos</h2>
+        <p class="supporting">Mismo precio, pero cambia algo más (nombre, presentaciones, componentes,
+            etiquetas o descripción):
+            {{ range $i, $sku := . }}{{ if $i }}, {{ end }}{{ $sku }}{{ end }}.</p>
+        {{ end }}
+    </div>
+    {{ end }}
+
+    {{/* CONFIRMACIÓN — el segundo paso, el único que escribe. El documento viaja OCULTO y congelado:
+         se aplica exactamente lo que se acaba de enseñar, no lo que hubiera en un cuadro de texto
+         editable. La plataforma vuelve a validarlo y a compararlo por su cuenta, así que dos
+         pestañas abiertas no pueden confirmar la comprobación de la otra. */}}
+    {{ if .View.AwaitingConfirmation }}
+    <div class="card" id="section-catalog-confirm">
+        <div class="snackbar snackbar--info" role="note">
+            <span>Al aplicar, este documento pasa a ser TODO el catálogo: lo que no venga en él deja de venderse.
+                El catálogo anterior se guarda como una versión antes de reemplazarlo.</span>
+        </div>
+        <form method="POST" action="/catalog-import" class="stack" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+            <input type="hidden" name="action" value="apply">
+            <input type="hidden" name="document" value="{{ .View.Document }}">
+            <div class="row">
+                <button type="submit" class="btn btn--filled">Aplicar este catálogo</button>
+                <a href="/catalog-import" class="btn btn--text">Descartar y empezar de nuevo</a>
+            </div>
+        </form>
+    </div>
+    {{ end }}
+
+    {{/* ERRORES — la lista completa que devolvió el validador. El motivo se pinta TAL CUAL viene de
+         la plataforma: está escrito ahí para el dueño del negocio y reescribirlo aquí sería mantener
+         dos redacciones que acabarían discrepando. */}}
+    {{ if .View.Errors }}
+    <div class="card" id="section-catalog-errors">
+        <h2 class="title title--m">Qué hay que corregir</h2>
+        <div class="table-wrap">
+            <table class="table">
+                <thead><tr><th>Dónde</th><th>Campo</th><th>Qué pasa</th></tr></thead>
+                <tbody>
+                    {{ range .View.Errors }}
+                    <tr>
+                        <td>{{ .Location }}</td>
+                        <td><code>{{ .Field }}</code></td>
+                        <td>{{ .Reason }}</td>
+                    </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {{ end }}
+
+    {{/* PASO 1 — pegar o subir. Desaparece mientras hay un diff esperando confirmación: los dos
+         pasos son dos pantallas, y dejar el cuadro de texto ahí invitaría a editar lo que ya se
+         comprobó. */}}
+    {{ if not .View.AwaitingConfirmation }}
+    <div class="card" id="section-catalog-import">
+        <h1 class="headline">Importar catálogo</h1>
+        <p class="supporting">Pega el documento JSON de tu catálogo o sube el archivo. Primero se comprueba
+            y se te enseña qué cambiaría; no se toca nada hasta que lo confirmes.</p>
+
+        <form method="POST" action="/catalog-import" class="stack" autocomplete="off" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+            <div class="field">
+                <label class="field__label" for="document">Documento del catálogo (JSON)</label>
+                <textarea class="field__control field__control--code" id="document" name="document"
+                          rows="18" spellcheck="false"
+                          placeholder='{"format":"wapp.catalog_import","version":1,"categories":[…]}'>{{ .View.Document }}</textarea>
+            </div>
+            <div class="field">
+                <label class="field__label" for="file">…o sube el archivo .json</label>
+                <input class="field__input" type="file" id="file" name="file" accept=".json,application/json">
+            </div>
+            <p class="supporting">Si eliges un archivo, manda ese y se ignora lo que haya en el cuadro de arriba.</p>
+            <div class="row">
+                <button type="submit" class="btn btn--filled">Comprobar documento</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="card" id="section-catalog-help">
+        <h2 class="title title--m">¿No tienes el archivo? Que te lo escriba un asistente</h2>
+        <p class="supporting">Descarga la plantilla, copia el texto de abajo y pégaselo a un asistente
+            (Gemini, Claude, ChatGPT) junto con la plantilla y tu lista de productos con precios.
+            Lo que te devuelva se pega aquí arriba.</p>
+
+        <div class="row">
+            {{ range .CatalogTemplateFormats }}
+            <a href="/catalog-import/template?format={{ .Format }}" class="btn btn--outlined">{{ .Label }}</a>
+            {{ end }}
+        </div>
+        <p class="supporting">
+            {{ range $i, $f := .CatalogTemplateFormats }}{{ if $i }} · {{ end }}{{ $f.Label }}: {{ $f.Hint }}{{ end }}.
+        </p>
+
+        {{/* El prompt lo SIRVE la plataforma, donde está versionado junto al contrato. Aquí no hay
+             copia de reserva a propósito: una segunda fuente se quedaría vieja sin que nadie lo
+             notara y le dictaría al asistente un formato que el validador ya rechaza. */}}
+        {{ if .View.Prompt.Loaded }}
+        <div class="field">
+            <label class="field__label" for="prompt">Texto para el asistente (selecciónalo y cópialo)</label>
+            <textarea class="field__control field__control--code" id="prompt" rows="12" readonly>{{ .View.Prompt.Text }}</textarea>
+        </div>
+        <p class="supporting">Corresponde al contrato {{ .View.Prompt.Format }} versión {{ .View.Prompt.Version }}.</p>
+        {{ else }}
+        <p class="body">No se pudo cargar el texto para el asistente ahora mismo. Recarga la página;
+            mientras tanto puedes pegar aquí arriba un documento que ya tengas.</p>
+        {{ end }}
+    </div>
+    {{ end }}
+
+    {{ else }}
+    <div class="card">
+        <h1 class="headline">Catálogo</h1>
+        <p class="body">El plan de este tenant no incluye la importación de catálogo.</p>
+    </div>
+    {{ end }}
+</section>
+{{ end }}

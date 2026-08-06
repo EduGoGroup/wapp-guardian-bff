@@ -162,12 +162,13 @@ func (h *DashboardHandler) renderDashboard(c *gin.Context, status int, send *sen
 	entitlements := resolveEntitlements(c, h.auth, h.api)
 
 	data := gin.H{
-		"Title":             "Consola",
-		"Sessions":          sessions,
-		"SessionsError":     sessionsErr != nil,
-		"Send":              send,
-		entitlementsDataKey: entitlements,
-		intakesNavDataKey:   entitlements.Has(intakesFeature),
+		"Title":                 "Consola",
+		"Sessions":              sessions,
+		"SessionsError":         sessionsErr != nil,
+		"Send":                  send,
+		entitlementsDataKey:     entitlements,
+		intakesNavDataKey:       entitlements.Has(intakesFeature),
+		catalogImportNavDataKey: entitlements.Has(catalogImportFeature),
 	}
 	for k, v := range extra {
 		data[k] = v

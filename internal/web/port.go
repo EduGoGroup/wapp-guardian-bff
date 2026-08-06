@@ -67,6 +67,29 @@ type TenantVariablesManager interface {
 	ReplaceTenantVariables(ctx context.Context, accessToken string, vars map[string]string) (*apiclient.TenantVariables, error)
 }
 
+// CatalogImporter define el contrato del IMPORT DE CATÁLOGO (Plan 041 · T3.5): comprobar un
+// documento y aplicarlo, más la plantilla de ejemplo que se descarga.
+//
+// `ImportCatalog` cubre las dos modalidades con un booleano en vez de con dos métodos porque la
+// plataforma responde el MISMO objeto en las dos: dos métodos harían creer que hay dos respuestas
+// que interpretar, y solo hay una con un `Applied` distinto.
+//
+// Va segregado del resto por lo mismo que la bandeja: es un frente de pago (feature
+// `catalog_import`) y la pantalla que lo consume es PROVISIONAL (migra a KMP con los planes
+// 045/047, ADR-0035). Cuando esa pantalla muera, esta interfaz se va con ella.
+type CatalogImporter interface {
+	ImportCatalog(ctx context.Context, accessToken string, document []byte, apply bool) (*apiclient.CatalogImportResult, error)
+	GetCatalogTemplate(ctx context.Context, accessToken, format string) (*apiclient.CatalogTemplate, error)
+	GetCatalogPrompt(ctx context.Context, accessToken string) (*apiclient.CatalogPrompt, error)
+}
+
+// CatalogImportAPI es lo que la pantalla de import consume: el import más las features efectivas,
+// que son las que deciden si la sección se emite siquiera.
+type CatalogImportAPI interface {
+	CatalogImporter
+	EntitlementsReader
+}
+
 // EditorManager define el contrato para la edición de flujos y la gestión de reglas de disparo.
 type EditorManager interface {
 	ListFlows(ctx context.Context, accessToken string) ([]apiclient.FlowSummary, error)
@@ -85,6 +108,7 @@ type APIPort interface {
 	EditorManager
 	IntakeManager
 	TenantVariablesManager
+	CatalogImporter
 }
 
 // Verificación en compilación de que los clientes concretos satisfacen las interfaces segregadas.
@@ -102,6 +126,7 @@ var (
 	_ IntakeManager      = (*apiclient.IntakesClient)(nil)
 
 	_ TenantVariablesManager = (*apiclient.TenantVariablesClient)(nil)
+	_ CatalogImporter        = (*apiclient.CatalogImportClient)(nil)
 	_ APIPort                = (*apiclient.Client)(nil)
 	_ APIPort                = (*apiclient.DelegatedClient)(nil)
 )

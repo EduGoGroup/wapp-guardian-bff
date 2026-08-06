@@ -26,6 +26,10 @@ type fakeAPIPort struct {
 
 	getTenantVariables     func(ctx context.Context, accessToken string) (*apiclient.TenantVariables, error)
 	replaceTenantVariables func(ctx context.Context, accessToken string, vars map[string]string) (*apiclient.TenantVariables, error)
+
+	importCatalog      func(ctx context.Context, accessToken string, document []byte, apply bool) (*apiclient.CatalogImportResult, error)
+	getCatalogTemplate func(ctx context.Context, accessToken, format string) (*apiclient.CatalogTemplate, error)
+	getCatalogPrompt   func(ctx context.Context, accessToken string) (*apiclient.CatalogPrompt, error)
 }
 
 var _ APIPort = (*fakeAPIPort)(nil)
@@ -101,6 +105,24 @@ func (f *fakeAPIPort) ReplaceTenantVariables(ctx context.Context, at string, var
 		return f.replaceTenantVariables(ctx, at, vars)
 	}
 	return &apiclient.TenantVariables{Variables: vars}, nil
+}
+func (f *fakeAPIPort) ImportCatalog(ctx context.Context, at string, document []byte, apply bool) (*apiclient.CatalogImportResult, error) {
+	if f.importCatalog != nil {
+		return f.importCatalog(ctx, at, document, apply)
+	}
+	return &apiclient.CatalogImportResult{}, nil
+}
+func (f *fakeAPIPort) GetCatalogTemplate(ctx context.Context, at, format string) (*apiclient.CatalogTemplate, error) {
+	if f.getCatalogTemplate != nil {
+		return f.getCatalogTemplate(ctx, at, format)
+	}
+	return &apiclient.CatalogTemplate{}, nil
+}
+func (f *fakeAPIPort) GetCatalogPrompt(ctx context.Context, at string) (*apiclient.CatalogPrompt, error) {
+	if f.getCatalogPrompt != nil {
+		return f.getCatalogPrompt(ctx, at)
+	}
+	return &apiclient.CatalogPrompt{}, nil
 }
 
 // TestWithAuthRetryRefreshesOn401 ejercita el seam del puerto SIN HTTP: la primera llamada de negocio

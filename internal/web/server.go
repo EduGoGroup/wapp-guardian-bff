@@ -145,6 +145,11 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy", "time": time.Now().UTC().Format(time.RFC3339)})
 	})
 
+	// Techo del cuerpo para la ÚNICA pantalla que acepta archivos (el import de catálogo). Va antes del
+	// CSRF a propósito: el CSRF lee el formulario para comparar el token y con eso se traga el cuerpo
+	// entero, así que un tope montado después llegaría tarde.
+	router.Use(BodyLimitMiddleware(maxCatalogImportBody, catalogImportRoute))
+
 	// Defensa CSRF double-submit (H2): a partir de aquí toda ruta que renderiza formularios o muta estado
 	// lleva el token. Se registra DESPUÉS de /static y /healthz (que no renderizan formularios ni mutan) para
 	// no ensuciar sus respuestas cacheables con una cookie de token.
@@ -192,6 +197,14 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	protected.GET("/intakes", h.ShowIntakes)
 	protected.GET("/intakes/:id", h.ShowIntakeDetail)
 	protected.POST("/intakes/:id/status", h.DoSetIntakeStatus)
+
+	// Import de catálogo (Plan 041 · T3.5), gateado por la feature `catalog_import` en la plantilla y
+	// por RequireFeature en la plataforma. El POST atiende los dos pasos —comprobar y aplicar— y cuál
+	// se pide lo dice el botón: el que escribe solo existe después de haber enseñado el diff.
+	// PANTALLA PROVISIONAL: migra a KMP (planes 045/047, ADR-0035).
+	protected.GET(catalogImportRoute, h.ShowCatalogImport)
+	protected.POST(catalogImportRoute, h.DoCatalogImport)
+	protected.GET(catalogImportRoute+"/template", h.DownloadCatalogTemplate)
 
 	return router, rateLimiter
 }

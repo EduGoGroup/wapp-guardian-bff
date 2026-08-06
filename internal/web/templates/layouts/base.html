@@ -44,6 +44,11 @@
             {{ if .IntakesNav }}
             <a href="/intakes" class="btn btn--text{{ if hasPrefix .CurrentPath "/intakes" }} btn--active{{ end }}">Solicitudes</a>
             {{ end }}
+            {{/* Mismo criterio para el import de catálogo: sin `catalog_import` contratada —o en una
+                 página que no resolvió las features— el enlace no llega al HTML. */}}
+            {{ if .CatalogImportNav }}
+            <a href="/catalog-import" class="btn btn--text{{ if hasPrefix .CurrentPath "/catalog-import" }} btn--active{{ end }}">Catálogo</a>
+            {{ end }}
             <a href="/flows" class="btn btn--text{{ if hasPrefix .CurrentPath "/flows" }} btn--active{{ end }}">Flujos</a>
             <a href="/triggers" class="btn btn--text{{ if hasPrefix .CurrentPath "/triggers" }} btn--active{{ end }}">Triggers</a>
             {{/* Variables de empresa: capa técnica, sin gate de feature, así que el enlace sale para

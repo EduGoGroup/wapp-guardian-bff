@@ -99,11 +99,12 @@ func (h *IntakesHandler) ShowIntakes(c *gin.Context) {
 	filter := intakeFilterFromQuery(c)
 
 	data := gin.H{
-		"Title":             "Solicitudes",
-		"Filter":            filterView(filter),
-		"StatusOptions":     intakeStatusOptions,
-		entitlementsDataKey: entitlements,
-		intakesNavDataKey:   entitlements.Has(intakesFeature),
+		"Title":                 "Solicitudes",
+		"Filter":                filterView(filter),
+		"StatusOptions":         intakeStatusOptions,
+		entitlementsDataKey:     entitlements,
+		intakesNavDataKey:       entitlements.Has(intakesFeature),
+		catalogImportNavDataKey: entitlements.Has(catalogImportFeature),
 	}
 
 	// Sin la capacidad no se llama a la API: la plataforma cortaría con 403 igualmente, y gastar el
@@ -149,11 +150,12 @@ func (h *IntakesHandler) renderIntakeDetail(c *gin.Context, status int, id strin
 	entitlements := resolveEntitlements(c, h.auth, h.api)
 
 	data := gin.H{
-		"Title":             "Solicitud",
-		"IntakeID":          id,
-		"Notice":            notice,
-		entitlementsDataKey: entitlements,
-		intakesNavDataKey:   entitlements.Has(intakesFeature),
+		"Title":                 "Solicitud",
+		"IntakeID":              id,
+		"Notice":                notice,
+		entitlementsDataKey:     entitlements,
+		intakesNavDataKey:       entitlements.Has(intakesFeature),
+		catalogImportNavDataKey: entitlements.Has(catalogImportFeature),
 	}
 
 	if !entitlements.Has(intakesFeature) {
