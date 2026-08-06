@@ -596,15 +596,42 @@ func TestCatalogImportTemplateNotYetServed(t *testing.T) {
 		t.Fatalf("debía responder 404, got %d", rec.Code)
 	}
 	out := rec.Body.String()
-	if !strings.Contains(out, "todavía no sirve la plantilla descargable") {
-		t.Error("debía explicarse que la plantilla aún no está, no un error genérico")
+	if !strings.Contains(out, "no está sirviendo la plantilla") {
+		t.Error("debía explicarse qué pasa, no un error genérico")
 	}
-	if !strings.Contains(out, catalogHelpMarker) || !strings.Contains(out, "no inventes productos ni precios") {
-		t.Error("el prompt debía seguir en pantalla: es la alternativa mientras no haya plantilla")
+	if !strings.Contains(out, "avísale a quien administre la plataforma") {
+		t.Error("el aviso debía decir qué hacer con eso")
+	}
+	if !strings.Contains(out, catalogFormMarker) {
+		t.Error("la pantalla debía seguir sirviendo: un fallo de descarga no tumba el import")
 	}
 	// Sin `format` en la URL se pide la JSON, que es la que se pega aquí.
 	if query, _, _ := api.seen(); query.Get("format") != "json" {
 		t.Errorf("el formato por defecto debía ser json, got %q", query.Get("format"))
+	}
+}
+
+// TestCatalogImportTemplate404DoesNotPromiseThePrompt: en la plataforma la plantilla, el prompt y el
+// import se montan JUNTOS o no se monta ninguno, así que un 404 de la plantilla suele venir
+// acompañado de un prompt que tampoco carga. El aviso NO puede ofrecer como alternativa algo que va a
+// fallar igual: mandaría al operador a chocarse dos veces.
+func TestCatalogImportTemplate404DoesNotPromiseThePrompt(t *testing.T) {
+	api := newCatalogImportAPI([]string{"catalog_import"}, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+	defer api.close()
+	// Las rutas del import no están montadas: el prompt cae con ellas.
+	api.mu.Lock()
+	api.prompt = func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNotFound) }
+	api.mu.Unlock()
+
+	out := getWithCookie(NewRouter(authTestCfg(api.srv.URL)), "/catalog-import/template", validSessionCookie(t)).Body.String()
+
+	if strings.Contains(out, "puedes usar el texto de abajo") || strings.Contains(out, "Mientras tanto") {
+		t.Error("el aviso no puede remitir al prompt: con las rutas sin montar tampoco carga")
+	}
+	if !strings.Contains(out, "No se pudo cargar el texto para el asistente") {
+		t.Error("y la pantalla debía decir que el prompt tampoco está, en vez de fingir que sí")
 	}
 }
 

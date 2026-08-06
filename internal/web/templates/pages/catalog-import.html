@@ -191,6 +191,12 @@
         <p class="supporting">Descarga la plantilla, copia el texto de abajo y pégaselo a un asistente
             (Gemini, Claude, ChatGPT) junto con la plantilla y tu lista de productos con precios.
             Lo que te devuelva se pega aquí arriba.</p>
+        {{/* Ni una palabra que dé a entender que esto está probado contra un asistente real: el texto
+             es el del contrato, pero la corrida real está pendiente (deuda 🟡 de T3.2). Lo que sí se
+             puede prometer es lo que hace esta pantalla —comprobar antes de tocar nada—, y decirlo
+             aquí es lo que convierte un documento dudoso en un problema que se ve a tiempo. */}}
+        <p class="supporting">Revisa siempre lo que te devuelva: por eso el primer paso comprueba el
+            documento y te dice qué está mal antes de cambiar nada.</p>
 
         <div class="row">
             {{ range .CatalogTemplateFormats }}

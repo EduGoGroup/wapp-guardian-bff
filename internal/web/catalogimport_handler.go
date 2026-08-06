@@ -415,8 +415,12 @@ func mapCatalogImportError(err error, apply bool) (int, *catalogImportNotice) {
 	}
 }
 
-// mapCatalogTemplateError traduce el fallo de la descarga. El 404 tiene un aviso propio porque hoy
-// significa algo concreto y temporal: esta plataforma todavía no sirve la plantilla.
+// mapCatalogTemplateError traduce el fallo de la descarga. El 404 tiene un aviso propio porque
+// significa algo concreto: en la plataforma, la plantilla, el prompt y el propio import se montan
+// JUNTOS o no se monta ninguno —para no mandar a nadie a llenar la plantilla de un import que no
+// puede aplicar—, así que un 404 aquí no es «falta esta descarga» sino «puede que no haya import».
+// Por eso el aviso NO remite al prompt como alternativa: con las rutas sin montar, ese texto tampoco
+// carga, y prometerlo sería mandar al operador a chocarse dos veces.
 func mapCatalogTemplateError(err error) (int, *catalogImportNotice) {
 	if errors.Is(err, apiclient.ErrUnsupportedTemplateFormat) {
 		return http.StatusBadRequest, &catalogImportNotice{
@@ -426,8 +430,9 @@ func mapCatalogTemplateError(err error) (int, *catalogImportNotice) {
 	switch apiclient.StatusCodeOf(err) {
 	case http.StatusNotFound:
 		return http.StatusNotFound, &catalogImportNotice{
-			Message: "Esta plataforma todavía no sirve la plantilla descargable. " +
-				"Mientras tanto puedes usar el texto de abajo con un asistente y pegar aquí el JSON que te devuelva.",
+			Message: "Esta plataforma no está sirviendo la plantilla. Suele significar que la importación de " +
+				"catálogo no está montada aquí todavía: si comprobar un documento también falla, avísale a " +
+				"quien administre la plataforma.",
 		}
 	case http.StatusForbidden:
 		return http.StatusForbidden, &catalogImportNotice{
