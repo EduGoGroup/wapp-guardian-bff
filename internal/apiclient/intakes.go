@@ -28,11 +28,24 @@ type Intake struct {
 }
 
 // IntakeItem es una línea de la solicitud (código de catálogo del tenant, nunca PII).
+//
+// Customization es la personalización NO facturable de la línea (D-041.17): el «sin
+// cebolla». Es una instrucción de PRODUCCIÓN y por eso viaja hasta aquí — quien recibió
+// el pedido y quien lo prepara son personas distintas, y una personalización que no
+// llega a la pantalla se pierde. NUNCA entra en ninguna cuenta: el total lo manda la
+// plataforma y esta capa no lo recalcula (INV-13).
+//
+// La plataforma la publica SIEMPRE, también vacía (sin `omitempty`, ver
+// `publicapi.intakeItemDTO` en cloud), así que aquí las dos ausencias posibles —clave
+// que no llega y personalización vacía— colapsan en `""`. Es aceptable porque la
+// pantalla trata las dos igual: no pinta nada. No la conviertas en puntero para
+// distinguirlas sin un consumidor que necesite esa diferencia.
 type IntakeItem struct {
-	SKU       string  `json:"sku"`
-	Label     string  `json:"label"`
-	Qty       int     `json:"qty"`
-	UnitPrice float64 `json:"unit_price"`
+	SKU           string  `json:"sku"`
+	Label         string  `json:"label"`
+	Customization string  `json:"customization"`
+	Qty           int     `json:"qty"`
+	UnitPrice     float64 `json:"unit_price"`
 }
 
 // IntakePage es la respuesta de GET /api/v1/intakes: la página más el TOTAL de

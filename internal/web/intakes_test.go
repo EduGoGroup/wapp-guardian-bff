@@ -370,6 +370,88 @@ func renderRealDetail(t *testing.T, body string) string {
 	return rec.Body.String()
 }
 
+// Detalles con `customization` (Plan 041 · T4.1b). NO son capturas de un servidor vivo, al revés que
+// los tres de arriba: están escritos contra el DTO que la plataforma publica hoy
+// (`publicapi.intakeItemDTO`, cloud `511924b`), donde el campo va SIN `omitempty` y por tanto viaja
+// también vacío. Por eso el primer cuerpo lleva las dos formas —línea con personalización y línea con
+// `""`— y el segundo la omite del todo: un servidor anterior a T4.1b no la manda, y la pantalla tiene
+// que comportarse igual que con la vacía.
+const (
+	detailWithCustomization = `{"id":"in-7","contact_id":"ct-op4","session_id":"s-1","status":"confirmed",
+	 "total":42.50,"created_at":"2026-08-05T10:00:00Z","updated_at":"2026-08-05T11:00:00Z",
+	 "items":[{"sku":"HAM","label":"Hamburguesa","customization":"sin cebolla","qty":1,"unit_price":36.50},
+	          {"sku":"VELA","label":"Velas","customization":"","qty":1,"unit_price":6}],
+	 "allowed_transitions":["cancelled","settled"]}`
+	detailWithoutCustomizationField = `{"id":"in-7","contact_id":"ct-op4","session_id":"s-1","status":"confirmed",
+	 "total":42.50,"created_at":"2026-08-05T10:00:00Z","updated_at":"2026-08-05T11:00:00Z",
+	 "items":[{"sku":"HAM","label":"Hamburguesa","qty":1,"unit_price":36.50}],
+	 "allowed_transitions":["cancelled","settled"]}`
+	detailHostileCustomization = `{"id":"in-7","contact_id":"ct-op4","session_id":"s-1","status":"confirmed",
+	 "total":42.50,"created_at":"2026-08-05T10:00:00Z","updated_at":"2026-08-05T11:00:00Z",
+	 "items":[{"sku":"HAM","label":"Hamburguesa","customization":"sin \"cebolla\" & <b>mucha</b> salsa<script>alert(1)</script>",
+	           "qty":1,"unit_price":36.50}],
+	 "allowed_transitions":["cancelled"]}`
+)
+
+// TestIntakeDetailRendersCustomization (T4.1b, el quinto camino de D-041.17): la personalización de la
+// línea llega a la pantalla que mira quien prepara el pedido. Si no llega, el cliente recibe el
+// producto mal hecho — es un fallo de negocio, no un detalle cosmético (REQ-31/31b).
+func TestIntakeDetailRendersCustomization(t *testing.T) {
+	out := renderRealDetail(t, detailWithCustomization)
+
+	// La personalización va PEGADA a su artículo: se comprueba el HTML exacto, no solo que el texto
+	// aparezca suelto en la página. Una personalización en la fila equivocada es peor que no tenerla.
+	if !strings.Contains(out, `<td>Hamburguesa<span class="cell-note">Personalización: sin cebolla</span></td>`) {
+		t.Error("la personalización debía pintarse dentro de la celda de SU artículo")
+	}
+	// La línea que no la trae no ensucia la pantalla: la celda es el artículo pelado, sin span vacío,
+	// sin guion y sin fila de más.
+	if !strings.Contains(out, `<td>Velas</td>`) {
+		t.Error("una línea sin personalización debía dejar la celda del artículo limpia")
+	}
+	if n := strings.Count(out, "cell-note"); n != 1 {
+		t.Errorf("solo la línea con personalización debía emitir la sub-línea, got %d", n)
+	}
+	if n := strings.Count(out, "Personalización"); n != 1 {
+		t.Errorf("el rótulo solo debía aparecer en la línea que lo lleva, got %d", n)
+	}
+	// El dinero no se mueve por comentar (INV-13): la pantalla pinta el total y los precios que manda
+	// la plataforma, y la personalización no entra en ninguna cuenta porque aquí no se hace ninguna.
+	if !strings.Contains(out, "total · 42.50") || !strings.Contains(out, "36.50") {
+		t.Error("los importes debían ser los de la API, intactos")
+	}
+}
+
+// TestIntakeDetailWithoutCustomizationStaysClean: contra un servidor que no publique el campo, la
+// pantalla se comporta EXACTAMENTE igual que con la personalización vacía — no inventa un hueco ni
+// declara nada. Las dos ausencias colapsan a propósito (ver apiclient.IntakeItem).
+func TestIntakeDetailWithoutCustomizationStaysClean(t *testing.T) {
+	out := renderRealDetail(t, detailWithoutCustomizationField)
+
+	if !strings.Contains(out, `<td>Hamburguesa</td>`) {
+		t.Error("sin el campo, la celda del artículo debía quedarse tal cual")
+	}
+	for _, forbidden := range []string{"cell-note", "Personalización"} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("sin personalización no debía emitirse %q", forbidden)
+		}
+	}
+}
+
+// TestIntakeDetailEscapesCustomization: `customization` es de las poquísimas cadenas de esta consola
+// escritas por el CLIENTE FINAL (D-041.15 lo dice del export, y aquí vale igual). Llega a la pantalla
+// como TEXTO, nunca como marcado.
+func TestIntakeDetailEscapesCustomization(t *testing.T) {
+	out := renderRealDetail(t, detailHostileCustomization)
+
+	if strings.Contains(out, "<script>alert(1)</script>") || strings.Contains(out, "<b>mucha</b>") {
+		t.Error("la personalización se pintó como marcado: es texto del cliente final, va escapada")
+	}
+	if !strings.Contains(out, "sin &#34;cebolla&#34; &amp; &lt;b&gt;mucha&lt;/b&gt; salsa&lt;script&gt;") {
+		t.Error("la personalización hostil debía llegar escapada y COMPLETA, no recortada")
+	}
+}
+
 // TestIntakeDetailTerminalHasNoSelect: una lista VACÍA de destinos significa estado final, y así se
 // dice — sin desplegable.
 func TestIntakeDetailTerminalHasNoSelect(t *testing.T) {

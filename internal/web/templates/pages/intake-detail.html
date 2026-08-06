@@ -44,7 +44,11 @@
                     {{ range .Detail.Items }}
                     <tr>
                         <td>{{ .SKU }}</td>
-                        <td>{{ .Label }}</td>
+                        {{/* La personalización va PEGADA a su artículo, no en columna propia: quien prepara
+                             el pedido lee «Torta / sin gluten» como una sola cosa, y una columna obligaría a
+                             pintar una celda vacía —o un guion— en las líneas que no la llevan, que son la
+                             mayoría. Sin personalización no se emite NADA: ni el span ni el rótulo. */}}
+                        <td>{{ .Label }}{{ if .Customization }}<span class="cell-note">Personalización: {{ .Customization }}</span>{{ end }}</td>
                         <td>{{ .Qty }}</td>
                         <td>{{ printf "%.2f" .UnitPrice }}</td>
                     </tr>

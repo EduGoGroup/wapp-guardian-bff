@@ -221,6 +221,17 @@ textarea.field__control{ height:auto; min-height:120px; padding:var(--md-space-3
   border-bottom:1px solid var(--md-outline-variant);
   color:var(--md-on-surface-variant);
 }
+/* Sub-línea dentro de una celda: hoy, la personalización pegada a su artículo (Plan 041 · T4.1b,
+   D-041.17). Es instrucción de producción, no adorno, así que va con el color plano de la superficie
+   —más marcado que el resto de la celda— y un filete de marca. Solo existe cuando hay texto: la
+   plantilla no emite el span en las líneas sin personalización. */
+.cell-note{
+  display:block; margin-top:var(--md-space-1);
+  padding-left:var(--md-space-2); border-left:2px solid var(--md-primary);
+  font-size:.8125rem; line-height:1.125rem;
+  color:var(--md-on-surface);
+}
+
 .table tbody tr{ transition:background-color .1s ease; }
 .table tbody tr:hover{
   /* state-layer sutil sobre la fila */
