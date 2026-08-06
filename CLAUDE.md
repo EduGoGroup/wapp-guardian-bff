@@ -15,7 +15,7 @@ REST** con la Plataforma Cloud (Pieza 03) —y, si la delegación está encendid
 para las credenciales (ver más abajo)—. Custodia el JWT **server-side** en cookie HttpOnly (el navegador nunca
 ve el token). **No** empareja teléfonos ni custodia DEK.
 
-## Responsabilidad (lo IMPLEMENTADO — Plan 021 MVP)
+## Responsabilidad (lo IMPLEMENTADO — Plan 021 MVP + Plan 040 · Ola 2)
 
 | Área | Qué hace | Endpoint `/api/v1` consumido |
 |---|---|---|
@@ -23,6 +23,7 @@ ve el token). **No** empareja teléfonos ni custodia DEK.
 | Sesiones | Lista los teléfonos/sesiones vinculados del tenant (self_pn/state/role) y cambia el **rol** `bot|passive` por sesión | `GET sessions`, `POST sessions/{id}/role` |
 | Enviar mensaje | Elegir sesión + destino + texto y despachar | `POST messages` |
 | Editar menú/encuestas | Listar/ver flows y **publicar versión nueva** (inmutables); triggers listar/crear/borrar | `flows`, `flows/{id}`, `triggers` |
+| Plan y capacidades | Pinta el plan del tenant y un chip por feature efectiva, y **gatea qué secciones se emiten** (ver abajo) | `GET entitlements` |
 
 > **Diferido (NO implementado):** subida de contenido/PDF, campañas, plantillas/contactos/segmentos, editor
 > visual de nodos, `tenant-content`/`media`. Ver `../../docs/plans/021-cliente-web-referencia/` (REQ-E5).
@@ -47,6 +48,35 @@ Los dos clientes —`apiclient.Client` y `apiclient.DelegatedClient`— cumplen 
 así que la cascada de refresco (proactiva a 2 min del vencimiento, pasiva ante 401) es la misma de
 siempre y ningún handler sabe quién autentica. El logout delegado revoca en identity **solo la sesión
 de esta aplicación**: la del Edge sobrevive (modelo Google).
+
+## El gate por feature (Plan 040 · Ola 2) — el patrón que copiarán 041/042
+
+El dashboard pide `GET /api/v1/entitlements` en cada render (`resolveEntitlements`,
+`internal/web/entitlements.go:51`) y mete la vista en los datos de plantilla bajo la clave
+`Entitlements` (`internal/web/dashboard_handler.go:162-169`). Con eso, una sección que dependa de una
+capacidad se envuelve así —y **así es como se añaden las secciones nuevas**:
+
+```
+{{ if $.Entitlements.Has "<feature>" }} … {{ end }}
+```
+
+Dos reglas que no se negocian al tocar esto:
+
+1. **El gate es server-side, en la PLANTILLA.** Sin la feature, el bloque **no se emite en el HTML**.
+   Nunca lo escondas con CSS (`display:none`) ni con JS: lo no contratado no debe estar ahí para que
+   alguien lo destape con el inspector, y además la CSP no admite `'unsafe-inline'`. Hoy el único
+   gateado es el clasificador de intenciones (`templates/pages/dashboard.html:124`, `llm_intent`).
+2. **Fail-closed.** `resolveEntitlements` no devuelve error nunca: ante un fallo o un `403` devuelve
+   la vista cero (`internal/web/entitlements.go:60`) y `Has` responde `false` para todo
+   (`internal/web/entitlements.go:41`).
+   El dashboard sigue sirviendo con un aviso de modo degradado, y con todos los bloques gateados
+   fuera. No añadas una rama que abra el gate cuando las features no se pudieron resolver.
+
+Y el alcance, para no confundirse: este gate decide lo que se **pinta**. Lo que se **puede** lo
+resuelve el middleware `RequireFeature` de la plataforma
+(`cloud/wapp-cloud-platform/internal/entitlements/middleware.go`), que corta con `403` y
+`{"error":"feature_not_enabled","feature":"<clave>"}` en cada llamada — la consola no es la autoridad
+de autorización, y esconder un botón nunca sustituye a ese corte.
 
 ## Decisiones clave (Pieza 04 / ADRs)
 
@@ -78,15 +108,19 @@ de esta aplicación**: la del Edge sobrevive (modelo Google).
 - Multi-escuela / switch-context de EduGo — **eliminado** (el tenant sale del token, INV-8).
 - `WriteTimeout` — **SÍ se fija** (30s): sin streams de larga vida, conviene endurecerlo (al revés que EduGo).
 
-## Estructura del proyecto (real, tras Plan 021)
+## Estructura del proyecto (real, tras Plan 040 · Ola 2)
 
 ```
 cmd/guardian-bff/main.go   — punto de entrada (config + logger + web.Run en :8104)
 internal/config/           — Config desde env (WAPP_GUARDIAN_*, WAPP_PUBLIC_API_BASE)
-internal/apiclient/        — clientes HTTP (Bearer server-side): plataforma /api/v1 (client, flows,
-                             triggers) + identity-api y canje (identity, exchange, delegated)
-internal/web/              — server (Gin, middlewares), auth (login/AuthMiddleware), dashboard, editor,
-                             security (CSP+nonce), ratelimit; templates/ + static/css/app.css (//go:embed)
+internal/apiclient/        — clientes HTTP (Bearer server-side): transport (request autenticada,
+                             ErrUnauthorized/APIError), auth, dashboard (sesiones/rol/mensajes),
+                             editor (flows+triggers), entitlements + identity-api y canje
+                             (identity, exchange, delegated)
+internal/web/              — server (Gin, middlewares), auth_handler (login/AuthMiddleware/refresh),
+                             session (cookie+claims), dashboard_handler, editor_handler, entitlements
+                             (vista de features + gate), security (CSP+nonce), csrf, ratelimit,
+                             deadline; templates/ + static/css/app.css (//go:embed)
 docs/contrato-api-publica.md — el contrato consumido (referencia para clientes Android/iOS)
 go.mod                     — módulo: github.com/EduGoGroup/wapp-guardian-bff (coincide con el
                              remoto; no se publica con tags, pero el path ya es resoluble)

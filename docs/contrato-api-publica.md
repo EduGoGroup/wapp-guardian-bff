@@ -2,8 +2,9 @@
 
 > Documenta cómo **este BFF** (`wapp-guardian-bff`) consume la API pública REST de
 > `cloud/wapp-cloud-platform` (`:8103`, Plan 018). Es la implementación de referencia: describe el
-> contrato **tal como el código lo usa hoy** (`internal/apiclient/{client.go,flows.go,triggers.go}`),
-> para que un futuro cliente Android/iOS lo replique sin tener que leer el BFF entero. Fuente de
+> contrato **tal como el código lo usa hoy** (`internal/apiclient/{auth.go,dashboard.go,editor.go,
+> entitlements.go}`), para que un futuro cliente Android/iOS lo replique sin tener que leer el BFF
+> entero. Fuente de
 > verdad del contrato real es siempre la propia API pública; este documento describe **el
 > subconjunto y la forma en que este BFF lo consume**.
 
@@ -25,12 +26,12 @@
 
 ### `POST /api/v1/auth/login`
 
-Request (`internal/apiclient/client.go:84-87`, tipo `loginRequest`):
+Request (`internal/apiclient/auth.go:25`, tipo `loginRequest`):
 ```json
 { "email": "operador@tenant.example", "password": "..." }
 ```
 
-Response 2xx (`AuthResult`, `client.go:48-54`) — **todo en el body**, no hay `Set-Cookie` del cloud:
+Response 2xx (`AuthResult`, `auth.go:17`) — **todo en el body**, no hay `Set-Cookie` del cloud:
 ```json
 {
   "access_token": "…",
@@ -42,61 +43,73 @@ Response 2xx (`AuthResult`, `client.go:48-54`) — **todo en el body**, no hay `
 ```
 
 - `401` → credenciales inválidas. Este BFF lo repinta como login fallido genérico, **sin** indicar
-  si el correo existe (`internal/web/handlers.go:104-111`, REQ-C3).
+  si el correo existe (`internal/web/auth_handler.go:44`, `DoLogin`, REQ-C3).
 - Otro no-2xx → fallo de transporte/upstream, mismo tratamiento (mensaje genérico).
 
 **Custodia server-side (este BFF):** el par de tokens se serializa a JSON y se guarda en **una**
-cookie HttpOnly `wapp_guardian_session` (`internal/web/auth.go:26-44`, `sessionData{AccessToken,
-RefreshToken, ExpiresAt}`, valor en base64-URL sin padding). El `maxAge` de la cookie sigue al
-`expires_at` del access token (`internal/web/handlers.go:174-186`). El navegador solo ve una cookie
+cookie HttpOnly `wapp_guardian_session` (`internal/web/session.go:21`, `sessionData{AccessToken,
+RefreshToken, ExpiresAt}`, valor en base64-URL sin padding; el nombre y el `setSessionCookie` viven
+en `internal/web/render.go:15` y `:33`). El `maxAge` de la cookie sigue al `expires_at` del access
+token (`sessionMaxAge`, `internal/web/render.go:59`). El navegador solo ve una cookie
 opaca; el JWT nunca llega al DOM/JS (INV-4).
 
 ### Validación del token (decisión de diseño, no criptográfica)
 
 Este BFF **no** verifica la firma del JWT: usa `jwt.NewParser().ParseUnverified` y solo comprueba
-que `exp` exista y sea futuro (`internal/web/auth.go:59-82`). La API pública es el gate
+que `exp` exista y sea futuro (`parseAccessClaims`, `internal/web/session.go:53`). La API pública es el gate
 criptográfico real — revalida el Bearer en cada llamada server-to-server. Un cliente que sí tenga
 el secreto de firma (o que confíe menos en el transporte) puede optar por validación completa; no
 es una obligación del contrato, es una decisión de este BFF.
 
 ### `POST /api/v1/auth/refresh`
 
-Request (`refreshRequest`, `client.go:89-91`): `{ "refresh_token": "…" }`. Response: mismo shape
+Request (`refreshRequest`, `auth.go:30`): `{ "refresh_token": "…" }`. Response: mismo shape
 `AuthResult` que login (nuevo `access_token`+`refresh_token`).
 
-**Patrón refresh + reintento** (`internal/web/dashboard.go:120-139`, función `withAuthRetry`,
-reusada por dashboard/flows/triggers): toda llamada de negocio se ejecuta primero con el
+**Patrón refresh + reintento** (`internal/web/auth_handler.go:190`, función `withAuthRetry`,
+reusada por dashboard/flows/triggers/entitlements): toda llamada de negocio se ejecuta primero con el
 `access_token` vigente; si la API responde `401` (`apiclient.ErrUnauthorized`), el BFF llama
-`Refresh` una vez, re-emite la cookie (`refreshSession`, `internal/web/auth.go:125-142`) y
+`Refresh` una vez, re-emite la cookie (`refreshSession`, `internal/web/auth_handler.go:159`) y
 **reintenta la llamada original una sola vez**. Si el refresh también falla, el error original se
 propaga tal cual (el llamador degrada o redirige a `/login`). No hay reintento en cadena.
 
 ### `POST /api/v1/auth/logout`
 
-Request (`logoutRequest`, `client.go:93-95`): `{ "refresh_token": "…" }` + `Authorization: Bearer
+Request (`logoutRequest`, `auth.go:34`): `{ "refresh_token": "…" }` + `Authorization: Bearer
 <access_token>`. Es **best-effort**: el BFF borra su cookie local **siempre**, llame o no la API
-con éxito (`internal/web/handlers.go:124-134`). Un fallo del logout remoto no bloquea el logout
+con éxito (`DoLogout`, `internal/web/auth_handler.go:80`). Un fallo del logout remoto no bloquea el logout
 local.
 
 ## 3. Endpoints de negocio usados
 
 Todas las llamadas de esta sección llevan `Authorization: Bearer <access_token>`
-(`newAuthedRequest`, `client.go:258-268`) y usan el patrón refresh+reintento de §2 cuando el
+(`newAuthedRequest`, `transport.go:78`) y usan el patrón refresh+reintento de §2 cuando el
 llamador es un handler del dashboard/editor.
 
 | Método y ruta | Request | Response 2xx | Códigos de error relevantes | Cliente (`apiclient`) |
 |---|---|---|---|---|
-| `GET /api/v1/sessions` | — | `[]Session{session_id, edge_id, state, role, self_pn?, last_connected_at?, last_seen_at?}` | `401` | `ListSessions` (`client.go:164-182`) |
-| `POST /api/v1/sessions/{id}/role` | `{role}` con `role ∈ {bot, passive}` (`setSessionRoleRequest`) | `{session_id, role}` (200; este BFF descarta el body y re-lista) | `400` rol inválido · `401` · `404` sesión ajena/inexistente (opaco) · `500` | `SetSessionRole` (`client.go`) |
-| `POST /api/v1/messages` | `{session_id, to, text}` (`sendMessageRequest`) | `SendResult{acked_command_id, ok, error?}` (200 **incluso si `ok:false`**) | `400` datos inválidos · `401` · `404` sesión ajena · `502` Edge offline · `504` timeout · `500` | `SendMessage` (`client.go:205-224`) |
-| `GET /api/v1/flows` | — | `[]FlowSummary{flow_id, version, created_at?}` | `401` | `ListFlows` (`flows.go:35-53`) |
-| `GET /api/v1/flows/{id}` | — | `model.Flow` crudo (`{flow_id, version, initial, nodes}`), devuelto sin re-serializar | `401` · `404` (ajeno/inexistente, opaco) | `GetFlow` (`flows.go:60-78`) |
-| `POST /api/v1/flows` | `{definition: <model.Flow>}` (**anidado**, `publishFlowRequest`) | `PublishFlowResult{flow_id, version}` (201) | `401` · `4xx` rechazo de validación (mensaje mostrable) · `5xx` | `PublishFlow` (`flows.go:101-120`) |
-| `GET /api/v1/triggers` | — | `[]Trigger{trigger_id, kind, keyword?, match_type, flow_id?, priority, enabled, message?, session_id?}` | `401` | `ListTriggers` (`triggers.go:50-68`) |
-| `POST /api/v1/triggers` | `CreateTriggerRequest{kind, keyword?, match_type?, flow_id?, priority, message?, session_id?}` | `Trigger` creado (201) | `401` · `4xx` rechazo de validación (mensaje mostrable) · `5xx` | `CreateTrigger` (`triggers.go:74-92`) |
-| `DELETE /api/v1/triggers/{id}` | — | sin body (204) | `401` · `404` (ajeno/inexistente, opaco) | `DeleteTrigger` (`triggers.go:97-111`) |
+| `GET /api/v1/sessions` | — | `[]Session{session_id, edge_id, state, role, self_pn?, last_connected_at?, last_seen_at?}` | `401` | `ListSessions` (`dashboard.go:49`) |
+| `POST /api/v1/sessions/{id}/role` | `{role}` con `role ∈ {bot, passive}` (`setSessionRoleRequest`) | `{session_id, role}` (200; este BFF descarta el body y re-lista) | `400` rol inválido · `401` · `404` sesión ajena/inexistente (opaco) · `500` | `SetSessionRole` (`dashboard.go:70`) |
+| `POST /api/v1/messages` | `{session_id, to, text}` (`sendMessageRequest`) | `SendResult{acked_command_id, ok, error?}` (200 **incluso si `ok:false`**) | `400` datos inválidos · `401` · `404` sesión ajena · `502` Edge offline · `504` timeout · `500` | `SendMessage` (`dashboard.go:88`) |
+| `GET /api/v1/entitlements` | — | `Entitlements{plan, features[], cache_ttl_seconds}` | `401` · `403` token sin el scope `entitlements.read` | `GetEntitlements` (`entitlements.go:26`) |
+| `GET /api/v1/flows` | — | `[]FlowSummary{flow_id, version, created_at?}` | `401` | `ListFlows` (`editor.go:102`) |
+| `GET /api/v1/flows/{id}` | — | `model.Flow` crudo (`{flow_id, version, initial, nodes}`), devuelto sin re-serializar | `401` · `404` (ajeno/inexistente, opaco) | `GetFlow` (`editor.go:123`) |
+| `POST /api/v1/flows` | `{definition: <model.Flow>}` (**anidado**, `publishFlowRequest`) | `PublishFlowResult{flow_id, version}` (201) | `401` · `4xx` rechazo de validación (mensaje mostrable) · `5xx` | `PublishFlow` (`editor.go:144`) |
+| `GET /api/v1/triggers` | — | `[]Trigger{trigger_id, kind, keyword?, match_type, flow_id?, priority, enabled, message?, session_id?}` | `401` | `ListTriggers` (`editor.go:166`) |
+| `POST /api/v1/triggers` | `CreateTriggerRequest{kind, keyword?, match_type?, flow_id?, priority, message?, session_id?}` | `Trigger` creado (201) | `401` · `4xx` rechazo de validación (mensaje mostrable) · `5xx` | `CreateTrigger` (`editor.go:187`) |
+| `DELETE /api/v1/triggers/{id}` | — | sin body (204) | `401` · `404` (ajeno/inexistente, opaco) | `DeleteTrigger` (`editor.go:208`) |
 
 Notas de contrato:
+- **Entitlements: lista de habilitadas, no mapa** (`Entitlements`, `entitlements.go:17`). `features`
+  trae **solo** las capacidades efectivas —las del plan con los overrides del tenant ya aplicados—,
+  en el orden estable que fija el servidor. La decisión del cliente es por **pertenencia**: lo que no
+  está en la lista, no está contratado. El tenant no viaja ni en la petición ni en la respuesta (sale
+  del token, INV-8). El `403` por falta de scope es un caso esperado, no un fallo de plataforma: se
+  distingue con `StatusCodeOf`. **Este BFF resuelve por petición, deliberadamente**: pide el endpoint
+  en cada render del dashboard, así que no necesita `cache_ttl_seconds` —el gate va siempre fresco—.
+  El TTL está en el contrato para los clientes que **sí** cachean (una app móvil, p. ej.): respétalo
+  si guardas la respuesta. Y ojo con el alcance: en este BFF las features deciden lo que se **pinta**
+  (§6), nunca lo que se **puede** —eso lo resuelve el servidor en cada llamada—.
 - **Flows son inmutables versionados**: la clave persistida es `(tenant_id, flow_id, version)`. No
   hay `PUT`/`DELETE`; "editar" = publicar con `POST /api/v1/flows` una definición nueva, que el
   servidor versiona como `version+1`.
@@ -115,21 +128,21 @@ Notas de contrato:
 El cliente (`internal/apiclient`) tipifica los fallos en tres formas que los handlers distinguen
 sin acoplarse al string del error:
 
-1. **`ErrUnauthorized`** (sentinel, `client.go:56-58`) — cualquier `401`. Se detecta con
+1. **`ErrUnauthorized`** (sentinel, `transport.go:33`) — cualquier `401`. Se detecta con
    `errors.Is`. Dispara el patrón refresh+reintento (§2); si no hay recuperación, el usuario
    termina en `/login`.
-2. **`*APIError{Op, StatusCode}`** (`client.go:60-78`) — cualquier otro no-2xx en un endpoint de
+2. **`*APIError{Op, StatusCode}`** (`transport.go:36`) — cualquier otro no-2xx en un endpoint de
    **lectura**, o un `5xx`/error genérico en uno de **escritura**. **No** arrastra el cuerpo de la
    respuesta: el mensaje al usuario es genérico y fijo por código (mapeo en
-   `internal/web/dashboard.go:65-92` para `SendMessage`: `400`→"datos inválidos", `404`→"sesión
+   `internal/web/dashboard_handler.go:83` para `SendMessage`: `400`→"datos inválidos", `404`→"sesión
    ajena", `502`→"desconectado", `504`→"tardó demasiado", resto→genérico). El código se extrae con
-   `apiclient.StatusCodeOf(err)`.
-3. **`*RejectionError{Op, StatusCode, Message}`** (`flows.go:126-164`) — **solo** en endpoints de
+   `apiclient.StatusCodeOf(err)` (`transport.go:54`).
+3. **`*RejectionError{Op, StatusCode, Message}`** (`editor.go:55`) — **solo** en endpoints de
    **escritura** (`PublishFlow`, `CreateTrigger`) y **solo** para `4xx` distinto de `401`. Aquí el
    cuerpo de la API **sí** se muestra al usuario (acotado a 500 bytes,
-   `maxRejectionBody`): es un rechazo de **contenido propio del operador** (p. ej. "definición de
-   flujo inválida", "keyword es requerido"), no una traza interna — mostrarlo ayuda a corregir
-   (REQ-E4). Se extrae con `apiclient.RejectionMessageOf(err)`.
+   `maxRejectionBody`, `editor.go:65`): es un rechazo de **contenido propio del operador** (p. ej.
+   "definición de flujo inválida", "keyword es requerido"), no una traza interna — mostrarlo ayuda a
+   corregir (REQ-E4). Se extrae con `apiclient.RejectionMessageOf(err)` (`editor.go:83`).
 
 Regla general que un cliente nuevo debería replicar: **nunca mostrar el cuerpo crudo de un error
 que no sea un rechazo de validación sobre contenido propio.** Los `5xx` y los `401` no llevan
@@ -140,7 +153,7 @@ mensaje seguro de exponer.
 `SendMessage` devuelve **200** con `{ok: false, error: "..."}` cuando el Edge recibió el comando
 pero **no pudo entregarlo** — es distinto de un error de transporte. Este BFF trata `ok:false`
 como fallo de negocio pero **no expone `result.Error`** al usuario (mensaje fijo genérico,
-`internal/web/dashboard.go:87-90`): el detalle del Edge no se considera "contenido propio del
+`internal/web/dashboard_handler.go:94`): el detalle del Edge no se considera "contenido propio del
 operador".
 
 ## 5. Diferencia con la mini-web local del Edge (`wapp-ctl`)
@@ -164,3 +177,34 @@ Son dos superficies deliberadamente **separadas, no fusionables**:
 emparejamiento y la DEK son asunto exclusivamente local del Edge; la nube (y por tanto este BFF)
 nunca debe ver ni intermediar esas operaciones. Un cliente que necesite emparejar un teléfono habla
 con `wapp-ctl` en la máquina del Edge, no con esta consola ni con `/api/v1`.
+
+## 6. Cómo este BFF usa las features en la UI (Plan 040 · Ola 2)
+
+Las features de §3 alimentan dos cosas en el dashboard, y conviene no confundirlas:
+
+1. **Los chips informativos** — el plan y una etiqueta por feature efectiva
+   (`templates/pages/dashboard.html:13-25`). Si el endpoint no se pudo consultar, en su lugar sale un
+   aviso de modo degradado; la página **no** se cae por eso.
+2. **El gate de secciones** — un bloque de UI que depende de una capacidad se emite solo si la
+   feature está contratada:
+
+   ```
+   {{ if $.Entitlements.Has "<feature>" }} … {{ end }}
+   ```
+
+   El gate vive en la **plantilla**, no en CSS ni en JS: sin la feature el bloque **no llega al
+   HTML**, así que no hay nada que destapar con el inspector (y encaja con la CSP sin
+   `'unsafe-inline'`). Hoy lo usa la sección del clasificador de intenciones
+   (`templates/pages/dashboard.html:124`, feature `llm_intent`).
+
+**Fail-closed**: `resolveEntitlements` nunca devuelve error — ante un fallo, un `403` o un endpoint
+que aún no exista, devuelve la vista cero (`internal/web/entitlements.go:60`), y `Has` sobre esa
+vista responde `false` para todo (`internal/web/entitlements.go:41`). Una consola que enseña de menos es
+preferible a una que promete lo que el tenant no ha contratado.
+
+Un cliente móvil que replique el patrón debería replicar también la regla: **pintar por feature es
+cortesía de UI, no control de acceso.** La autorización real la aplica el middleware `RequireFeature`
+de la plataforma (`cloud/wapp-cloud-platform/internal/entitlements/middleware.go`) en cada llamada:
+corta con `403` y cuerpo `{"error":"feature_not_enabled","feature":"<clave>"}`, y es fail-closed
+(sin identidad o con el resolver caído también corta). Un cliente que se saltara el gate de UI
+seguiría chocando con él.

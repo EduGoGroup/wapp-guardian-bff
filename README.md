@@ -1,13 +1,14 @@
 # wapp-guardian-bff
 
-**Estado:** implementado (Plan 021, T1–T4) — consola operativa mínima, primer consumidor real
-de la API pública `/api/v1` de wApp.
+**Estado:** implementado (Plan 021, T1–T4; + Plan 040 · Ola 2: plan y capacidades del tenant) —
+consola operativa mínima, primer consumidor real de la API pública `/api/v1` de wApp.
 
 ## Qué es
 
 Consola web BFF (Back-For-Frontend) de **operación** de wApp: permite listar las sesiones
-(teléfonos) vinculadas del tenant, enviar un mensaje de WhatsApp por una de ellas, y gestionar
-menús/encuestas (`flows` versionados) y sus disparadores (`triggers`). Es la **implementación de
+(teléfonos) vinculadas del tenant, enviar un mensaje de WhatsApp por una de ellas, gestionar
+menús/encuestas (`flows` versionados) y sus disparadores (`triggers`), y ver el **plan y las
+capacidades contratadas** del tenant —que además deciden qué secciones se pintan—. Es la **implementación de
 referencia** de un cliente de `/api/v1` (Pieza 04) — su contrato consumido, documentado en
 [`docs/contrato-api-publica.md`](docs/contrato-api-publica.md), sirve de plantilla para futuros
 clientes Android/iOS.
@@ -37,7 +38,7 @@ Navegador ──HTTPS──►  wapp-guardian-bff  ──HTTPS Bearer──►  
   `refresh_token` se guarda en **una** cookie HttpOnly (`wapp_guardian_session`, JSON en
   base64-URL); el navegador **nunca** ve el token (INV-4). El BFF valida el token con
   **parse-unverified + `exp`** (no verifica firma: la API pública es el gate criptográfico real en
-  cada llamada) — ver `internal/web/auth.go`.
+  cada llamada) — ver `internal/web/session.go`.
 - **Refresh + reintento**: toda llamada de negocio pasa por `withAuthRetry` — ante un 401 refresca
   la sesión una vez (`POST /api/v1/auth/refresh`) y reintenta; si falla, el usuario vuelve a ver el
   login.
@@ -49,6 +50,11 @@ Navegador ──HTTPS──►  wapp-guardian-bff  ──HTTPS Bearer──►  
   sí se puede fijar porque no hay SSE de larga vida: el QR es local en el Edge).
 - **UI Material Design 3** propia (paleta teal/verde), CSS embebido y servido mismo-origen
   (`internal/web/static/css/app.css`), sin CDNs — encaja con la CSP.
+- **Gate por capacidad, server-side**: el dashboard lee `GET /api/v1/entitlements` y envuelve las
+  secciones que dependen de una feature en `{{ if $.Entitlements.Has "<feature>" }}`. Sin la feature
+  el bloque **no se emite en el HTML** (no se esconde con CSS ni JS), y si el endpoint falla la vista
+  es **fail-closed**: se degrada con un aviso y ningún bloque gateado sale
+  (`internal/web/entitlements.go`).
 
 ## Cómo se ejecuta
 
@@ -87,17 +93,25 @@ cmd/guardian-bff/main.go     — entrypoint: config + logger + web.Run(:8104)
 internal/
 ├── config/config.go         — env (WAPP_*) → Config
 ├── apiclient/                — cliente HTTP server-to-server contra /api/v1
-│   ├── client.go             — auth (login/refresh/logout) + sessions + messages
-│   ├── flows.go               — flows (listar/ver/publicar)
-│   └── triggers.go            — triggers (listar/crear/borrar)
+│   ├── transport.go          — request autenticada, ErrUnauthorized/APIError, StatusCodeOf
+│   ├── auth.go               — login/refresh/logout (AuthResult y sus DTO)
+│   ├── dashboard.go          — sessions + rol de sesión + messages
+│   ├── editor.go             — flows (listar/ver/publicar) + triggers (listar/crear/borrar)
+│   ├── entitlements.go       — GET /api/v1/entitlements (plan + features efectivas)
+│   └── identity.go/exchange.go/delegated.go — identity-api y canje (delegación opcional)
 └── web/
     ├── server.go             — NewRouter (Gin), rutas, http.Server endurecido
     ├── security.go           — CSP+nonce, headers, CORS fail-closed
+    ├── csrf.go               — token CSRF de los formularios
     ├── ratelimit.go          — keyedRateLimiter en memoria
-    ├── handlers.go           — login/logout, cookie de sesión, render()
-    ├── auth.go               — AuthMiddleware, parse-unverified+exp, refresh
-    ├── dashboard.go          — listado de sesiones + envío de mensaje
-    ├── editor.go             — flows (publicar versión) + triggers (crear/borrar)
+    ├── deadline.go           — deadline por petición sobre la cadena hacia la API
+    ├── handlers.go           — composición de handlers (NewHandler, puerto de API)
+    ├── render.go             — cookie de sesión (set/clear/maxAge) y render()
+    ├── session.go            — sessionData + parse-unverified+exp de los claims
+    ├── auth_handler.go       — login/logout, AuthMiddleware, refresh proactivo/pasivo, withAuthRetry
+    ├── dashboard_handler.go  — listado de sesiones + envío de mensaje
+    ├── editor_handler.go     — flows (publicar versión) + triggers (crear/borrar)
+    ├── entitlements.go       — vista de plan/features (Has) y gate fail-closed
     ├── static/css/app.css    — design system MD3 embebido (//go:embed)
     └── templates/            — layout base.html + páginas (login, dashboard, flows, triggers)
 docs/contrato-api-publica.md — contrato consumido de /api/v1 (referencia para otros clientes)
