@@ -36,6 +36,11 @@ func TestGetIntakeDistinguishesUnknownFromTerminal(t *testing.T) {
 			wantNil:  true,
 			scenario: "la API todavía no publica los destinos",
 		},
+		"campo nulo": {
+			body:     `{"id":"in-1","status":"confirmed","items":[],"allowed_transitions":null}`,
+			wantNil:  true,
+			scenario: "un null explícito tampoco es una lista vacía",
+		},
 		"lista vacía": {
 			body:     `{"id":"in-1","status":"settled","items":[],"allowed_transitions":[]}`,
 			wantNil:  false,

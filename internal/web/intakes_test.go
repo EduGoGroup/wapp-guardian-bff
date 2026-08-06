@@ -306,21 +306,32 @@ func TestIntakeDetailTerminalHasNoSelect(t *testing.T) {
 // pantalla lo DICE en vez de inventarse los destinos o fingir un estado final. Es la diferencia entre
 // "no admite cambios" y "no lo sé", y confundirlas le costaría al operador un pedido.
 func TestIntakeDetailWithoutAllowedTransitionsDeclaresGap(t *testing.T) {
-	api := intakesAPI([]string{"cart_basic"}, func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.WriteString(w, `{"id":"in-1","contact_id":"c","session_id":"s","status":"confirmed",
-		 "total":1,"created_at":"2026-08-05T10:00:00Z","updated_at":"2026-08-05T10:00:00Z","items":[]}`)
-	})
-	defer api.Close()
+	// Los dos silencios de la API se tratan igual entre sí y DISTINTO del `[]` terminal: el campo que
+	// no viene y el `null` explícito significan «no lo sé», nunca «no hay acciones posibles».
+	for name, body := range map[string]string{
+		"sin el campo": `{"id":"in-1","contact_id":"c","session_id":"s","status":"confirmed",
+		 "total":1,"created_at":"2026-08-05T10:00:00Z","updated_at":"2026-08-05T10:00:00Z","items":[]}`,
+		"campo nulo": `{"id":"in-1","contact_id":"c","session_id":"s","status":"confirmed",
+		 "total":1,"created_at":"2026-08-05T10:00:00Z","updated_at":"2026-08-05T10:00:00Z","items":[],
+		 "allowed_transitions":null}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			api := intakesAPI([]string{"cart_basic"}, func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = io.WriteString(w, body)
+			})
+			defer api.Close()
 
-	out := getWithCookie(NewRouter(authTestCfg(api.URL)), "/intakes/in-1", validSessionCookie(t)).Body.String()
-	if strings.Contains(out, "<select") {
-		t.Error("sin destinos publicados no debe pintarse un desplegable")
-	}
-	if strings.Contains(out, "estado final") {
-		t.Error("«no se sabe» no puede presentarse como «estado final»")
-	}
-	if !strings.Contains(out, "allowed_transitions") {
-		t.Error("la pantalla debía nombrar lo que le falta a la API")
+			out := getWithCookie(NewRouter(authTestCfg(api.URL)), "/intakes/in-1", validSessionCookie(t)).Body.String()
+			if strings.Contains(out, "<select") {
+				t.Error("sin destinos publicados no debe pintarse un desplegable")
+			}
+			if strings.Contains(out, "estado final") {
+				t.Error("«no se sabe» no puede presentarse como «estado final»")
+			}
+			if !strings.Contains(out, "allowed_transitions") {
+				t.Error("la pantalla debía nombrar lo que le falta a la API")
+			}
+		})
 	}
 }
 
