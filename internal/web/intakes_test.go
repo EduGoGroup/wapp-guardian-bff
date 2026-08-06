@@ -283,6 +283,93 @@ func TestIntakeDetailRendersItemsAndAllowedTransitions(t *testing.T) {
 	}
 }
 
+// Cuerpos REALES de GET /api/v1/intakes/{id}, capturados del handler de la plataforma
+// (wapp-cloud-platform `a804943`, `publicapi.getIntakeHandler` servido por su propio mux con el
+// Context Token firmado). No están escritos a mano: se volcaron tal cual para que este lado se
+// verifique contra los bytes que la API produce, no contra lo que creíamos que producía.
+const (
+	realDetailConfirmed = `{"id":"55555555-5555-5555-5555-555555555555","contact_id":"9f1c0a7e-0000-4000-8000-000000000abc",` +
+		`"session_id":"sess-b","status":"confirmed","total":18000,"created_at":"2026-08-05T12:00:00Z",` +
+		`"updated_at":"2026-08-05T12:00:00Z","items":[],` +
+		`"allowed_transitions":["cancelled","deposit_requested","pending_approval","settled"]}`
+	realDetailTerminal = `{"id":"33333333-3333-3333-3333-333333333333","contact_id":"9f1c0a7e-0000-4000-8000-000000000abc",` +
+		`"session_id":"sess-b","status":"cancelled","total":18000,"created_at":"2026-08-03T12:00:00Z",` +
+		`"updated_at":"2026-08-03T12:00:00Z","items":[],"allowed_transitions":[]}`
+	realDetailLegacy = `{"id":"11111111-1111-1111-1111-111111111111","contact_id":"9f1c0a7e-0000-4000-8000-000000000abc",` +
+		`"session_id":"sess-a","status":"confirmed","total":18000,"created_at":"2026-08-01T12:00:00Z",` +
+		`"updated_at":"2026-08-01T12:00:00Z","items":[{"sku":"torta-v1","label":"Torta 10-12 porciones","qty":1,` +
+		`"unit_price":18000},{"sku":"_shipping","label":"Envío — Providencia","qty":1,"unit_price":3000}],` +
+		`"allowed_transitions":["cancelled","deposit_requested","pending_approval","settled"]}`
+)
+
+// TestIntakeDetailAgainstRealPlatformPayload es la prueba de contrato entre los dos repos: la
+// pantalla se puebla con la respuesta REAL de la plataforma, por la vía buena (el campo del detalle)
+// y sin pasar por ningún rechazo 422.
+func TestIntakeDetailAgainstRealPlatformPayload(t *testing.T) {
+	t.Run("estado con salidas", func(t *testing.T) {
+		out := renderRealDetail(t, realDetailConfirmed)
+		for _, want := range []string{"cancelled", "deposit_requested", "pending_approval", "settled"} {
+			if !strings.Contains(out, `<option value="`+want+`">`) {
+				t.Errorf("el desplegable debía ofrecer %q", want)
+			}
+		}
+		if strings.Count(out, "<option") != 4 {
+			t.Errorf("debían ser exactamente 4 opciones, got %d", strings.Count(out, "<option"))
+		}
+		// La vía es la del detalle: sin esto, el mismo HTML podría estar saliendo del 422.
+		if strings.Contains(out, "vienen del último intento rechazado") {
+			t.Error("los destinos debían salir del detalle, no de un rechazo previo")
+		}
+		if strings.Contains(out, "allowed_transitions") {
+			t.Error("con el campo publicado no debe quedar el aviso de que falta")
+		}
+	})
+
+	t.Run("estado terminal", func(t *testing.T) {
+		out := renderRealDetail(t, realDetailTerminal)
+		if strings.Contains(out, "<select") {
+			t.Error("un `[]` de la plataforma significa terminal: no se pinta desplegable")
+		}
+		if !strings.Contains(out, "estado final") {
+			t.Error("el `[]` real debía leerse como «estado final», no como «no lo sé»")
+		}
+		if strings.Contains(out, "allowed_transitions") {
+			t.Error("«no hay acciones» no puede presentarse como «falta el campo»")
+		}
+	})
+
+	t.Run("solicitud legada con líneas", func(t *testing.T) {
+		out := renderRealDetail(t, realDetailLegacy)
+		if !strings.Contains(out, "estado · confirmado") {
+			t.Error("el `closed` legado ya llega normalizado a confirmed y debía pintarse como «confirmado»")
+		}
+		if !strings.Contains(out, "Torta 10-12 porciones") || !strings.Contains(out, "Envío — Providencia") {
+			t.Error("las líneas reales debían pintarse con sus tildes intactas")
+		}
+		if !strings.Contains(out, "18000.00") || !strings.Contains(out, "3000.00") {
+			t.Error("los precios unitarios reales debían pintarse")
+		}
+	})
+}
+
+// renderRealDetail sirve un cuerpo REAL de la plataforma y devuelve el HTML de la pantalla.
+func renderRealDetail(t *testing.T, body string) string {
+	t.Helper()
+	api := intakesAPI([]string{"cart_basic"}, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("esta prueba no debía provocar un %s: la vía es la del detalle", r.Method)
+		}
+		_, _ = io.WriteString(w, body)
+	})
+	defer api.Close()
+
+	rec := getWithCookie(NewRouter(authTestCfg(api.URL)), "/intakes/in-real", validSessionCookie(t))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("el detalle real debía renderizar 200, got %d", rec.Code)
+	}
+	return rec.Body.String()
+}
+
 // TestIntakeDetailTerminalHasNoSelect: una lista VACÍA de destinos significa estado final, y así se
 // dice — sin desplegable.
 func TestIntakeDetailTerminalHasNoSelect(t *testing.T) {
