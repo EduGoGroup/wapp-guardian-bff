@@ -97,6 +97,7 @@ type DelegatedClient struct {
 	*DashboardClient
 	*EditorClient
 	*IntakesClient
+	*TenantVariablesClient
 }
 
 // NewDelegated construye el cliente de la delegación: identity para las credenciales, plataforma
@@ -109,5 +110,6 @@ func NewDelegated(platformBaseURL, identityBaseURL string) *DelegatedClient {
 		DashboardClient:        NewDashboardClient(t),
 		EditorClient:           NewEditorClient(t),
 		IntakesClient:          NewIntakesClient(t),
+		TenantVariablesClient:  NewTenantVariablesClient(t),
 	}
 }

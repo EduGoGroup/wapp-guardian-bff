@@ -181,6 +181,12 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	protected.POST("/triggers", h.DoCreateTrigger)
 	protected.POST("/triggers/:id/delete", h.DoDeleteTrigger)
 
+	// Variables de empresa (Plan 041 · T2.1): pares clave→valor que wApp no interpreta. Pantalla
+	// PERMANENTE (capa técnica, no migra a KMP) y SIN gate de feature. El POST guarda el conjunto
+	// entero, que es la única forma que da la API de quitar una variable.
+	protected.GET("/variables", h.ShowTenantVariables)
+	protected.POST("/variables", h.DoSaveTenantVariables)
+
 	// Bandeja de solicitudes (Plan 041 · T1.5), gateada por la feature `cart_basic` en la plantilla y
 	// por RequireFeature en la plataforma. PANTALLA PROVISIONAL: migra a KMP (planes 045/047, ADR-0035).
 	protected.GET("/intakes", h.ShowIntakes)

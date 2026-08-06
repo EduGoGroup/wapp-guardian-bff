@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -158,31 +157,15 @@ func (c *IntakesClient) ListIntakes(ctx context.Context, accessToken string, f I
 	}
 	defer drainClose(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, listIntakesStatusError(resp)
+		// El 400 es el único fallo del listado con un motivo accionable: el filtro venía
+		// mal (una fecha ilegible, un estado que no existe).
+		return nil, reasonedStatusError("intakes", resp, http.StatusBadRequest)
 	}
 	var out IntakePage
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, fmt.Errorf("apiclient: intakes: decodificar respuesta: %w", err)
 	}
 	return &out, nil
-}
-
-// listIntakesStatusError traduce el fallo del listado. El 400 es el ÚNICO que trae
-// un motivo accionable —el filtro venía mal: una fecha ilegible, un estado que no
-// existe— así que se conserva su mensaje para poder decírselo al operador. El resto
-// (403 sin feature o sin scope, 5xx) sale como *APIError, que es lo que
-// StatusCodeOf sabe leer.
-func listIntakesStatusError(resp *http.Response) error {
-	if resp.StatusCode != http.StatusBadRequest {
-		return statusError("intakes", resp.StatusCode)
-	}
-	var body struct {
-		Error string `json:"error"`
-	}
-	// Un cuerpo ilegible deja el mensaje vacío y el llamante usa su texto genérico:
-	// el código HTTP ya es la información principal.
-	_ = json.NewDecoder(io.LimitReader(resp.Body, maxRejectionBody)).Decode(&body)
-	return &RejectionError{Op: "intakes", StatusCode: http.StatusBadRequest, Message: body.Error}
 }
 
 // GetIntake devuelve la solicitud {id} con sus líneas vía GET /api/v1/intakes/{id}.

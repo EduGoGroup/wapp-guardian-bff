@@ -7,16 +7,18 @@ type Client struct {
 	*DashboardClient
 	*EditorClient
 	*IntakesClient
+	*TenantVariablesClient
 }
 
 // New construye el cliente unificado con un http.Client de timeout por defecto (15s).
 func New(baseURL string) *Client {
 	t := NewTransport(baseURL)
 	return &Client{
-		Transport:       t,
-		AuthClient:      NewAuthClient(t),
-		DashboardClient: NewDashboardClient(t),
-		EditorClient:    NewEditorClient(t),
-		IntakesClient:   NewIntakesClient(t),
+		Transport:             t,
+		AuthClient:            NewAuthClient(t),
+		DashboardClient:       NewDashboardClient(t),
+		EditorClient:          NewEditorClient(t),
+		IntakesClient:         NewIntakesClient(t),
+		TenantVariablesClient: NewTenantVariablesClient(t),
 	}
 }

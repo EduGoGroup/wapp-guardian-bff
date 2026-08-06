@@ -1,0 +1,80 @@
+{{ define "tenant-variables.html" }}
+<section class="stack">
+
+    {{ if .Notice }}
+    <div class="snackbar {{ if .Notice.Success }}snackbar--success{{ else }}snackbar--error{{ end }}" role="alert">
+        <span>{{ .Notice.Message }}</span>
+    </div>
+    {{ end }}
+
+    <div class="card" id="section-tenant-variables">
+        <h1 class="headline">Variables de empresa</h1>
+        <p class="supporting">Datos de tu negocio que los flujos usan tal cual: nombre, dirección,
+            horario, cuenta de pago, lo que necesites. wApp los guarda y los devuelve tal cual —no
+            interpreta la clave ni el valor—, así que puedes llamarlos como quieras.</p>
+
+        {{/* La semántica destructiva del PUT se cuenta ANTES de que el operador guarde, no después.
+             La API reemplaza el conjunto entero: no hay borrado por clave, y por eso quitar una fila
+             es exactamente no enviarla. */}}
+        <div class="snackbar snackbar--info" role="note">
+            <span>Se guarda el conjunto completo: lo que quites aquí deja de existir. Si otra persona
+                edita a la vez, vale lo último que se guarde, entero.</span>
+        </div>
+
+        {{ if not .View.Loaded }}
+        <p class="body">No hay nada que mostrar hasta que la plataforma vuelva a responder.</p>
+        {{ else }}
+
+        <p class="body">
+            {{ if .View.Count }}{{ .View.Count }} variable{{ if ne .View.Count 1 }}s{{ end }} en este tenant.
+            {{ else }}Este tenant todavía no tiene variables: escribe la primera abajo.{{ end }}
+            {{ if .View.UpdatedAt }}Último cambio: {{ .View.UpdatedAt }} (UTC).{{ end }}
+        </p>
+
+        <form method="POST" action="/variables" class="stack" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Clave</th>
+                            <th>Valor</th>
+                            <th>Quitar</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{ range $i, $row := .View.Rows }}
+                        <tr>
+                            <td>
+                                <label class="field__label" for="key-{{ $i }}" hidden>Clave {{ $i }}</label>
+                                <input class="field__input" type="text" id="key-{{ $i }}" name="key"
+                                       value="{{ $row.Key }}" placeholder="nombre_negocio">
+                            </td>
+                            <td>
+                                <label class="field__label" for="value-{{ $i }}" hidden>Valor {{ $i }}</label>
+                                <input class="field__input" type="text" id="value-{{ $i }}" name="value"
+                                       value="{{ $row.Value }}" placeholder="Pastelería Aurora">
+                            </td>
+                            <td>
+                                {{/* Quitar no es otra operación: manda el formulario entero indicando
+                                     qué fila NO debe viajar. Va por índice y no por clave, para que
+                                     quitar la fila correcta no dependa de si el texto se editó antes. */}}
+                                {{ if $row.Key }}
+                                <button type="submit" name="remove" value="{{ $i }}" class="btn btn--text">Quitar</button>
+                                {{ end }}
+                            </td>
+                        </tr>
+                        {{ end }}
+                    </tbody>
+                </table>
+            </div>
+            <p class="supporting">Las filas vacías del final son para añadir. Para cambiar una clave,
+                edítala y guarda: la anterior desaparece.</p>
+            <div class="row">
+                <button type="submit" class="btn btn--filled">Guardar cambios</button>
+            </div>
+        </form>
+        {{ end }}
+    </div>
+</section>
+{{ end }}

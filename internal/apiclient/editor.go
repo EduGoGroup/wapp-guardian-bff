@@ -88,6 +88,17 @@ func RejectionMessageOf(err error) (string, bool) {
 	return "", false
 }
 
+// RejectionOf extrae el rechazo entero (status + mensaje). Hace falta cuando el llamante distingue
+// entre varios códigos con motivo —un 400 de forma y un 413 por tamaño piden consejos distintos— y
+// no le basta con el texto.
+func RejectionOf(err error) (*RejectionError, bool) {
+	var rej *RejectionError
+	if errors.As(err, &rej) {
+		return rej, true
+	}
+	return nil, false
+}
+
 // EditorClient maneja las operaciones de flujos y triggers contra la API.
 type EditorClient struct {
 	t *Transport

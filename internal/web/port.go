@@ -55,6 +55,18 @@ type IntakesAPI interface {
 	EntitlementsReader
 }
 
+// TenantVariablesManager define el contrato de las VARIABLES DE EMPRESA (Plan 041 · T2.1): pares
+// clave→valor que wApp no interpreta (D-041.1).
+//
+// Solo hay leer y REEMPLAZAR, y no falta un borrado: el borrado ES el reemplazo sin esa clave. La
+// interfaz refleja el contrato tal cual en vez de ofrecer un `Delete` de conveniencia que tendría que
+// inventarse por dentro la foto completa —y que dejaría creer al llamante que existe una operación
+// por clave que la API no tiene.
+type TenantVariablesManager interface {
+	GetTenantVariables(ctx context.Context, accessToken string) (*apiclient.TenantVariables, error)
+	ReplaceTenantVariables(ctx context.Context, accessToken string, vars map[string]string) (*apiclient.TenantVariables, error)
+}
+
 // EditorManager define el contrato para la edición de flujos y la gestión de reglas de disparo.
 type EditorManager interface {
 	ListFlows(ctx context.Context, accessToken string) ([]apiclient.FlowSummary, error)
@@ -72,6 +84,7 @@ type APIPort interface {
 	EntitlementsReader
 	EditorManager
 	IntakeManager
+	TenantVariablesManager
 }
 
 // Verificación en compilación de que los clientes concretos satisfacen las interfaces segregadas.
@@ -87,6 +100,8 @@ var (
 	_ DashboardAPI       = (*apiclient.DashboardClient)(nil)
 	_ EditorManager      = (*apiclient.EditorClient)(nil)
 	_ IntakeManager      = (*apiclient.IntakesClient)(nil)
-	_ APIPort            = (*apiclient.Client)(nil)
-	_ APIPort            = (*apiclient.DelegatedClient)(nil)
+
+	_ TenantVariablesManager = (*apiclient.TenantVariablesClient)(nil)
+	_ APIPort                = (*apiclient.Client)(nil)
+	_ APIPort                = (*apiclient.DelegatedClient)(nil)
 )

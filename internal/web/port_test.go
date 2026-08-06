@@ -23,6 +23,9 @@ type fakeAPIPort struct {
 	listIntakes     func(ctx context.Context, accessToken string, f apiclient.IntakeFilter) (*apiclient.IntakePage, error)
 	getIntake       func(ctx context.Context, accessToken, id string) (*apiclient.IntakeDetail, error)
 	setIntakeStatus func(ctx context.Context, accessToken, id, status string) (*apiclient.Intake, error)
+
+	getTenantVariables     func(ctx context.Context, accessToken string) (*apiclient.TenantVariables, error)
+	replaceTenantVariables func(ctx context.Context, accessToken string, vars map[string]string) (*apiclient.TenantVariables, error)
 }
 
 var _ APIPort = (*fakeAPIPort)(nil)
@@ -86,6 +89,18 @@ func (f *fakeAPIPort) SetIntakeStatus(ctx context.Context, at, id, status string
 		return f.setIntakeStatus(ctx, at, id, status)
 	}
 	return &apiclient.Intake{}, nil
+}
+func (f *fakeAPIPort) GetTenantVariables(ctx context.Context, at string) (*apiclient.TenantVariables, error) {
+	if f.getTenantVariables != nil {
+		return f.getTenantVariables(ctx, at)
+	}
+	return &apiclient.TenantVariables{Variables: map[string]string{}}, nil
+}
+func (f *fakeAPIPort) ReplaceTenantVariables(ctx context.Context, at string, vars map[string]string) (*apiclient.TenantVariables, error) {
+	if f.replaceTenantVariables != nil {
+		return f.replaceTenantVariables(ctx, at, vars)
+	}
+	return &apiclient.TenantVariables{Variables: vars}, nil
 }
 
 // TestWithAuthRetryRefreshesOn401 ejercita el seam del puerto SIN HTTP: la primera llamada de negocio

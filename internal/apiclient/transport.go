@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 )
@@ -48,6 +49,25 @@ func statusError(op string, status int) error {
 		return fmt.Errorf("%s: %w", op, ErrUnauthorized)
 	}
 	return &APIError{Op: op, StatusCode: status}
+}
+
+// reasonedStatusError traduce un no-2xx conservando el MOTIVO que manda la API (`{"error":"…"}`) solo
+// para los códigos indicados, y dejando el resto como *APIError legible por StatusCodeOf.
+//
+// La distinción no es cosmética: hay rechazos cuyo cuerpo es la única forma de que el operador sepa
+// qué corregir (un filtro mal escrito, una clave demasiado larga), y otros —403, 404, 5xx— donde el
+// código ya lo dice todo y el cuerpo del upstream no debe acabar en pantalla.
+func reasonedStatusError(op string, resp *http.Response, reasoned ...int) error {
+	if !slices.Contains(reasoned, resp.StatusCode) {
+		return statusError(op, resp.StatusCode)
+	}
+	var body struct {
+		Error string `json:"error"`
+	}
+	// Un cuerpo ilegible deja el mensaje vacío y el llamante usa su texto genérico: el código HTTP
+	// sigue siendo la información principal.
+	_ = json.NewDecoder(io.LimitReader(resp.Body, maxRejectionBody)).Decode(&body)
+	return &RejectionError{Op: op, StatusCode: resp.StatusCode, Message: body.Error}
 }
 
 // StatusCodeOf extrae el status HTTP del upstream de un error de *APIError (0 si no lo es).

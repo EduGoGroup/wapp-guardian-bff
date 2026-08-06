@@ -46,6 +46,9 @@
             {{ end }}
             <a href="/flows" class="btn btn--text{{ if hasPrefix .CurrentPath "/flows" }} btn--active{{ end }}">Flujos</a>
             <a href="/triggers" class="btn btn--text{{ if hasPrefix .CurrentPath "/triggers" }} btn--active{{ end }}">Triggers</a>
+            {{/* Variables de empresa: capa técnica, sin gate de feature, así que el enlace sale para
+                 cualquier sesión autenticada (a diferencia del de Solicitudes). */}}
+            <a href="/variables" class="btn btn--text{{ if hasPrefix .CurrentPath "/variables" }} btn--active{{ end }}">Variables</a>
             <form method="POST" action="/logout" class="app-bar__logout">
                 <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
                 <button type="submit" class="btn btn--text">Cerrar sesión</button>
