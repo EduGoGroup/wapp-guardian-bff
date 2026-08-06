@@ -20,6 +20,9 @@ type fakeAPIPort struct {
 	refresh         func(ctx context.Context, refreshToken string) (*apiclient.AuthResult, error)
 	sendMessage     func(ctx context.Context, accessToken, sessionID, to, text string) (*apiclient.SendResult, error)
 	getEntitlements func(ctx context.Context, accessToken string) (*apiclient.Entitlements, error)
+	listIntakes     func(ctx context.Context, accessToken string, f apiclient.IntakeFilter) (*apiclient.IntakePage, error)
+	getIntake       func(ctx context.Context, accessToken, id string) (*apiclient.IntakeDetail, error)
+	setIntakeStatus func(ctx context.Context, accessToken, id, status string) (*apiclient.Intake, error)
 }
 
 var _ APIPort = (*fakeAPIPort)(nil)
@@ -66,6 +69,24 @@ func (f *fakeAPIPort) CreateTrigger(context.Context, string, apiclient.CreateTri
 	return nil, nil
 }
 func (f *fakeAPIPort) DeleteTrigger(context.Context, string, string) error { return nil }
+func (f *fakeAPIPort) ListIntakes(ctx context.Context, at string, filter apiclient.IntakeFilter) (*apiclient.IntakePage, error) {
+	if f.listIntakes != nil {
+		return f.listIntakes(ctx, at, filter)
+	}
+	return &apiclient.IntakePage{Intakes: []apiclient.Intake{}, Page: 1, PageSize: 50}, nil
+}
+func (f *fakeAPIPort) GetIntake(ctx context.Context, at, id string) (*apiclient.IntakeDetail, error) {
+	if f.getIntake != nil {
+		return f.getIntake(ctx, at, id)
+	}
+	return &apiclient.IntakeDetail{}, nil
+}
+func (f *fakeAPIPort) SetIntakeStatus(ctx context.Context, at, id, status string) (*apiclient.Intake, error) {
+	if f.setIntakeStatus != nil {
+		return f.setIntakeStatus(ctx, at, id, status)
+	}
+	return &apiclient.Intake{}, nil
+}
 
 // TestWithAuthRetryRefreshesOn401 ejercita el seam del puerto SIN HTTP: la primera llamada de negocio
 // devuelve 401, withAuthRetry refresca (vía el doble) y reintenta con el token nuevo, que ya pasa.

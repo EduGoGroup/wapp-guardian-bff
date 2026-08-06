@@ -1,0 +1,106 @@
+{{ define "intakes.html" }}
+<section class="stack">
+
+    {{/* Esta pantalla nace con fecha de caducidad y se dice en voz alta: la operación de solicitudes
+         se va a la app KMP (planes 045/047, ADR-0035). Lo mínimo imprescindible para trabajar hoy,
+         nada que merezca cariño. */}}
+    <div class="snackbar snackbar--info" role="note">
+        <span>PROVISIONAL — migra a KMP (Plan 045/047, ADR-0035)</span>
+    </div>
+
+    {{ if .Notice }}
+    <div class="snackbar {{ if .Notice.Success }}snackbar--success{{ else }}snackbar--error{{ end }}" role="alert">
+        <span>{{ .Notice.Message }}</span>
+    </div>
+    {{ end }}
+
+    {{/* GATE SERVER-SIDE POR FEATURE (patrón del Plan 040 · T2.5). Sin `cart_basic` el bloque entero
+         no se emite: no queda escondido por CSS ni por JS, no está en el HTML. El gate decide lo que
+         se PINTA; lo que se PUEDE lo corta RequireFeature en la plataforma, que sigue siendo la
+         autoridad. */}}
+    {{ if .Entitlements.Has "cart_basic" }}
+    <div class="card" id="section-intakes-list">
+        <h1 class="headline">Solicitudes</h1>
+        <p class="supporting">Lo que los clientes han pedido por WhatsApp. El contacto se identifica
+            con su código interno: la consola no resuelve nombres ni teléfonos.</p>
+
+        <form method="GET" action="/intakes" class="stack" autocomplete="off">
+            <div class="row">
+                <div class="field">
+                    <label class="field__label" for="from">Desde</label>
+                    <input class="field__input" type="date" id="from" name="from" value="{{ .Filter.From }}">
+                </div>
+                <div class="field">
+                    <label class="field__label" for="to">Hasta</label>
+                    <input class="field__input" type="date" id="to" name="to" value="{{ .Filter.To }}">
+                </div>
+                <div class="field">
+                    <label class="field__label" for="status">Estado</label>
+                    <select class="field__control" id="status" name="status">
+                        <option value="" {{ if not $.Filter.Status }}selected{{ end }}>todos</option>
+                        {{ range .StatusOptions }}
+                        <option value="{{ .Key }}" {{ if eq $.Filter.Status .Key }}selected{{ end }}>{{ .Label }}</option>
+                        {{ end }}
+                    </select>
+                </div>
+                <div class="field">
+                    <label class="field__label" for="session">Sesión</label>
+                    <input class="field__input" type="text" id="session" name="session"
+                           value="{{ .Filter.Session }}" placeholder="identificador de sesión">
+                </div>
+            </div>
+            <div class="row">
+                <button type="submit" class="btn btn--filled">Filtrar</button>
+                <a href="/intakes" class="btn btn--text">Limpiar</a>
+            </div>
+        </form>
+
+        {{ if .IntakesError }}
+        <p class="body">No hay nada que mostrar hasta que la plataforma vuelva a responder.</p>
+        {{ else if .Intakes }}
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Solicitud</th>
+                        <th>Contacto</th>
+                        <th>Sesión</th>
+                        <th>Estado</th>
+                        <th>Total</th>
+                        <th>Creada (UTC)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ range .Intakes }}
+                    <tr>
+                        <td><a href="/intakes/{{ .ID }}">{{ .ID }}</a></td>
+                        <td>{{ .ContactID }}</td>
+                        <td>{{ .SessionID }}</td>
+                        <td><span class="chip chip--neutral">{{ statusLabel .Status }}</span></td>
+                        <td>{{ printf "%.2f" .Total }}</td>
+                        <td>{{ .CreatedAt }}</td>
+                    </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+
+        {{ with .Pager }}
+        <div class="row">
+            <span class="body">{{ .RangeFrom }}–{{ .RangeTo }} de {{ .Total }} · página {{ .Page }} de {{ .PageCount }}</span>
+            {{ if .HasPrev }}<a href="{{ .PrevURL }}" class="btn btn--outlined">Anterior</a>{{ end }}
+            {{ if .HasNext }}<a href="{{ .NextURL }}" class="btn btn--outlined">Siguiente</a>{{ end }}
+        </div>
+        {{ end }}
+        {{ else }}
+        <p class="body">No hay solicitudes que casen con estos filtros.</p>
+        {{ end }}
+    </div>
+    {{ else }}
+    <div class="card">
+        <h1 class="headline">Solicitudes</h1>
+        <p class="body">El plan de este tenant no incluye la bandeja de solicitudes.</p>
+    </div>
+    {{ end }}
+</section>
+{{ end }}

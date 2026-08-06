@@ -35,6 +35,26 @@ type DashboardAPI interface {
 	EntitlementsReader
 }
 
+// IntakeManager define el contrato de la bandeja de SOLICITUDES (Plan 041 · T1.5): listar con
+// filtros, abrir el detalle y mover el estado del ciclo de vida.
+//
+// Va segregado del resto porque es un frente propio y de pago: sus tres rutas exigen la feature
+// `cart_basic` en la plataforma, y la pantalla que lo consume es PROVISIONAL (migra a KMP con los
+// planes 045/047, ADR-0035). Cuando esa pantalla muera, esta interfaz se va con ella sin arrastrar
+// a nadie.
+type IntakeManager interface {
+	ListIntakes(ctx context.Context, accessToken string, f apiclient.IntakeFilter) (*apiclient.IntakePage, error)
+	GetIntake(ctx context.Context, accessToken, id string) (*apiclient.IntakeDetail, error)
+	SetIntakeStatus(ctx context.Context, accessToken, id, status string) (*apiclient.Intake, error)
+}
+
+// IntakesAPI es lo que la pantalla de solicitudes consume: la bandeja más las features efectivas,
+// que son las que deciden si la sección se emite siquiera.
+type IntakesAPI interface {
+	IntakeManager
+	EntitlementsReader
+}
+
 // EditorManager define el contrato para la edición de flujos y la gestión de reglas de disparo.
 type EditorManager interface {
 	ListFlows(ctx context.Context, accessToken string) ([]apiclient.FlowSummary, error)
@@ -51,6 +71,7 @@ type APIPort interface {
 	SessionManager
 	EntitlementsReader
 	EditorManager
+	IntakeManager
 }
 
 // Verificación en compilación de que los clientes concretos satisfacen las interfaces segregadas.
@@ -65,6 +86,7 @@ var (
 	_ EntitlementsReader = (*apiclient.DashboardClient)(nil)
 	_ DashboardAPI       = (*apiclient.DashboardClient)(nil)
 	_ EditorManager      = (*apiclient.EditorClient)(nil)
+	_ IntakeManager      = (*apiclient.IntakesClient)(nil)
 	_ APIPort            = (*apiclient.Client)(nil)
 	_ APIPort            = (*apiclient.DelegatedClient)(nil)
 )

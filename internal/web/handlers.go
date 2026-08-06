@@ -19,6 +19,7 @@ type Handler struct {
 	*AuthHandler
 	*DashboardHandler
 	*EditorHandler
+	*IntakesHandler
 }
 
 // NewHandler construye el Handler de producción: cliente real de la API, eligiendo entre login directo
@@ -52,6 +53,7 @@ func NewHandlerWithAPI(cfg *config.Config, api APIPort) *Handler {
 	ah := NewAuthHandler(cfg, api, refresh)
 	dh := NewDashboardHandler(cfg, api, ah)
 	eh := NewEditorHandler(cfg, api, ah)
+	ih := NewIntakesHandler(cfg, api, ah)
 	return &Handler{
 		cfg:              cfg,
 		api:              api,
@@ -59,6 +61,7 @@ func NewHandlerWithAPI(cfg *config.Config, api APIPort) *Handler {
 		AuthHandler:      ah,
 		DashboardHandler: dh,
 		EditorHandler:    eh,
+		IntakesHandler:   ih,
 	}
 }
 

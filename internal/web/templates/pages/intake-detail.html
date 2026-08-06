@@ -1,0 +1,109 @@
+{{ define "intake-detail.html" }}
+<section class="stack">
+
+    {{/* Misma advertencia que en el listado, y por el mismo motivo: esto se borra cuando la app KMP
+         asuma la operación (planes 045/047, ADR-0035). */}}
+    <div class="snackbar snackbar--info" role="note">
+        <span>PROVISIONAL — migra a KMP (Plan 045/047, ADR-0035)</span>
+    </div>
+
+    {{ if .Notice }}
+    <div class="snackbar {{ if .Notice.Success }}snackbar--success{{ else }}snackbar--error{{ end }}" role="alert">
+        <span>{{ .Notice.Message }}</span>
+    </div>
+    {{ end }}
+
+    {{/* GATE SERVER-SIDE POR FEATURE: sin `cart_basic` no se emite ni la ficha ni el formulario. */}}
+    {{ if .Entitlements.Has "cart_basic" }}
+    {{ with .View }}
+    <div class="card" id="section-intake-detail">
+        <h1 class="headline">Solicitud</h1>
+        <p class="supporting">{{ .Detail.ID }}</p>
+
+        <div class="row">
+            <span class="chip chip--info">estado · {{ statusLabel .Detail.Status }}</span>
+            <span class="chip chip--neutral">contacto · {{ .Detail.ContactID }}</span>
+            <span class="chip chip--neutral">sesión · {{ .Detail.SessionID }}</span>
+            <span class="chip chip--ok">total · {{ printf "%.2f" .Detail.Total }}</span>
+        </div>
+        <p class="body">Creada {{ .Detail.CreatedAt }} · actualizada {{ .Detail.UpdatedAt }} (UTC)</p>
+
+        <h2 class="title">Líneas</h2>
+        {{ if .Detail.Items }}
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>SKU</th>
+                        <th>Artículo</th>
+                        <th>Cantidad</th>
+                        <th>Precio unitario</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ range .Detail.Items }}
+                    <tr>
+                        <td>{{ .SKU }}</td>
+                        <td>{{ .Label }}</td>
+                        <td>{{ .Qty }}</td>
+                        <td>{{ printf "%.2f" .UnitPrice }}</td>
+                    </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+        {{ else }}
+        <p class="body">Esta solicitud no tiene líneas.</p>
+        {{ end }}
+    </div>
+
+    <div class="card">
+        <h2 class="title">Cambiar el estado</h2>
+
+        {{ if .Transitions }}
+        {{/* El desplegable ofrece SOLO los destinos que autoriza la plataforma. Esta plantilla no
+             conoce el ciclo de vida ni lo deduce: la lista llega hecha desde la API. */}}
+        <p class="supporting">Solo aparecen los destinos válidos desde el estado actual.</p>
+        {{ if .FromRejection }}
+        <p class="body">Estos destinos vienen del último intento rechazado, no de la ficha: la
+            plataforma todavía no publica los destinos permitidos al abrir la solicitud.</p>
+        {{ end }}
+        <form method="POST" action="/intakes/{{ .Detail.ID }}/status" class="row" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ $.CSRFToken }}">
+            <label class="field__label" for="status">Nuevo estado</label>
+            <select class="field__control" id="status" name="status" required>
+                {{ range .Transitions }}
+                <option value="{{ . }}">{{ statusLabel . }}</option>
+                {{ end }}
+            </select>
+            <button type="submit" class="btn btn--filled">Aplicar</button>
+        </form>
+        {{ else if .Known }}
+        <p class="body">Esta solicitud está en un estado final: ya no admite cambios.</p>
+        {{ else }}
+        {{/* Ni se inventa un desplegable ni se deja uno vacío que parezca un estado final: se dice qué
+             falta. La lista de destinos vive en la máquina de estados de la plataforma y hoy solo
+             viaja dentro del rechazo 422. */}}
+        <p class="body">La plataforma todavía no informa de los destinos permitidos para este estado,
+            y esta pantalla no los adivina. Falta <code>allowed_transitions</code> en
+            <code>GET /api/v1/intakes/{id}</code>.</p>
+        {{ end }}
+
+        <p class="body"><a href="/intakes" class="btn btn--text">Volver a la bandeja</a></p>
+    </div>
+    {{ end }}
+    {{ if not .View }}
+    <div class="card">
+        <h1 class="headline">Solicitud</h1>
+        <p class="body">No se pudo mostrar esta solicitud.</p>
+        <p class="body"><a href="/intakes" class="btn btn--text">Volver a la bandeja</a></p>
+    </div>
+    {{ end }}
+    {{ else }}
+    <div class="card">
+        <h1 class="headline">Solicitud</h1>
+        <p class="body">El plan de este tenant no incluye la bandeja de solicitudes.</p>
+    </div>
+    {{ end }}
+</section>
+{{ end }}

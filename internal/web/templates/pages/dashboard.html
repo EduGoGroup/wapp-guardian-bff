@@ -121,6 +121,15 @@
              {{ if $.Entitlements.Has "catalog_import" }} … {{ end }}
          Ojo: el gate de plantilla decide lo que se PINTA; el que decide lo que se PUEDE es el
          middleware RequireFeature de la plataforma, y esa sigue siendo la autoridad. */}}
+    {{ if .Entitlements.Has "cart_basic" }}
+    <div class="card" id="section-intakes">
+        <h2 class="title">Solicitudes</h2>
+        <p class="supporting">Los pedidos que llegan por WhatsApp, con su estado y sus líneas. Desde
+            ahí se aprueban, se señan o se cierran.</p>
+        <p class="body"><a href="/intakes" class="btn btn--outlined">Abrir la bandeja</a></p>
+    </div>
+    {{ end }}
+
     {{ if .Entitlements.Has "llm_intent" }}
     <div class="card" id="section-llm-intent">
         <h2 class="title">Clasificador de intenciones</h2>

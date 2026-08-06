@@ -167,6 +167,7 @@ func (h *DashboardHandler) renderDashboard(c *gin.Context, status int, send *sen
 		"SessionsError":     sessionsErr != nil,
 		"Send":              send,
 		entitlementsDataKey: entitlements,
+		intakesNavDataKey:   entitlements.Has(intakesFeature),
 	}
 	for k, v := range extra {
 		data[k] = v

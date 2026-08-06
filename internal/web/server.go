@@ -77,6 +77,9 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 		// hasPrefix resalta el enlace activo de la navegación (app-bar): la sección se decide por el
 		// prefijo del path (p. ej. "/flows/menu" activa "Flujos").
 		"hasPrefix": strings.HasPrefix,
+		// statusLabel traduce la clave del ciclo de vida de una solicitud al nombre de negocio. Es
+		// presentación pura: lo que se puede hacer con ese estado lo dice la plataforma, no esta tabla.
+		"statusLabel": intakeStatusLabel,
 		"yield": func(name string, data interface{}) (template.HTML, error) {
 			if name == "" {
 				return "", nil
@@ -177,6 +180,12 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	protected.GET("/triggers", h.ShowTriggers)
 	protected.POST("/triggers", h.DoCreateTrigger)
 	protected.POST("/triggers/:id/delete", h.DoDeleteTrigger)
+
+	// Bandeja de solicitudes (Plan 041 · T1.5), gateada por la feature `cart_basic` en la plantilla y
+	// por RequireFeature en la plataforma. PANTALLA PROVISIONAL: migra a KMP (planes 045/047, ADR-0035).
+	protected.GET("/intakes", h.ShowIntakes)
+	protected.GET("/intakes/:id", h.ShowIntakeDetail)
+	protected.POST("/intakes/:id/status", h.DoSetIntakeStatus)
 
 	return router, rateLimiter
 }
