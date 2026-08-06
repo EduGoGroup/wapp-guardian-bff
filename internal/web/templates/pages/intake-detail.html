@@ -28,6 +28,15 @@
         </div>
         <p class="body">Creada {{ .Detail.CreatedAt }} · actualizada {{ .Detail.UpdatedAt }} (UTC)</p>
 
+        {{/* La indicación del PEDIDO (`customer_note`, D-041.19) NO es la de la línea: «dejarlo en
+             portería» es del envío entero, no de un artículo. Por eso va aquí, en la cabecera y
+             FUERA de la tabla, con su propio rótulo —quien prepara no puede leerla pegada a un
+             producto y creer que solo aplica a ese—. Sin nota no se emite NADA: ni el párrafo, ni
+             el rótulo, ni un hueco. */}}
+        {{ if .Detail.CustomerNote }}
+        <p class="order-note"><span class="order-note__label">Indicación del pedido:</span> {{ .Detail.CustomerNote }}</p>
+        {{ end }}
+
         <h2 class="title">Líneas</h2>
         {{ if .Detail.Items }}
         <div class="table-wrap">

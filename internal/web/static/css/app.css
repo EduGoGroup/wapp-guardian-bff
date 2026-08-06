@@ -238,6 +238,24 @@ textarea.field__control{ height:auto; min-height:120px; padding:var(--md-space-3
   background:color-mix(in srgb, var(--md-on-surface) 6%, transparent);
 }
 
+/* ===== Indicación del PEDIDO (Plan 041 · T4.1c, D-041.19) =====
+   Hermana de `.cell-note` y deliberadamente DISTINTA: aquella cuelga de la celda de un artículo y
+   esta vive en la cabecera de la ficha, porque «dejarlo en portería» aplica al pedido entero. Se
+   pinta como aviso —fondo propio y filete— para que no se lea como un párrafo más de metadatos. La
+   escribe un cliente por WhatsApp, así que `overflow-wrap` corta también una parrafada sin espacios
+   antes de que desborde la tarjeta. */
+.order-note{
+  margin:0;
+  padding:var(--md-space-3) var(--md-space-4);
+  border-left:3px solid var(--md-primary);
+  border-radius:var(--md-shape-sm);
+  background:var(--md-surface-container-high);
+  color:var(--md-on-surface);
+  font-size:.875rem; line-height:1.25rem;
+  overflow-wrap:anywhere;
+}
+.order-note__label{ font-weight:600; }
+
 /* ===== Chip / badge de estado ===== */
 .chip{
   display:inline-flex; align-items:center; gap:var(--md-space-1);

@@ -452,6 +452,110 @@ func TestIntakeDetailEscapesCustomization(t *testing.T) {
 	}
 }
 
+// Detalles con `customer_note` (Plan 041 · T4.1c). La cabecera la publica la plataforma en
+// `publicapi.intakeDTO` (cloud `f7273af`), otra vez SIN `omitempty`: por eso hay un cuerpo con la
+// clave vacía y otro que la omite del todo —un servidor anterior a T4.1c—, y la pantalla tiene que
+// comportarse igual con los dos. El primero lleva ADEMÁS personalización de línea: es el caso que
+// importa, porque las dos indicaciones conviven en la misma solicitud y no pueden confundirse.
+const (
+	detailWithCustomerNote = `{"id":"in-8","contact_id":"ct-op4","session_id":"s-1","status":"confirmed",
+	 "total":42.50,"customer_note":"dejarlo en portería, no tocar el timbre",
+	 "created_at":"2026-08-05T10:00:00Z","updated_at":"2026-08-05T11:00:00Z",
+	 "items":[{"sku":"HAM","label":"Hamburguesa","customization":"sin cebolla","qty":1,"unit_price":36.50},
+	          {"sku":"VELA","label":"Velas","customization":"","qty":1,"unit_price":6}],
+	 "allowed_transitions":["cancelled","settled"]}`
+	detailEmptyCustomerNote = `{"id":"in-8","contact_id":"ct-op4","session_id":"s-1","status":"confirmed",
+	 "total":36.50,"customer_note":"","created_at":"2026-08-05T10:00:00Z","updated_at":"2026-08-05T11:00:00Z",
+	 "items":[{"sku":"HAM","label":"Hamburguesa","customization":"","qty":1,"unit_price":36.50}],
+	 "allowed_transitions":["cancelled"]}`
+	detailWithoutCustomerNoteField = `{"id":"in-8","contact_id":"ct-op4","session_id":"s-1","status":"confirmed",
+	 "total":36.50,"created_at":"2026-08-05T10:00:00Z","updated_at":"2026-08-05T11:00:00Z",
+	 "items":[{"sku":"HAM","label":"Hamburguesa","qty":1,"unit_price":36.50}],
+	 "allowed_transitions":["cancelled"]}`
+	detailHostileCustomerNote = `{"id":"in-8","contact_id":"ct-op4","session_id":"s-1","status":"confirmed",
+	 "total":36.50,"customer_note":"llamar al \"portero\" & <b>NO</b> al timbre<script>alert(1)</script>",
+	 "created_at":"2026-08-05T10:00:00Z","updated_at":"2026-08-05T11:00:00Z",
+	 "items":[{"sku":"HAM","label":"Hamburguesa","customization":"","qty":1,"unit_price":36.50}],
+	 "allowed_transitions":["cancelled"]}`
+)
+
+// TestIntakeDetailRendersCustomerNote (T4.1c, REQ-33f): la indicación del PEDIDO llega a la pantalla,
+// y llega SIN confundirse con la de la línea. Las dos son texto del cliente y las dos son instrucciones
+// de producción, pero tienen alcances distintos: «sin cebolla» toca un artículo y «dejarlo en
+// portería» toca el envío entero. Pintarlas iguales —o la del pedido dentro de una celda— haría que
+// quien prepara aplicase la de portería a la hamburguesa, o al revés.
+func TestIntakeDetailRendersCustomerNote(t *testing.T) {
+	out := renderRealDetail(t, detailWithCustomerNote)
+
+	// HTML exacto: la nota del pedido es un párrafo propio con su rótulo, no una sub-línea de celda.
+	if !strings.Contains(out, `<p class="order-note"><span class="order-note__label">Indicación del pedido:</span> dejarlo en portería, no tocar el timbre</p>`) {
+		t.Error("la indicación del pedido debía pintarse en su propio párrafo de la cabecera")
+	}
+	// La de la línea sigue donde estaba, pegada a SU artículo (T4.1b): las dos conviven sin mezclarse.
+	if !strings.Contains(out, `<td>Hamburguesa<span class="cell-note">Personalización: sin cebolla</span></td>`) {
+		t.Error("la personalización de línea debía seguir dentro de la celda de su artículo")
+	}
+	// Y la del pedido está FUERA de la tabla: si cayera dentro de una celda, leería como si aplicase
+	// solo a ese artículo. La cabecera se pinta antes que la tabla, así que el orden lo demuestra.
+	noteAt, tableAt := strings.Index(out, "order-note"), strings.Index(out, "<table")
+	if noteAt < 0 || tableAt < 0 || noteAt > tableAt {
+		t.Errorf("la indicación del pedido debía ir en la cabecera, antes de la tabla (nota %d, tabla %d)", noteAt, tableAt)
+	}
+	// Cada rótulo aparece UNA vez y en su sitio: ni la nota del pedido se repite por línea, ni la
+	// personalización se promueve a la cabecera.
+	for label, want := range map[string]int{"Indicación del pedido": 1, "Personalización": 1, "order-note": 2, "cell-note": 1} {
+		if n := strings.Count(out, label); n != want {
+			t.Errorf("%q debía aparecer %d vez/veces, got %d", label, want, n)
+		}
+	}
+	// El dinero no se mueve por indicar (INV-13): esta capa pinta los importes que manda la API.
+	if !strings.Contains(out, "total · 42.50") || !strings.Contains(out, "36.50") {
+		t.Error("los importes debían ser los de la API, intactos")
+	}
+}
+
+// TestIntakeDetailWithoutCustomerNoteStaysClean: sin nota, la pantalla no se ensucia. Las dos ausencias
+// posibles —clave vacía y clave que no viaja— se tratan igual, como en `customization`.
+func TestIntakeDetailWithoutCustomerNoteStaysClean(t *testing.T) {
+	for name, body := range map[string]string{
+		"nota vacía":        detailEmptyCustomerNote,
+		"campo que no vino": detailWithoutCustomerNoteField,
+	} {
+		t.Run(name, func(t *testing.T) {
+			out := renderRealDetail(t, body)
+
+			for _, forbidden := range []string{"order-note", "Indicación del pedido"} {
+				if strings.Contains(out, forbidden) {
+					t.Errorf("sin indicación del pedido no debía emitirse %q", forbidden)
+				}
+			}
+			// Y la ficha sigue completa: no se pinta un hueco donde iría la nota.
+			if !strings.Contains(out, "estado · confirmado") || !strings.Contains(out, "<td>Hamburguesa</td>") {
+				t.Error("la ficha debía renderizarse igual de completa sin la nota")
+			}
+		})
+	}
+}
+
+// TestIntakeDetailEscapesCustomerNote: `customer_note` la escribe un CLIENTE FINAL por WhatsApp —es,
+// con `customization`, la única entrada no confiable de esta pantalla—. Llega como TEXTO, nunca como
+// marcado, y llega ENTERA: recortarla en el primer `<` perdería la instrucción justo donde importa.
+func TestIntakeDetailEscapesCustomerNote(t *testing.T) {
+	out := renderRealDetail(t, detailHostileCustomerNote)
+
+	if strings.Contains(out, "<script>alert(1)</script>") || strings.Contains(out, "<b>NO</b>") {
+		t.Error("la indicación del pedido se pintó como marcado: es texto del cliente final, va escapada")
+	}
+	if !strings.Contains(out, `llamar al &#34;portero&#34; &amp; &lt;b&gt;NO&lt;/b&gt; al timbre&lt;script&gt;alert(1)&lt;/script&gt;`) {
+		t.Error("la indicación hostil debía llegar escapada y COMPLETA, no recortada")
+	}
+	// El atributo `class` del párrafo no puede quedar roto por las comillas de la nota: si la nota se
+	// hubiera colado en el marcado, este ancla exacto no aparecería.
+	if !strings.Contains(out, `<p class="order-note"><span class="order-note__label">Indicación del pedido:</span> llamar al `) {
+		t.Error("el marcado del párrafo debía quedar intacto con una nota llena de comillas")
+	}
+}
+
 // TestIntakeDetailTerminalHasNoSelect: una lista VACÍA de destinos significa estado final, y así se
 // dice — sin desplegable.
 func TestIntakeDetailTerminalHasNoSelect(t *testing.T) {

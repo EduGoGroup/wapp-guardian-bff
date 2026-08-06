@@ -17,14 +17,27 @@ import (
 // ContactID viaja OPACO: es un identificador sin número ni JID (INV-04/ADR-0010).
 // El BFF lo pinta tal cual y no intenta resolverlo a un nombre o un teléfono —no
 // puede, y no debe.
+//
+// CustomerNote es la indicación del cliente para el PEDIDO ENTERO (D-041.19): el
+// «dejarlo en portería, no tocar el timbre». No confundir con
+// IntakeItem.Customization, que es la indicación de UNA línea («sin cebolla»): son
+// campos distintos, de niveles distintos, y la pantalla los pinta en sitios
+// distintos a propósito. Va aquí —en la cabecera— y no en IntakeDetail porque la
+// plataforma lo publica en `publicapi.intakeDTO`, que es también el DTO del
+// listado y el que devuelve el cambio de estado.
+//
+// Como `customization`, la plataforma lo publica SIEMPRE, también vacío (sin
+// `omitempty`), así que la clave ausente —un servidor anterior a T4.1c— y la nota
+// vacía colapsan aquí en `""`. La pantalla trata las dos igual: no pinta nada.
 type Intake struct {
-	ID        string  `json:"id"`
-	ContactID string  `json:"contact_id"`
-	SessionID string  `json:"session_id"`
-	Status    string  `json:"status"`
-	Total     float64 `json:"total"`
-	CreatedAt string  `json:"created_at"`
-	UpdatedAt string  `json:"updated_at"`
+	ID           string  `json:"id"`
+	ContactID    string  `json:"contact_id"`
+	SessionID    string  `json:"session_id"`
+	Status       string  `json:"status"`
+	Total        float64 `json:"total"`
+	CustomerNote string  `json:"customer_note"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
 }
 
 // IntakeItem es una línea de la solicitud (código de catálogo del tenant, nunca PII).
