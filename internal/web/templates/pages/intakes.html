@@ -19,6 +19,104 @@
          se PINTA; lo que se PUEDE lo corta RequireFeature en la plataforma, que sigue siendo la
          autoridad. */}}
     {{ if .Entitlements.Has "cart_basic" }}
+
+    {{/* DESCARTE POR LOTES (Plan 041 · T4.8, D-041.18/D-041.22). Dos tarjetas que nunca salen a la
+         vez: la que pregunta antes de escribir y la que cuenta qué pasó después. */}}
+    {{ with .Discard }}
+    {{ if .Confirming }}
+    <div class="card" id="section-intakes-discard-confirm">
+        <h2 class="title">Confirma el descarte</h2>
+        {{/* La advertencia va ARRIBA y en prosa, no en un `confirm()` del navegador: esta consola no
+             emite JS (ADR-0035) y, sobre todo, un diálogo del navegador no puede enseñar la lista de
+             abajo — que es lo único que convierte esta decisión en una decisión informada. */}}
+        <div class="snackbar snackbar--error" role="alert">
+            <span>Esto NO se puede deshacer y no hay papelera.</span>
+        </div>
+        <p class="supporting">Las solicitudes de abajo quedarán como «abandonado» y saldrán de lo que
+            tienes pendiente. No se borra nada de lo que pidió el cliente —sus líneas y su historial
+            siguen ahí y se pueden consultar— y al cliente NO se le avisa.</p>
+
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Solicitud</th>
+                        <th>Contacto</th>
+                        <th>Sesión</th>
+                        <th>Estado</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ range .Selected }}
+                    <tr>
+                        <td>{{ .ID }}{{ if not .Listed }}<span class="cell-note">ya no aparece en la
+                            bandeja que estás mirando: se descartará igual si sigue siendo tuya</span>{{ end }}</td>
+                        <td>{{ .ContactID }}</td>
+                        <td>{{ .SessionID }}</td>
+                        <td>{{ .Status }}</td>
+                        <td>{{ .Total }}</td>
+                    </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+
+        {{/* El lote viaja ENTERO otra vez en vez de guardarse entre pasos: así se descarta
+             exactamente lo que se acaba de enseñar, aunque haya dos pestañas abiertas. */}}
+        <form method="POST" action="{{ .Action }}" class="row" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ $.CSRFToken }}">
+            {{ range .Selected }}
+            <input type="hidden" name="intake_id" value="{{ .ID }}">
+            {{ end }}
+            <button type="submit" class="btn btn--filled" name="action" value="discard">
+                Descartar definitivamente</button>
+            <a href="{{ .CancelURL }}" class="btn btn--text">Cancelar</a>
+        </form>
+    </div>
+    {{ end }}
+
+    {{ if .Done }}
+    <div class="card" id="section-intakes-discard-result">
+        <h2 class="title">Qué pasó con cada solicitud</h2>
+        {{/* El desglose se pinta SIEMPRE entero. Un lote mixto es lo normal, y resumirlo a «listo»
+             escondería que hay solicitudes que siguen en la bandeja. */}}
+        {{ if .Discarded }}
+        <p class="body">Descartadas ({{ len .Discarded }} de {{ .Total }}):</p>
+        <ul class="body">
+            {{ range .Discarded }}
+            <li>{{ . }}</li>
+            {{ end }}
+        </ul>
+        {{ else }}
+        <p class="body">No se descartó ninguna de las {{ .Total }} que mandaste.</p>
+        {{ end }}
+
+        {{ if .Skipped }}
+        <p class="body">Siguen en tu bandeja ({{ len .Skipped }} de {{ .Total }}), una por una:</p>
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Solicitud</th>
+                        <th>Por qué no se descartó</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ range .Skipped }}
+                    <tr>
+                        <td><a href="/intakes/{{ .ID }}">{{ .ID }}</a></td>
+                        <td>{{ .Reason }}</td>
+                    </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+        {{ end }}
+    </div>
+    {{ end }}
+    {{ end }}
+
     <div class="card" id="section-intakes-list">
         <h1 class="headline">Solicitudes</h1>
         <p class="supporting">Lo que los clientes han pedido por WhatsApp. El contacto se identifica
@@ -58,32 +156,49 @@
         {{ if .IntakesError }}
         <p class="body">No hay nada que mostrar hasta que la plataforma vuelva a responder.</p>
         {{ else if .Intakes }}
-        <div class="table-wrap">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Solicitud</th>
-                        <th>Contacto</th>
-                        <th>Sesión</th>
-                        <th>Estado</th>
-                        <th>Total</th>
-                        <th>Creada (UTC)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {{ range .Intakes }}
-                    <tr>
-                        <td><a href="/intakes/{{ .ID }}">{{ .ID }}</a></td>
-                        <td>{{ .ContactID }}</td>
-                        <td>{{ .SessionID }}</td>
-                        <td><span class="chip chip--neutral">{{ statusLabel .Status }}</span></td>
-                        <td>{{ printf "%.2f" .Total }}</td>
-                        <td>{{ .CreatedAt }}</td>
-                    </tr>
-                    {{ end }}
-                </tbody>
-            </table>
-        </div>
+        {{/* El listado va DENTRO del formulario de descarte: marcar es seleccionar, y el botón de
+             abajo solo lleva a la pantalla de confirmación —nunca descarta—. El que escribe vive en
+             la tarjeta de confirmación, después de haber enseñado qué se va a matar (D-041.22). */}}
+        <form method="POST" action="{{ .DiscardURL }}" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Descartar</th>
+                            <th>Solicitud</th>
+                            <th>Contacto</th>
+                            <th>Sesión</th>
+                            <th>Estado</th>
+                            <th>Total</th>
+                            <th>Creada (UTC)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{ range .Intakes }}
+                        <tr>
+                            {{/* La casilla se ofrece en TODAS las filas, también en las que la
+                                 plataforma va a rechazar. No es un descuido: quién es descartable lo
+                                 decide `CanDiscard` allá y la API no lo publica, así que filtrar aquí
+                                 exigiría un tercer espejo del ciclo de vida — y un espejo desfasado
+                                 dejaría al dueño sin poder limpiar justo lo que vino a limpiar. Lo
+                                 que sí llega es la respuesta POR ÍTEM, que dice de cada una qué pasó. */}}
+                            <td><input type="checkbox" name="intake_id" value="{{ .ID }}"
+                                       aria-label="Marcar para descartar la solicitud {{ .ID }}"></td>
+                            <td><a href="/intakes/{{ .ID }}">{{ .ID }}</a></td>
+                            <td>{{ .ContactID }}</td>
+                            <td>{{ .SessionID }}</td>
+                            <td><span class="chip chip--neutral">{{ statusLabel .Status }}</span></td>
+                            <td>{{ printf "%.2f" .Total }}</td>
+                            <td>{{ .CreatedAt }}</td>
+                        </tr>
+                        {{ end }}
+                    </tbody>
+                </table>
+            </div>
+            <p class="body"><button type="submit" class="btn btn--outlined" name="action" value="review">
+                Revisar el descarte de lo marcado</button></p>
+        </form>
 
         {{ with .Pager }}
         <div class="row">

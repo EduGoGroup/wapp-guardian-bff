@@ -24,6 +24,7 @@ type fakeAPIPort struct {
 	getIntake       func(ctx context.Context, accessToken, id string) (*apiclient.IntakeDetail, error)
 	setIntakeStatus func(ctx context.Context, accessToken, id, status string) (*apiclient.Intake, error)
 	replaceItems    func(ctx context.Context, accessToken, id string, items []apiclient.IntakeItem) (*apiclient.IntakeDetail, error)
+	discardIntakes  func(ctx context.Context, accessToken string, intakeIDs []string) (*apiclient.IntakeDiscardResult, error)
 
 	getTenantVariables     func(ctx context.Context, accessToken string) (*apiclient.TenantVariables, error)
 	replaceTenantVariables func(ctx context.Context, accessToken string, vars map[string]string) (*apiclient.TenantVariables, error)
@@ -101,6 +102,14 @@ func (f *fakeAPIPort) ReplaceIntakeItems(ctx context.Context, at, id string, ite
 		return f.replaceItems(ctx, at, id, items)
 	}
 	return &apiclient.IntakeDetail{}, nil
+}
+func (f *fakeAPIPort) DiscardIntakes(ctx context.Context, at string, ids []string) (*apiclient.IntakeDiscardResult, error) {
+	if f.discardIntakes != nil {
+		return f.discardIntakes(ctx, at, ids)
+	}
+	// Las dos listas van vacías y NO nil, como las emite la plataforma: un doble que devolviera
+	// `null` dejaría pasar código que confunde «no se descartó nada» con «no hubo respuesta».
+	return &apiclient.IntakeDiscardResult{Discarded: []string{}, Skipped: []apiclient.IntakeDiscardSkip{}}, nil
 }
 func (f *fakeAPIPort) GetTenantVariables(ctx context.Context, at string) (*apiclient.TenantVariables, error) {
 	if f.getTenantVariables != nil {

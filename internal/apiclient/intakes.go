@@ -215,6 +215,51 @@ type replaceIntakeItemsRequest struct {
 	Items []IntakeItem `json:"items"`
 }
 
+// MaxIntakeDiscardBatch es cuántas solicitudes acepta UN POST /api/v1/intakes/discard
+// (`intakes.MaxDiscardBatch` de la plataforma, cloud `2527c17`). Con una más, la
+// plataforma responde 400 y no descarta ninguna.
+//
+// Es un ESPEJO y no la autoridad: quien mide el lote y lo rechaza es la plataforma.
+// Vive aquí para que la pantalla pueda decirlo ANTES de gastar el viaje —y decirlo en
+// español, que un 400 crudo no lo está—, no para decidirlo.
+const MaxIntakeDiscardBatch = 200
+
+// IntakeDiscardSkip es UNA solicitud del lote que NO se descartó, con la razón que da
+// la plataforma (`not_found`, `already_discarded`, `not_open`, `live_event`).
+//
+// La razón viaja como CLAVE, no como prosa: es contrato, y traducirla a la voz del
+// dueño del negocio es cosa de la pantalla. Una clave que este cliente no conozca se
+// entrega tal cual en vez de descartarse — un motivo que no se entiende sigue siendo
+// un motivo, y callarlo dejaría al dueño creyendo que esa solicitud sí se descartó.
+type IntakeDiscardSkip struct {
+	IntakeID string `json:"intake_id"`
+	Reason   string `json:"reason"`
+}
+
+// IntakeDiscardResult es la respuesta 200 de POST /api/v1/intakes/discard: el
+// desglose POR ÍTEM del lote.
+//
+// Las dos listas vienen SIEMPRE, también vacías: la plataforma las emite como `[]` y
+// nunca como `null` a propósito, porque «no se descartó nada» y «no sé qué pasó» son
+// respuestas distintas. Un lote MIXTO —unos descartados y otros no— es el caso
+// NORMAL, no el excepcional: por eso el éxito de esta llamada no significa que se
+// haya descartado lo que se pidió, y quien la use tiene que contar las dos listas.
+type IntakeDiscardResult struct {
+	Discarded []string            `json:"discarded"`
+	Skipped   []IntakeDiscardSkip `json:"skipped"`
+}
+
+// discardIntakesRequest es el cuerpo de POST /api/v1/intakes/discard: la lista
+// EXPLÍCITA de ids que el dueño quiere sacar de su bandeja.
+//
+// Es una lista de ids y no un filtro, y esa es la decisión de fondo de esta puerta:
+// el descarte es irreversible y no hay papelera (D-041.22), así que quien descarta
+// NOMBRA lo que descarta. Un filtro dejaría el conjunto afectado a merced de lo que
+// hubiera cambiado entre la pantalla y el POST.
+type discardIntakesRequest struct {
+	IntakeIDs []string `json:"intake_ids"`
+}
+
 // InvalidTransitionError es el 422 de POST /api/v1/intakes/{id}/status: la
 // transición pedida no existe en el ciclo de vida. Trae dónde está la solicitud
 // AHORA y adónde sí puede ir, que es lo único con lo que el operador puede corregir
@@ -394,6 +439,57 @@ func (c *IntakesClient) ReplaceIntakeItems(ctx context.Context, accessToken, id 
 	var out IntakeDetail
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, fmt.Errorf("apiclient: intake items: decodificar respuesta: %w", err)
+	}
+	return &out, nil
+}
+
+// DiscardIntakes DESCARTA a mano un LOTE de solicitudes vía
+// POST /api/v1/intakes/discard y devuelve el desglose POR ÍTEM (Plan 041 · T4.8,
+// D-041.18). Las descartadas quedan en `abandoned`, con su revisión `discarded`.
+//
+// ⚠️ Es IRREVERSIBLE y no hay papelera (D-041.22): quien llame a esto tiene que haber
+// enseñado antes qué se va a descartar. No borra líneas ni revisiones, y NO avisa al
+// cliente.
+//
+// Un error de esta función NUNCA significa «no se descartó nada»: significa que no se
+// pudo contestar el lote entero. Y al revés, que no haya error tampoco significa que
+// se descartara lo pedido —para eso están las dos listas del resultado—. Si la
+// plataforma falla a MEDIO lote, lo ya escrito QUEDA escrito y repetir el mismo lote
+// es seguro: lo hecho vuelve como `already_discarded`.
+//
+// Errores: *RejectionError con el motivo para el 400 (cuerpo malformado, lista vacía
+// o más de MaxIntakeDiscardBatch ids) y *APIError para 403/5xx, que StatusCodeOf
+// distingue. No hay 404 ni 422 en esta puerta: un id inexistente —o de otro tenant,
+// que es indistinguible (INV-8)— sale como `not_found` DENTRO del 200.
+func (c *IntakesClient) DiscardIntakes(ctx context.Context, accessToken string, intakeIDs []string) (*IntakeDiscardResult, error) {
+	// La lista viaja como `[]` y nunca como `null`. Las dos las contesta la plataforma
+	// con el mismo 400, así que no cambia el resultado; lo que cambia es lo que lee
+	// quien mire el cuerpo después: `[]` dice «no se seleccionó nada» y `null` dice
+	// «este cliente no supo armar la petición».
+	if intakeIDs == nil {
+		intakeIDs = []string{}
+	}
+
+	req, err := c.t.newAuthedJSONRequest(ctx, http.MethodPost, "/api/v1/intakes/discard",
+		discardIntakesRequest{IntakeIDs: intakeIDs}, accessToken)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.t.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("apiclient: intakes discard: %w", err)
+	}
+	defer drainClose(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		// El 400 es el único rechazo con un motivo accionable —y el que hay que poder
+		// repetir en español—; el resto lo dice el código.
+		return nil, reasonedStatusError("intakes discard", resp, http.StatusBadRequest)
+	}
+
+	var out IntakeDiscardResult
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("apiclient: intakes discard: decodificar respuesta: %w", err)
 	}
 	return &out, nil
 }

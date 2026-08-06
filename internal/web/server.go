@@ -200,8 +200,14 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	// sabe emitir GET y POST, y fingir el verbo con un campo oculto añadiría una convención que
 	// esta consola no tiene en ninguna otra pantalla. La traducción a PUT la hace el apiclient,
 	// que es quien habla el contrato.
+	//
+	// El descarte por lotes (T4.8) cuelga de una ruta LITERAL bajo /intakes, como en la API pública:
+	// la operación es sobre VARIAS solicitudes, así que ninguna de ellas es el recurso de la URL.
+	// Atiende los dos pasos —revisar y descartar— y cuál se pide lo dice el botón, igual que el
+	// import de catálogo: el que escribe solo existe después de haber enseñado qué se va a matar.
 	protected.GET("/intakes", h.ShowIntakes)
 	protected.GET("/intakes/:id", h.ShowIntakeDetail)
+	protected.POST("/intakes/discard", h.DoDiscardIntakes)
 	protected.POST("/intakes/:id/status", h.DoSetIntakeStatus)
 	protected.POST("/intakes/:id/items", h.DoEditIntakeItems)
 

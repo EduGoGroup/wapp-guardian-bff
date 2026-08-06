@@ -289,3 +289,84 @@ func TestReplaceIntakeItemsMapsTheRestByStatus(t *testing.T) {
 		t.Errorf("el 400 con motivo debía conservarlo, got %q (%v)", msg, err)
 	}
 }
+
+// TestDiscardIntakesSendsTheBatchAsPost (Plan 041 · T4.8): el lote viaja como lista EXPLÍCITA de
+// ids a la ruta literal —la operación es sobre varias solicitudes, así que ninguna es el recurso de
+// la URL— y la respuesta vuelve con sus dos listas.
+func TestDiscardIntakesSendsTheBatchAsPost(t *testing.T) {
+	var (
+		gotMethod, gotPath, gotAuth string
+		gotBody                     []byte
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath, gotAuth = r.Method, r.URL.Path, r.Header.Get("Authorization")
+		gotBody, _ = io.ReadAll(r.Body)
+		_, _ = io.WriteString(w, `{"discarded":["in-1"],"skipped":[
+		 {"intake_id":"in-2","reason":"live_event"},{"intake_id":"in-3","reason":"not_found"}]}`)
+	}))
+	defer srv.Close()
+
+	res, err := NewIntakesClient(NewTransport(srv.URL)).DiscardIntakes(
+		context.Background(), "tok", []string{"in-1", "in-2", "in-3"})
+	if err != nil {
+		t.Fatalf("DiscardIntakes devolvió error: %v", err)
+	}
+	if gotMethod != http.MethodPost || gotPath != "/api/v1/intakes/discard" {
+		t.Errorf("debía llamarse POST /api/v1/intakes/discard, got %s %s", gotMethod, gotPath)
+	}
+	if gotAuth != "Bearer tok" {
+		t.Errorf("la llamada debía ir autenticada, got %q", gotAuth)
+	}
+	if want := `{"intake_ids":["in-1","in-2","in-3"]}`; string(gotBody) != want {
+		t.Errorf("cuerpo = %s\nquiero  = %s", gotBody, want)
+	}
+	// Un lote mixto es el caso NORMAL: el error nil no autoriza a decir que cayeron las tres.
+	if len(res.Discarded) != 1 || res.Discarded[0] != "in-1" {
+		t.Errorf("debía volver 1 descartada, got %v", res.Discarded)
+	}
+	if len(res.Skipped) != 2 || res.Skipped[0].Reason != "live_event" ||
+		res.Skipped[1].IntakeID != "in-3" {
+		t.Errorf("las razones debían llegar por ítem y tal cual, got %+v", res.Skipped)
+	}
+}
+
+// TestDiscardIntakesSendsEmptyListNotNull: un lote sin ids es un error de quien llama —y la
+// plataforma lo contesta con 400—, pero lo que viaja tiene que decir «no se seleccionó nada», no
+// «este cliente no supo armar la petición».
+func TestDiscardIntakesSendsEmptyListNotNull(t *testing.T) {
+	var gotBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"error":"intake_ids es obligatorio: manda entre 1 y 200 ids"}`)
+	}))
+	defer srv.Close()
+
+	_, err := NewIntakesClient(NewTransport(srv.URL)).DiscardIntakes(context.Background(), "tok", nil)
+	if string(gotBody) != `{"intake_ids":[]}` {
+		t.Errorf("un lote vacío debía viajar como {\"intake_ids\":[]}, got %s", gotBody)
+	}
+	// Y el 400 conserva su motivo: es lo que la pantalla repite en español.
+	msg, ok := RejectionMessageOf(err)
+	if !ok || msg != "intake_ids es obligatorio: manda entre 1 y 200 ids" {
+		t.Errorf("el 400 debía conservar su motivo, got %q (%v)", msg, err)
+	}
+}
+
+// TestDiscardIntakesMapsTheRestByStatus: el 403 (sin scope o sin feature) y el 500 salen como
+// *APIError con su código. No hay 404 ni 422 en esta puerta: un id inexistente o de otro tenant es
+// un `not_found` DENTRO del 200, indistinguible a propósito (INV-8).
+func TestDiscardIntakesMapsTheRestByStatus(t *testing.T) {
+	for _, code := range []int{http.StatusForbidden, http.StatusInternalServerError} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(code)
+			_, _ = io.WriteString(w, `{"error":"lo que sea"}`)
+		}))
+		_, err := NewIntakesClient(NewTransport(srv.URL)).DiscardIntakes(
+			context.Background(), "tok", []string{"in-1"})
+		if got := StatusCodeOf(err); got != code {
+			t.Errorf("el %d debía llegar como *APIError con su status, got %d (%v)", code, got, err)
+		}
+		srv.Close()
+	}
+}

@@ -35,10 +35,11 @@ type DashboardAPI interface {
 	EntitlementsReader
 }
 
-// IntakeManager define el contrato de la bandeja de SOLICITUDES (Plan 041 · T1.5 y T4.10): listar
-// con filtros, abrir el detalle, mover el estado del ciclo de vida y corregir las líneas a mano.
+// IntakeManager define el contrato de la bandeja de SOLICITUDES (Plan 041 · T1.5, T4.8 y T4.10):
+// listar con filtros, abrir el detalle, mover el estado del ciclo de vida, corregir las líneas a
+// mano y descartar por lotes lo que ya no va a ninguna parte.
 //
-// Va segregado del resto porque es un frente propio y de pago: sus CUATRO rutas exigen la feature
+// Va segregado del resto porque es un frente propio y de pago: sus CINCO rutas exigen la feature
 // `cart_basic` en la plataforma, y la pantalla que lo consume es PROVISIONAL (migra a KMP con los
 // planes 045/047, ADR-0035). Cuando esa pantalla muera, esta interfaz se va con ella sin arrastrar
 // a nadie.
@@ -47,11 +48,16 @@ type DashboardAPI interface {
 // línea, porque así es el contrato de la plataforma (PUT, no POST): añadir, quitar y corregir son
 // la misma llamada con una lista distinta. Devuelve el detalle ya actualizado —con la revisión
 // `corrected` dentro— para que la pantalla repinte sin un segundo GET.
+//
+// `DiscardIntakes` es la única operación de esta interfaz que trabaja sobre VARIAS solicitudes de
+// una vez, y su resultado se lee por ítem: un lote mixto —unos descartados y otros no— es el caso
+// normal, así que devolver `nil` de error no autoriza a decir «listo».
 type IntakeManager interface {
 	ListIntakes(ctx context.Context, accessToken string, f apiclient.IntakeFilter) (*apiclient.IntakePage, error)
 	GetIntake(ctx context.Context, accessToken, id string) (*apiclient.IntakeDetail, error)
 	SetIntakeStatus(ctx context.Context, accessToken, id, status string) (*apiclient.Intake, error)
 	ReplaceIntakeItems(ctx context.Context, accessToken, id string, items []apiclient.IntakeItem) (*apiclient.IntakeDetail, error)
+	DiscardIntakes(ctx context.Context, accessToken string, intakeIDs []string) (*apiclient.IntakeDiscardResult, error)
 }
 
 // IntakesAPI es lo que la pantalla de solicitudes consume: la bandeja más las features efectivas,

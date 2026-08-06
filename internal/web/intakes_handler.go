@@ -124,15 +124,48 @@ func NewIntakesHandler(cfg *config.Config, api IntakesAPI, auth *AuthHandler) *I
 	return &IntakesHandler{cfg: cfg, api: api, auth: auth}
 }
 
+// intakesListRender son las variables con las que se pinta la bandeja. Va como struct por lo mismo
+// que intakeDetailRender: la mitad son opcionales y una llamada con tres `nil` seguidos no dice
+// cuál es cuál.
+type intakesListRender struct {
+	// status es el código con el que se responde (la bandeja se pinta igual).
+	status int
+	// filter son los filtros vigentes, que mandan tanto en la consulta como en lo que se re-pinta.
+	filter apiclient.IntakeFilter
+	// notice es el aviso de la operación que trajo hasta aquí. Manda sobre el de la relectura.
+	notice *intakeNotice
+	// entitlements ya resueltas por quien llama (nil ⇒ se resuelven aquí). Existe para que un POST
+	// que ya preguntó por la feature —para no gastar el viaje a una ruta que va a dar 403— no la
+	// vuelva a preguntar al repintar.
+	entitlements *entitlementsView
+	// discard es el descarte por lotes: el que espera confirmación o el que ya se ejecutó.
+	discard *intakeDiscardView
+}
+
 // ShowIntakes pinta la bandeja del tenant con los filtros de la query.
 func (h *IntakesHandler) ShowIntakes(c *gin.Context) {
-	entitlements := resolveEntitlements(c, h.auth, h.api)
-	filter := intakeFilterFromQuery(c)
+	h.renderIntakesList(c, intakesListRender{
+		status: http.StatusOK, filter: intakeFilterFromQuery(c),
+	})
+}
+
+// renderIntakesList pinta la bandeja: la lista con sus filtros y, si la operación que trajo hasta
+// aquí lo pide, el descarte por lotes (lo que espera confirmación o lo que ya pasó).
+func (h *IntakesHandler) renderIntakesList(c *gin.Context, r intakesListRender) {
+	var entitlements entitlementsView
+	if r.entitlements != nil {
+		entitlements = *r.entitlements
+	} else {
+		entitlements = resolveEntitlements(c, h.auth, h.api)
+	}
 
 	data := gin.H{
 		"Title":                 "Solicitudes",
-		"Filter":                filterView(filter),
+		"Filter":                filterView(r.filter),
 		"StatusOptions":         intakeStatusOptions,
+		"Notice":                r.notice,
+		"Discard":               r.discard,
+		"DiscardURL":            discardURL(r.filter),
 		entitlementsDataKey:     entitlements,
 		intakesNavDataKey:       entitlements.Has(intakesFeature),
 		catalogImportNavDataKey: entitlements.Has(catalogImportFeature),
@@ -142,14 +175,14 @@ func (h *IntakesHandler) ShowIntakes(c *gin.Context) {
 	// viaje solo serviría para llenar el log de rechazos previsibles. El gate real de lo que se emite
 	// está en la plantilla.
 	if !entitlements.Has(intakesFeature) {
-		render(h.cfg, c, http.StatusOK, "intakes.html", data)
+		render(h.cfg, c, r.status, "intakes.html", data)
 		return
 	}
 
 	var page *apiclient.IntakePage
 	err := h.auth.withAuthRetry(c, func(accessToken string) error {
 		var lerr error
-		page, lerr = h.api.ListIntakes(c.Request.Context(), accessToken, filter)
+		page, lerr = h.api.ListIntakes(c.Request.Context(), accessToken, r.filter)
 		return lerr
 	})
 	if err != nil {
@@ -159,15 +192,30 @@ func (h *IntakesHandler) ShowIntakes(c *gin.Context) {
 			return
 		}
 		listStatus, listNotice := mapIntakeListError(err)
-		data["Notice"] = listNotice
+		// El aviso de la operación que falló manda sobre el de la relectura (mismo criterio que el
+		// detalle): el operador necesita saber por qué no se hizo lo suyo, no que además no se pudo
+		// repintar.
+		if r.notice == nil {
+			data["Notice"] = listNotice
+		}
 		data["IntakesError"] = true
+		// Sin la bandeja delante NO se ofrece el botón que descarta. El desglose de un lote YA
+		// ejecutado sí se conserva —es lo que pasó, y ocultarlo dejaría al dueño sin saber qué se
+		// descartó—, pero confirmar a ciegas es exactamente lo que esta pantalla no puede hacer:
+		// enseñar qué se va a matar es la condición de una acción sin vuelta atrás (D-041.22).
+		if r.discard != nil && r.discard.Confirming {
+			data["Discard"] = nil
+		}
 		render(h.cfg, c, listStatus, "intakes.html", data)
 		return
 	}
 
+	if r.discard != nil {
+		r.discard.describeWith(page.Intakes)
+	}
 	data["Intakes"] = page.Intakes
-	data["Pager"] = pagerView(filter, page)
-	render(h.cfg, c, http.StatusOK, "intakes.html", data)
+	data["Pager"] = pagerView(r.filter, page)
+	render(h.cfg, c, r.status, "intakes.html", data)
 }
 
 // ShowIntakeDetail pinta una solicitud con sus líneas, el cambio de estado y la corrección manual.
@@ -463,6 +511,28 @@ func pagerView(f apiclient.IntakeFilter, page *apiclient.IntakePage) intakesPage
 
 // intakesURL arma el enlace a una página conservando los filtros vigentes.
 func intakesURL(f apiclient.IntakeFilter, page int) string {
+	return intakeFilteredURL("/intakes", f, page)
+}
+
+// discardURL es la ruta a la que apuntan los dos formularios del descarte, con los filtros vigentes
+// EN LA QUERY.
+//
+// Van en la URL y no en campos ocultos a propósito: así el POST se lee con el mismo
+// intakeFilterFromQuery que el GET —una sola forma de saber qué bandeja se está mirando— y el
+// re-pintado tras descartar cae exactamente en la página desde la que se descartó.
+func discardURL(f apiclient.IntakeFilter) string {
+	page := f.Page
+	if page < 1 {
+		page = 1
+	}
+	return intakeFilteredURL("/intakes/discard", f, page)
+}
+
+// intakeFilteredURL arma una URL de la bandeja conservando los filtros vigentes. Es el ÚNICO sitio
+// donde se decide qué filtros sobreviven a una navegación: si el paginador y el descarte contaran
+// cada uno por su cuenta, descartar podría devolver al operador a una bandeja distinta de la que
+// estaba mirando.
+func intakeFilteredURL(path string, f apiclient.IntakeFilter, page int) string {
 	q := url.Values{}
 	for key, value := range map[string]string{
 		"from": f.From, "to": f.To, "status": f.Status, "session": f.Session,
@@ -475,5 +545,5 @@ func intakesURL(f apiclient.IntakeFilter, page int) string {
 	if f.PageSize > 0 && f.PageSize != defaultIntakesPageSize {
 		q.Set("page_size", strconv.Itoa(f.PageSize))
 	}
-	return "/intakes?" + q.Encode()
+	return path + "?" + q.Encode()
 }
