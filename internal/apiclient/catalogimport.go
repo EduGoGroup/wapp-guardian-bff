@@ -1,17 +1,29 @@
 package apiclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 )
 
-// catalogImportPath es la ruta del import de catálogo en la API pública (Plan 041 · T3.3).
+// catalogImportPath es la ruta del import de catálogo en la API pública (Plan 041 · T3.3). La
+// planilla entra por `/tabular` (T3.4) y sale por el MISMO validador, diff y versionado.
 const catalogImportPath = "/api/v1/catalog/import"
+
+// catalogTabularFormField es el campo del formulario multipart donde la plataforma espera el
+// archivo. Nombre fijo por contrato: no se deduce del nombre del fichero ni se manda por otro lado.
+const catalogTabularFormField = "file"
+
+// defaultCatalogTabularFilename nombra la parte del multipart cuando el navegador no dio nombre.
+// Es irrelevante para el resultado —la plataforma reconoce el formato por el CONTENIDO, no por la
+// extensión— pero la parte necesita uno.
+const defaultCatalogTabularFilename = "catalogo"
 
 // Modos del import. El de la plataforma cuando el parámetro falta es `validate`, y esa red de
 // seguridad se respeta pero no se usa: el cliente manda SIEMPRE el modo explícito, porque una
@@ -54,6 +66,15 @@ type CatalogImportResult struct {
 	// ArchivedVersion es el número con el que quedó guardado el catálogo ANTERIOR. Cero cuando no se
 	// archivó nada: en validate (no se escribe) y en el primer import de una ref.
 	ArchivedVersion int `json:"archived_version"`
+	// Document es el documento leído y NORMALIZADO (el sobre entero: format, version, source y
+	// catalog), listo para reenviarse tal cual al import JSON. Solo lo trae el camino TABULAR: quien
+	// sube un JSON ya lo tiene.
+	//
+	// Es lo que permite confirmar en dos pasos sin volver a pedir el archivo, y por eso se guarda
+	// como RawMessage y no como un struct tipado: se reenvía BYTE A BYTE. Deserializarlo aquí para
+	// volver a serializarlo obligaría al BFF a conocer el contrato del catálogo —que es dominio de la
+	// plataforma— y cualquier campo nuevo se perdería en la traducción sin que nadie lo notase.
+	Document json.RawMessage `json:"document,omitempty"`
 }
 
 // CatalogDiff responde a la única pregunta que el dueño se hace antes de aplicar un import: qué le
@@ -95,10 +116,20 @@ type CatalogItemRef struct {
 // dueño del negocio. Ese texto viaja VERBATIM hasta la pantalla: reescribirlo aquí sería mantener
 // dos criterios de redacción que acabarían discrepando.
 type CatalogImportFieldError struct {
-	CategoryIndex *int   `json:"category_index,omitempty"`
-	ItemIndex     *int   `json:"item_index,omitempty"`
-	Field         string `json:"field"`
-	Reason        string `json:"reason"`
+	// Row es la fila de la PLANILLA que produjo el defecto, en el número que la hoja enseña en su
+	// margen (cabecera = 1). Solo viaja por el camino tabular, y cuando viaja MANDA sobre los
+	// índices: es lo que la persona que llenó la planilla tiene delante. Cero = no es de una fila.
+	//
+	// Ojo con la asimetría, que es del contrato y no un descuido: en el tabular los índices van
+	// borrados y `Row` viaja en todos los defectos —también en los de negocio, como un sku
+	// repetido—; en el JSON es exactamente al revés.
+	Row           int  `json:"row,omitempty"`
+	CategoryIndex *int `json:"category_index,omitempty"`
+	ItemIndex     *int `json:"item_index,omitempty"`
+	// Field es el campo del contrato ("price", "variants[1].price") por el camino JSON, y el nombre
+	// de la COLUMNA de la planilla en español ("precio", "categoria") por el tabular.
+	Field  string `json:"field"`
+	Reason string `json:"reason"`
 }
 
 // CatalogImportInvalidError es el rechazo por documento inválido: TODOS los defectos en una sola
@@ -180,19 +211,16 @@ func NewCatalogImportClient(t *Transport) *CatalogImportClient {
 // y el BFF no lo reserializa, ni lo reindenta, ni le quita campos. Lo que el operador ve en pantalla
 // es exactamente lo que la plataforma valida.
 //
-// `apply` decide la modalidad. La ref NO se manda: el default es de la plataforma y fijarlo aquí
-// significaría tener dos verdades sobre dónde vive el catálogo.
+// `apply` decide la modalidad. `ref` vacía deja mandar al default de la plataforma —el BFF no lo
+// copia—, y con valor va explícita: el paso 2 tiene que aplicar sobre la MISMA ref contra la que se
+// calculó el diff del paso 1, y esa ref no viaja dentro del documento (es portátil por contrato).
 //
 // Un documento inválido sale como *CatalogImportInvalidError con la lista entera de defectos; el
 // resto de rechazos con motivo mostrable (413 por tamaño, 400 por modo desconocido) como
 // *RejectionError, y lo demás como *APIError.
-func (c *CatalogImportClient) ImportCatalog(ctx context.Context, accessToken string, document []byte, apply bool) (*CatalogImportResult, error) {
-	mode := catalogModeValidate
-	if apply {
-		mode = catalogModeApply
-	}
+func (c *CatalogImportClient) ImportCatalog(ctx context.Context, accessToken string, document []byte, apply bool, ref string) (*CatalogImportResult, error) {
 	req, err := c.t.newAuthedRequest(ctx, http.MethodPost,
-		catalogImportPath+"?mode="+mode, document, accessToken)
+		catalogImportPath+catalogImportQuery(apply, ref), document, accessToken)
 	if err != nil {
 		return nil, err
 	}
@@ -210,6 +238,73 @@ func (c *CatalogImportClient) ImportCatalog(ctx context.Context, accessToken str
 		return nil, fmt.Errorf("apiclient: import de catálogo: decodificar respuesta: %w", err)
 	}
 	return &out, nil
+}
+
+// ImportCatalogTabular sube la planilla (CSV o XLSX) a POST /api/v1/catalog/import/tabular.
+//
+// Es el MISMO import por otra puerta: mismo validador, mismo diff, mismo versionado y la misma
+// respuesta, con `document` —el documento ya traducido a JSON— como único añadido. El formato NO se
+// declara: la plataforma lo reconoce por el contenido, así que el nombre del archivo viaja solo
+// porque el multipart lo pide y no decide nada.
+//
+// El archivo va SIN TOCAR: ni se reordena, ni se recodifica, ni se mira por dentro. Lo que el
+// operador eligió es lo que la plataforma lee.
+func (c *CatalogImportClient) ImportCatalogTabular(ctx context.Context, accessToken, filename string, content []byte, apply bool, ref string) (*CatalogImportResult, error) {
+	if filename == "" {
+		filename = defaultCatalogTabularFilename
+	}
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	part, err := mw.CreateFormFile(catalogTabularFormField, filename)
+	if err != nil {
+		return nil, fmt.Errorf("apiclient: import tabular: armar el formulario: %w", err)
+	}
+	if _, err := part.Write(content); err != nil {
+		return nil, fmt.Errorf("apiclient: import tabular: escribir el archivo: %w", err)
+	}
+	if err := mw.Close(); err != nil {
+		return nil, fmt.Errorf("apiclient: import tabular: cerrar el formulario: %w", err)
+	}
+
+	req, err := c.t.newAuthedRequest(ctx, http.MethodPost,
+		catalogImportPath+"/tabular"+catalogImportQuery(apply, ref), body.Bytes(), accessToken)
+	if err != nil {
+		return nil, err
+	}
+	// newAuthedRequest marca JSON por defecto; aquí manda el tipo del multipart CON su boundary, que
+	// solo conoce el writer que acaba de cerrarse.
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+
+	resp, err := c.t.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("apiclient: import tabular: %w", err)
+	}
+	defer drainClose(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, catalogImportError("import tabular", resp)
+	}
+
+	var out CatalogImportResult
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("apiclient: import tabular: decodificar respuesta: %w", err)
+	}
+	return &out, nil
+}
+
+// catalogImportQuery arma el query de las dos puertas del import. El modo va SIEMPRE explícito
+// —una petición que puede escribir el catálogo no debe depender de un default para no escribirlo— y
+// la ref solo cuando el llamante la fija.
+func catalogImportQuery(apply bool, ref string) string {
+	q := url.Values{}
+	if apply {
+		q.Set("mode", catalogModeApply)
+	} else {
+		q.Set("mode", catalogModeValidate)
+	}
+	if ref != "" {
+		q.Set("ref", ref)
+	}
+	return "?" + q.Encode()
 }
 
 // GetCatalogTemplate descarga la plantilla de ejemplo de GET /api/v1/catalog/import/template.

@@ -126,7 +126,14 @@
         <form method="POST" action="/catalog-import" class="stack" autocomplete="off">
             <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
             <input type="hidden" name="action" value="apply">
+            {{/* Con una planilla, este documento NO es lo que se subió: es lo que la plataforma leyó
+                 de ella, ya traducido al contrato. Un .xlsx es binario y no cabe aquí, y volver a
+                 pedir el archivo dejaría subir uno distinto del que se confirmó. */}}
             <input type="hidden" name="document" value="{{ .View.Document }}">
+            {{/* La ref viaja con el documento porque NO está dentro de él: el documento es portátil
+                 por contrato. Sin arrastrarla, el paso 2 podría escribir en una ref distinta de
+                 aquella contra la que se calculó el diff que el operador acaba de leer. */}}
+            <input type="hidden" name="ref" value="{{ .View.Result.Ref }}">
             <div class="row">
                 <button type="submit" class="btn btn--filled">Aplicar este catálogo</button>
                 <a href="/catalog-import" class="btn btn--text">Descartar y empezar de nuevo</a>
@@ -143,7 +150,10 @@
         <h2 class="title title--m">Qué hay que corregir</h2>
         <div class="table-wrap">
             <table class="table">
-                <thead><tr><th>Dónde</th><th>Campo</th><th>Qué pasa</th></tr></thead>
+                {{/* «Campo o columna» porque la plataforma manda una cosa u otra según la puerta por
+                     la que entró el documento: el campo del contrato si era JSON, el nombre de la
+                     columna de la planilla si era una hoja de cálculo. */}}
+                <thead><tr><th>Dónde</th><th>Campo o columna</th><th>Qué pasa</th></tr></thead>
                 <tbody>
                     {{ range .View.Errors }}
                     <tr>
@@ -164,8 +174,9 @@
     {{ if not .View.AwaitingConfirmation }}
     <div class="card" id="section-catalog-import">
         <h1 class="headline">Importar catálogo</h1>
-        <p class="supporting">Pega el documento JSON de tu catálogo o sube el archivo. Primero se comprueba
-            y se te enseña qué cambiaría; no se toca nada hasta que lo confirmes.</p>
+        <p class="supporting">Sube tu catálogo —una planilla de Excel o CSV, o el documento JSON— o pega
+            el JSON aquí abajo. Primero se comprueba y se te enseña qué cambiaría; no se toca nada
+            hasta que lo confirmes.</p>
 
         <form method="POST" action="/catalog-import" class="stack" autocomplete="off" enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
@@ -176,10 +187,16 @@
                           placeholder='{"format":"wapp.catalog_import","version":1,"categories":[…]}'>{{ .View.Document }}</textarea>
             </div>
             <div class="field">
-                <label class="field__label" for="file">…o sube el archivo .json</label>
-                <input class="field__input" type="file" id="file" name="file" accept=".json,application/json">
+                <label class="field__label" for="file">…o sube el archivo (Excel, CSV o JSON)</label>
+                {{/* `accept` solo filtra el diálogo del navegador y no rechaza nada: quien decide qué
+                     es cada archivo es la plataforma, y lo decide por su CONTENIDO. Por eso aquí no
+                     se cierra más de la cuenta —un .xlsx renombrado sigue importando igual—. */}}
+                <input class="field__input" type="file" id="file" name="file"
+                       accept=".xlsx,.csv,.json,application/json,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
             </div>
-            <p class="supporting">Si eliges un archivo, manda ese y se ignora lo que haya en el cuadro de arriba.</p>
+            <p class="supporting">Si eliges un archivo, manda ese y se ignora lo que haya en el cuadro de
+                arriba. La planilla se traduce sola: al comprobarla verás el mismo resumen de cambios que
+                con un JSON.</p>
             <div class="row">
                 <button type="submit" class="btn btn--filled">Comprobar documento</button>
             </div>

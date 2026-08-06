@@ -27,9 +27,10 @@ type fakeAPIPort struct {
 	getTenantVariables     func(ctx context.Context, accessToken string) (*apiclient.TenantVariables, error)
 	replaceTenantVariables func(ctx context.Context, accessToken string, vars map[string]string) (*apiclient.TenantVariables, error)
 
-	importCatalog      func(ctx context.Context, accessToken string, document []byte, apply bool) (*apiclient.CatalogImportResult, error)
-	getCatalogTemplate func(ctx context.Context, accessToken, format string) (*apiclient.CatalogTemplate, error)
-	getCatalogPrompt   func(ctx context.Context, accessToken string) (*apiclient.CatalogPrompt, error)
+	importCatalog        func(ctx context.Context, accessToken string, document []byte, apply bool, ref string) (*apiclient.CatalogImportResult, error)
+	importCatalogTabular func(ctx context.Context, accessToken, filename string, content []byte, apply bool, ref string) (*apiclient.CatalogImportResult, error)
+	getCatalogTemplate   func(ctx context.Context, accessToken, format string) (*apiclient.CatalogTemplate, error)
+	getCatalogPrompt     func(ctx context.Context, accessToken string) (*apiclient.CatalogPrompt, error)
 }
 
 var _ APIPort = (*fakeAPIPort)(nil)
@@ -106,9 +107,15 @@ func (f *fakeAPIPort) ReplaceTenantVariables(ctx context.Context, at string, var
 	}
 	return &apiclient.TenantVariables{Variables: vars}, nil
 }
-func (f *fakeAPIPort) ImportCatalog(ctx context.Context, at string, document []byte, apply bool) (*apiclient.CatalogImportResult, error) {
+func (f *fakeAPIPort) ImportCatalog(ctx context.Context, at string, document []byte, apply bool, ref string) (*apiclient.CatalogImportResult, error) {
 	if f.importCatalog != nil {
-		return f.importCatalog(ctx, at, document, apply)
+		return f.importCatalog(ctx, at, document, apply, ref)
+	}
+	return &apiclient.CatalogImportResult{}, nil
+}
+func (f *fakeAPIPort) ImportCatalogTabular(ctx context.Context, at, filename string, content []byte, apply bool, ref string) (*apiclient.CatalogImportResult, error) {
+	if f.importCatalogTabular != nil {
+		return f.importCatalogTabular(ctx, at, filename, content, apply, ref)
 	}
 	return &apiclient.CatalogImportResult{}, nil
 }

@@ -77,8 +77,13 @@ type TenantVariablesManager interface {
 // Va segregado del resto por lo mismo que la bandeja: es un frente de pago (feature
 // `catalog_import`) y la pantalla que lo consume es PROVISIONAL (migra a KMP con los planes
 // 045/047, ADR-0035). Cuando esa pantalla muera, esta interfaz se va con ella.
+// Las dos puertas del import —JSON y planilla— van en el MISMO puerto y no en dos, porque para la
+// pantalla son un solo acto con dos entradas: el paso 2 sale siempre por la de JSON, incluso cuando
+// el paso 1 entró por la planilla (el `document` normalizado que devuelve el tabular es lo que lo
+// hace posible).
 type CatalogImporter interface {
-	ImportCatalog(ctx context.Context, accessToken string, document []byte, apply bool) (*apiclient.CatalogImportResult, error)
+	ImportCatalog(ctx context.Context, accessToken string, document []byte, apply bool, ref string) (*apiclient.CatalogImportResult, error)
+	ImportCatalogTabular(ctx context.Context, accessToken, filename string, content []byte, apply bool, ref string) (*apiclient.CatalogImportResult, error)
 	GetCatalogTemplate(ctx context.Context, accessToken, format string) (*apiclient.CatalogTemplate, error)
 	GetCatalogPrompt(ctx context.Context, accessToken string) (*apiclient.CatalogPrompt, error)
 }

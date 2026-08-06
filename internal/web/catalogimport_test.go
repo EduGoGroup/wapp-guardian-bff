@@ -2,7 +2,9 @@ package web
 
 import (
 	"bytes"
+	"html"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -27,8 +29,11 @@ const (
 // poder afirmar QUÉ se pidió, no solo qué se pintó.
 type catalogImportAPI struct {
 	mu          sync.Mutex
+	lastPath    string
 	lastQuery   url.Values
 	lastBody    string
+	lastFile    string
+	lastName    string
 	calls       int
 	promptCalls int
 	srv         *httptest.Server
@@ -62,10 +67,17 @@ func newCatalogImportAPI(features []string, handle http.HandlerFunc) *catalogImp
 			if r.URL.Path == "/api/v1/catalog/import/prompt" {
 				api.promptCalls++
 			} else {
+				api.lastPath = r.URL.Path
 				api.lastQuery = r.URL.Query()
 				api.lastBody = string(body)
+				// Las DOS puertas del import cuentan como llamada al import: las dos pueden escribir el
+				// catálogo. La plantilla no.
 				if r.URL.Path == "/api/v1/catalog/import" {
 					api.calls++
+				}
+				if r.URL.Path == "/api/v1/catalog/import/tabular" {
+					api.calls++
+					api.lastFile, api.lastName = filePartOf(body, r.Header.Get("Content-Type"))
 				}
 			}
 			api.mu.Unlock()
@@ -107,6 +119,49 @@ func (a *catalogImportAPI) prompts() int {
 	return a.promptCalls
 }
 
+// path devuelve por qué puerta entró la última petición del import.
+func (a *catalogImportAPI) path() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.lastPath
+}
+
+// upload devuelve el contenido y el nombre del archivo que llegó en el multipart.
+func (a *catalogImportAPI) upload() (content, filename string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.lastFile, a.lastName
+}
+
+// filePartOf saca del cuerpo multipart la parte «file»: su contenido y su nombre. Se hace con el
+// parser de verdad —no buscando cadenas— para que el test compruebe que lo enviado es un multipart
+// bien formado y no un montón de bytes que casualmente contienen el archivo.
+func filePartOf(body []byte, contentType string) (content, filename string) {
+	_, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return "", ""
+	}
+	mr := multipart.NewReader(bytes.NewReader(body), params["boundary"])
+	form, err := mr.ReadForm(1 << 20)
+	if err != nil {
+		return "", ""
+	}
+	files := form.File["file"]
+	if len(files) == 0 {
+		return "", ""
+	}
+	f, err := files[0].Open()
+	if err != nil {
+		return "", ""
+	}
+	defer func() { _ = f.Close() }()
+	raw, err := io.ReadAll(f)
+	if err != nil {
+		return "", ""
+	}
+	return string(raw), files[0].Filename
+}
+
 // postMultipartWithCookie envía el formulario de la pantalla como multipart, que es como lo manda el
 // navegador cuando hay un `<input type=file>`. Con fileName vacío se manda la parte de archivo VACÍA:
 // es lo que llega de verdad cuando el operador no elige ninguno.
@@ -135,6 +190,24 @@ func postMultipartWithCookie(router http.Handler, path string, fields map[string
 }
 
 const validCatalogDoc = `{"format":"wapp.catalog_import","version":1,"categories":[]}`
+
+// hiddenValue devuelve el valor de un `<input type="hidden">` DESESCAPADO, que es lo que el
+// navegador reenviaría. Va así a propósito: el documento se pinta en un atributo con las comillas
+// escapadas, y comprobar el viaje de ida y vuelta con el valor crudo no probaría nada del round-trip
+// real.
+func hiddenValue(page, name string) string {
+	marker := `name="` + name + `" value="`
+	at := strings.Index(page, marker)
+	if at < 0 {
+		return ""
+	}
+	rest := page[at+len(marker):]
+	end := strings.Index(rest, `"`)
+	if end < 0 {
+		return ""
+	}
+	return html.UnescapeString(rest[:end])
+}
 
 // textareaContent devuelve el contenido del textarea con ese id. Hace falta mirar DENTRO: el JSON se
 // pinta escapado (html/template convierte las comillas), así que buscar el documento crudo en la
@@ -519,6 +592,181 @@ func TestCatalogImportReadsUploadedFile(t *testing.T) {
 	}
 	if _, body, _ := api.seen(); body != validCatalogDoc {
 		t.Errorf("una parte de archivo vacía no debe pisar lo pegado, got %q", body)
+	}
+}
+
+// planillaCSV es una planilla mínima: lo que importa del test es por dónde sale y con qué bytes, no
+// que el contenido sea un catálogo válido (eso lo valida la plataforma, no el BFF).
+const planillaCSV = "sku;categoria;nombre;precio\nemp-carne;Empanadas;Empanada de carne;2,5\n"
+
+// diffConDocumento es la respuesta del validate TABULAR: el mismo objeto del import JSON con
+// `document` —el sobre entero ya traducido— como único añadido.
+const diffConDocumento = `{"mode":"validate","ref":"catalogo","applied":false,"items":1,
+ "document":{"format":"wapp.catalog_import","version":1,"source":"planilla",
+   "catalog":{"categories":[{"label":"Empanadas","items":[{"sku":"emp-carne","label":"Empanada de carne","price":2.5}]}]}},
+ "diff":{"price_changes":[],"added":[{"sku":"emp-carne","label":"Empanada de carne"}],
+   "removed":[],"changed_details":[],"unchanged":0}}`
+
+// TestCatalogImportSendsSpreadsheetToTabularDoor (T3.4): una planilla sale por `/tabular`, en el
+// campo `file` de un multipart, y con los bytes del archivo SIN TOCAR.
+func TestCatalogImportSendsSpreadsheetToTabularDoor(t *testing.T) {
+	api := newCatalogImportAPI([]string{"catalog_import"}, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, diffConDocumento)
+	})
+	defer api.close()
+
+	rec := postMultipartWithCookie(NewRouter(authTestCfg(api.srv.URL)), "/catalog-import",
+		nil, "catalogo.csv", planillaCSV, validSessionCookie(t))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("la planilla debía comprobarse con 200, got %d", rec.Code)
+	}
+
+	if got := api.path(); got != "/api/v1/catalog/import/tabular" {
+		t.Errorf("la planilla debía salir por la puerta tabular, got %q", got)
+	}
+	if query, _, _ := api.seen(); query.Get("mode") != "validate" {
+		t.Errorf("el primer paso debía pedir mode=validate, got %q", query.Get("mode"))
+	}
+	content, filename := api.upload()
+	if content != planillaCSV {
+		t.Errorf("el archivo debía viajar sin tocar, got %q", content)
+	}
+	if filename != "catalogo.csv" {
+		t.Errorf("el nombre original debía viajar en la parte, got %q", filename)
+	}
+	// Y en pantalla, el mismo diff de siempre: la planilla no estrena renderizador.
+	if out := rec.Body.String(); !strings.Contains(out, catalogDiffMarker) || !strings.Contains(out, "emp-carne") {
+		t.Error("la planilla debía pintar el diff con el mismo camino que el JSON")
+	}
+}
+
+// TestCatalogImportConfirmsSpreadsheetThroughJSONDoor: el paso 2 de una planilla sale por el import
+// JSON con el documento NORMALIZADO que devolvió el validate. Es lo que permite confirmar un .xlsx
+// —binario, incapaz de volver en un campo oculto— sin volver a pedir el archivo.
+func TestCatalogImportConfirmsSpreadsheetThroughJSONDoor(t *testing.T) {
+	api := newCatalogImportAPI([]string{"catalog_import"}, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/catalog/import/tabular" {
+			_, _ = io.WriteString(w, diffConDocumento)
+			return
+		}
+		_, _ = io.WriteString(w, `{"mode":"apply","ref":"catalogo","applied":true,"items":1,"archived_version":2,
+		 "diff":{"price_changes":[],"added":[],"removed":[],"changed_details":[],"unchanged":1}}`)
+	})
+	defer api.close()
+	router := NewRouter(authTestCfg(api.srv.URL))
+	cookie := validSessionCookie(t)
+
+	// Paso 1: la planilla. El documento traducido queda en el campo oculto, listo para confirmarse.
+	step1 := postMultipartWithCookie(router, "/catalog-import", nil, "catalogo.xlsx", planillaCSV, cookie).Body.String()
+	if !strings.Contains(step1, `<input type="hidden" name="document"`) {
+		t.Fatal("el paso 1 debía dejar el documento traducido en el formulario de confirmación")
+	}
+	if !strings.Contains(step1, "wapp.catalog_import") {
+		t.Error("el documento oculto debía ser el que devolvió la plataforma, no la planilla")
+	}
+	if !strings.Contains(step1, `name="ref" value="catalogo"`) {
+		t.Error("la ref del paso 1 debía arrastrarse al formulario de confirmación")
+	}
+
+	// Paso 2: confirmar. Sale por la puerta JSON con ese documento y esa ref.
+	hidden := hiddenValue(step1, "document")
+	if hidden == "" {
+		t.Fatal("no se pudo leer el documento oculto")
+	}
+	step2 := postFormWithCookie(router, "/catalog-import",
+		url.Values{"document": {hidden}, "ref": {"catalogo"}, "action": {"apply"}}, cookie)
+	if step2.Code != http.StatusOK {
+		t.Fatalf("el apply debía responder 200, got %d", step2.Code)
+	}
+
+	if got := api.path(); got != "/api/v1/catalog/import" {
+		t.Errorf("el paso 2 debía salir por la puerta JSON, got %q", got)
+	}
+	query, body, _ := api.seen()
+	if query.Get("mode") != "apply" {
+		t.Errorf("el paso 2 debía pedir mode=apply, got %q", query.Get("mode"))
+	}
+	if query.Get("ref") != "catalogo" {
+		t.Errorf("la ref debía viajar explícita en el paso 2, got %q", query.Get("ref"))
+	}
+	if !strings.Contains(body, `"wapp.catalog_import"`) || !strings.Contains(body, `"emp-carne"`) {
+		t.Errorf("debía aplicarse el documento traducido, got %q", body)
+	}
+	if !strings.Contains(step2.Body.String(), "Catálogo aplicado") {
+		t.Error("la confirmación debía decir que se aplicó")
+	}
+}
+
+// TestCatalogImportTabularErrorsLocateTheRow: los defectos de una planilla se ubican por FILA —el
+// número que la hoja enseña en su margen— y no por índices de categoría. No se le suma nada: ya
+// viene en el sistema del operador.
+func TestCatalogImportTabularErrorsLocateTheRow(t *testing.T) {
+	const errores = `{"error":"validation_failed","errors":[
+	 {"row":4,"field":"precio","reason":"la fila 4 trae un precio que no es un número: escribe solo el número, sin símbolo de moneda."},
+	 {"row":7,"field":"sku","reason":"el sku emp-carne ya lo usa la fila 4: cada artículo necesita el suyo."},
+	 {"field":"archivo","reason":"el libro no tiene ninguna hoja llamada «catalogo»: renómbrala así o parte de la plantilla."}]}`
+
+	api := newCatalogImportAPI([]string{"catalog_import"}, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, errores)
+	})
+	defer api.close()
+
+	rec := postMultipartWithCookie(NewRouter(authTestCfg(api.srv.URL)), "/catalog-import",
+		nil, "catalogo.xlsx", planillaCSV, validSessionCookie(t))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("una planilla inválida debía responder 400, got %d", rec.Code)
+	}
+	out := rec.Body.String()
+
+	for _, want := range []string{
+		"Fila 4", "Fila 7",
+		"precio", "sku", "archivo",
+		"escribe solo el número, sin símbolo de moneda",
+		"ya lo usa la fila 4",
+		"el libro no tiene ninguna hoja",
+		"Campo o columna", // el encabezado admite las dos formas del contrato
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("la lista de defectos debía contener %q", want)
+		}
+	}
+	// El defecto sin fila es del archivo entero, y se dice así en vez de inventarse una fila.
+	if !strings.Contains(out, "Todo el documento") {
+		t.Error("un defecto sin fila debía ubicarse en el documento entero")
+	}
+	// Con la planilla rechazada NO hay documento que confirmar: la plataforma no lo manda a medias.
+	if strings.Contains(out, `value="apply"`) {
+		t.Error("una planilla rechazada no puede ofrecer aplicar")
+	}
+}
+
+// TestCatalogImportChoosesDoorByContent: la puerta la elige el CONTENIDO, no la extensión — igual
+// que la plataforma elige el parser. Un JSON llamado .csv sigue siendo un JSON.
+func TestCatalogImportChoosesDoorByContent(t *testing.T) {
+	api := newCatalogImportAPI([]string{"catalog_import"}, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, diffBody)
+	})
+	defer api.close()
+	router := NewRouter(authTestCfg(api.srv.URL))
+	cookie := validSessionCookie(t)
+
+	// JSON con el nombre equivocado: puerta JSON.
+	postMultipartWithCookie(router, "/catalog-import", nil, "catalogo.csv", validCatalogDoc, cookie)
+	if got := api.path(); got != "/api/v1/catalog/import" {
+		t.Errorf("un JSON debía salir por la puerta JSON aunque se llame .csv, got %q", got)
+	}
+
+	// JSON guardado con BOM por un editor de Windows: sigue siendo JSON, no una planilla.
+	postMultipartWithCookie(router, "/catalog-import", nil, "catalogo.json", "\xef\xbb\xbf"+validCatalogDoc, cookie)
+	if got := api.path(); got != "/api/v1/catalog/import" {
+		t.Errorf("un JSON con BOM no es una planilla, got %q", got)
+	}
+
+	// Planilla con el nombre equivocado: puerta tabular.
+	postMultipartWithCookie(router, "/catalog-import", nil, "catalogo.json", planillaCSV, cookie)
+	if got := api.path(); got != "/api/v1/catalog/import/tabular" {
+		t.Errorf("una planilla debía salir por la puerta tabular aunque se llame .json, got %q", got)
 	}
 }
 

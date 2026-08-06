@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"log/slog"
@@ -46,15 +47,17 @@ type catalogImportNotice struct {
 
 // catalogImportErrorRow es UN defecto del documento tal como se pinta.
 //
-// La ubicación se cuenta EN BASE 1 aunque la plataforma la publique en base 0. No es un capricho: la
-// prosa del motivo ya cuenta como cuenta una persona («el artículo 3 de la categoría 2»), así que
-// dejar el índice crudo pondría dos números distintos para el mismo sitio en la misma fila. El
-// Reason NO se toca: viaja verbatim desde la plataforma, donde se escribió para el dueño del
-// negocio.
+// La ubicación se redacta en el sistema del que la va a leer: la fila de la planilla tal cual viene,
+// y los índices del JSON pasados a base 1. No es un capricho: la prosa del motivo ya cuenta como
+// cuenta una persona («el artículo 3 de la categoría 2»), así que dejar el índice crudo pondría dos
+// números distintos para el mismo sitio en la misma fila. El Reason NO se toca: viaja verbatim desde
+// la plataforma, donde se escribió para el dueño del negocio.
 type catalogImportErrorRow struct {
 	Location string
-	Field    string
-	Reason   string
+	// Field es el campo del contrato por el camino JSON y el nombre de la columna por el tabular. Se
+	// pinta bajo un encabezado que admite las dos cosas en vez de inventarse dos tablas.
+	Field  string
+	Reason string
 }
 
 // catalogImportView es lo que pinta la plantilla.
@@ -132,6 +135,11 @@ func (h *CatalogImportHandler) ShowCatalogImport(c *gin.Context) {
 // permite que el BFF no tenga estado: la plataforma re-valida y re-diffea lo que le llega, así que
 // lo que se aplica es exactamente lo que se confirmó, aunque el operador tenga dos pestañas
 // abiertas.
+//
+// LA PLANILLA ENTRA POR SU PUERTA Y SALE POR LA DEL JSON. Un CSV o un XLSX se comprueban en
+// `/tabular`, que devuelve el documento ya traducido; ese documento —texto— es el que viaja al paso
+// 2 por el import JSON de siempre. Así el camino que ESCRIBE es uno solo, y la garantía de aplicar
+// exactamente lo enseñado sobrevive a un archivo binario que no cabría en un campo oculto.
 func (h *CatalogImportHandler) DoCatalogImport(c *gin.Context) {
 	ent := resolveEntitlements(c, h.auth, h.api)
 	if !ent.Has(catalogImportFeature) {
@@ -141,9 +149,9 @@ func (h *CatalogImportHandler) DoCatalogImport(c *gin.Context) {
 		return
 	}
 
-	doc, msg := catalogDocumentFromForm(c)
+	sub, msg := catalogSubmissionFrom(c)
 	if msg != "" {
-		h.render(c, http.StatusBadRequest, ent, catalogImportView{Document: doc},
+		h.render(c, http.StatusBadRequest, ent, catalogImportView{Document: sub.Document},
 			&catalogImportNotice{Message: msg})
 		return
 	}
@@ -152,7 +160,13 @@ func (h *CatalogImportHandler) DoCatalogImport(c *gin.Context) {
 	var result *apiclient.CatalogImportResult
 	err := h.auth.withAuthRetry(c, func(accessToken string) error {
 		var ierr error
-		result, ierr = h.api.ImportCatalog(c.Request.Context(), accessToken, []byte(doc), apply)
+		if sub.tabular() {
+			result, ierr = h.api.ImportCatalogTabular(c.Request.Context(), accessToken,
+				sub.Filename, sub.File, apply, sub.Ref)
+			return ierr
+		}
+		result, ierr = h.api.ImportCatalog(c.Request.Context(), accessToken,
+			[]byte(sub.Document), apply, sub.Ref)
 		return ierr
 	})
 	if err != nil {
@@ -164,18 +178,33 @@ func (h *CatalogImportHandler) DoCatalogImport(c *gin.Context) {
 		if invalid, ok := apiclient.CatalogImportInvalidOf(err); ok {
 			// El documento vuelve a la pantalla con TODOS sus defectos: es una lista para corregir el
 			// archivo, no un motivo de rechazo, y por eso no se resume ni se recorta.
+			//
+			// De una planilla rechazada NO vuelve documento —la plataforma no lo manda a medias— y el
+			// cuadro de texto se queda vacío a propósito: el archivo se corrige en la hoja de cálculo,
+			// que es donde están las filas que señalan los errores.
 			h.render(c, http.StatusBadRequest, ent,
-				catalogImportView{Document: doc, Errors: catalogErrorRows(invalid.Errors)},
+				catalogImportView{Document: sub.Document, Errors: catalogErrorRows(invalid.Errors)},
 				&catalogImportNotice{Message: catalogInvalidMessage(len(invalid.Errors))})
 			return
 		}
 		status, notice := mapCatalogImportError(err, apply)
-		h.render(c, status, ent, catalogImportView{Document: doc}, notice)
+		h.render(c, status, ent, catalogImportView{Document: sub.Document}, notice)
 		return
 	}
 
-	h.render(c, http.StatusOK, ent, catalogImportView{Document: doc, Result: result},
+	h.render(c, http.StatusOK, ent,
+		catalogImportView{Document: documentToConfirm(sub, result), Result: result},
 		&catalogImportNotice{Success: true, Message: catalogResultMessage(result)})
+}
+
+// documentToConfirm decide qué texto viaja al paso 2. De la planilla sale el documento NORMALIZADO
+// que devolvió la plataforma —el archivo binario no puede volver—; del JSON, lo que el operador ya
+// tenía. Se reenvía tal cual llegó, sin re-serializar: el BFF no interpreta el contrato del catálogo.
+func documentToConfirm(sub catalogSubmission, result *apiclient.CatalogImportResult) string {
+	if len(result.Document) > 0 {
+		return string(result.Document)
+	}
+	return sub.Document
 }
 
 // DownloadCatalogTemplate sirve la plantilla de ejemplo al navegador.
@@ -267,65 +296,102 @@ type catalogTemplateLink struct {
 }
 
 // catalogTemplateLinks son las plantillas que la pantalla ofrece. Las tres las sirve el MISMO
-// endpoint de la plataforma cambiando `format`; la planilla se ofrece porque es la que se llena sin
-// saber qué es un JSON, aunque hoy la consola solo sepa enviar el documento JSON de vuelta.
+// endpoint de la plataforma cambiando `format`, y las tres vuelven a entrar por esta pantalla: la
+// planilla es la que se llena sin saber qué es un JSON.
 var catalogTemplateLinks = []catalogTemplateLink{
 	{Format: "json", Label: "Plantilla JSON", Hint: "el formato que se pega aquí"},
 	{Format: "csv", Label: "Planilla CSV", Hint: "para llenar en una hoja de cálculo"},
 	{Format: "xlsx", Label: "Planilla Excel", Hint: "para llenar en Excel"},
 }
 
-// catalogDocumentFromForm resuelve de dónde sale el documento: del archivo si el operador eligió
-// uno, y si no de lo que pegó (o de lo que viaja oculto en la confirmación). Devuelve el mensaje de
-// error (vacío = todo bien) en vez de escribir la respuesta.
-//
-// Lo ÚNICO que se comprueba aquí es que se pueda enviar: que haya algo y que parezca un JSON. Qué
-// tiene de malo el documento lo dice el validador de la plataforma, que acumula todos los defectos y
-// los redacta para un humano; repetir aquí ese criterio sería garantizar que los dos discrepen.
-func catalogDocumentFromForm(c *gin.Context) (doc, msg string) {
-	uploaded, msg := uploadedCatalogDocument(c)
-	if msg != "" {
-		return "", msg
-	}
-	doc = uploaded
-	if doc == "" {
-		doc = strings.TrimSpace(c.PostForm("document"))
-	}
-
-	switch {
-	case doc == "":
-		return "", "Pega el documento del catálogo o elige un archivo antes de comprobarlo."
-	case !strings.HasPrefix(doc, "{"):
-		return doc, "Esto no parece un documento JSON de catálogo: tiene que empezar por «{». " +
-			"La consola todavía no envía planillas CSV ni Excel, y un archivo guardado con marca de " +
-			"codificación (BOM) también falla aquí; vuelve a guardarlo como UTF-8 sin BOM."
-	}
-	return doc, ""
+// catalogSubmission es lo que el operador mandó, ya resuelto: o un documento JSON (pegado, subido o
+// el que viaja oculto en la confirmación) o una planilla que hay que subir tal cual.
+type catalogSubmission struct {
+	// Document es el JSON del catálogo. Vacío cuando lo que se manda es una planilla.
+	Document string
+	// File son los bytes del archivo subido cuando NO es un JSON, y Filename su nombre original.
+	File     []byte
+	Filename string
+	// Ref es la ref contra la que se comprobó el paso 1, arrastrada al paso 2. Vacía = manda el
+	// default de la plataforma.
+	Ref string
 }
 
-// uploadedCatalogDocument lee el archivo elegido, si lo hay. Devuelve cadena vacía cuando no hay
-// archivo utilizable, y eso incluye el caso que manda de verdad el navegador: un `<input type=file>`
-// sin elegir nada SÍ viaja, como una parte vacía. Tratarla como «hay archivo» dejaría al operador
-// que pegó el documento con un «pega el documento» en la cara.
-func uploadedCatalogDocument(c *gin.Context) (doc, msg string) {
+// tabular dice si esto va por la puerta de la planilla.
+func (s catalogSubmission) tabular() bool { return len(s.File) > 0 }
+
+// catalogSubmissionFrom resuelve qué mandó el operador y por qué puerta tiene que salir. Devuelve el
+// mensaje de error (vacío = todo bien) en vez de escribir la respuesta.
+//
+// LA PUERTA SE ELIGE POR EL CONTENIDO, NO POR LA EXTENSIÓN, igual que hace la plataforma para elegir
+// el parser: si el archivo empieza por «{» es el documento JSON del contrato, y si no, es una
+// planilla y se sube tal cual. Fiarse del `.csv` del nombre sería fiarse de algo que el operador
+// cambia sin cambiar el archivo —y renombrar un XLSX a .json no debe romper nada.
+//
+// Lo ÚNICO que se comprueba es que se pueda enviar: que haya algo, y que lo PEGADO sea JSON (una
+// planilla no se pega, se sube). Qué tiene de malo el documento lo dice el validador de la
+// plataforma, que acumula todos los defectos y los redacta para un humano; repetir aquí ese criterio
+// sería garantizar que los dos discrepen.
+func catalogSubmissionFrom(c *gin.Context) (catalogSubmission, string) {
+	sub := catalogSubmission{Ref: strings.TrimSpace(c.PostForm("ref"))}
+
+	raw, filename, msg := uploadedCatalogFile(c)
+	if msg != "" {
+		return sub, msg
+	}
+	if len(raw) > 0 {
+		if looksLikeJSONDocument(raw) {
+			sub.Document = string(bytes.TrimSpace(raw))
+			return sub, ""
+		}
+		// Los bytes van SIN TOCAR: ni se recorta el espacio de los bordes ni se toca el BOM, porque un
+		// XLSX es binario y un CSV lo lee la plataforma, que ya sabe de BOM y de separadores.
+		sub.File, sub.Filename = raw, filename
+		return sub, ""
+	}
+
+	sub.Document = strings.TrimSpace(c.PostForm("document"))
+	switch {
+	case sub.Document == "":
+		return sub, "Pega el documento del catálogo o elige un archivo antes de comprobarlo."
+	case !strings.HasPrefix(sub.Document, "{"):
+		return sub, "Lo que pegaste no es un documento JSON de catálogo: tiene que empezar por «{». " +
+			"Si lo tuyo es una planilla, no la pegues aquí: súbela con el botón de archivo."
+	}
+	return sub, ""
+}
+
+// looksLikeJSONDocument decide si el archivo subido es el documento del contrato. Se mira el primer
+// carácter con contenido, saltando el BOM que escriben algunos editores de Windows: sin eso, un JSON
+// impecable guardado desde el Bloc de notas se iría por la puerta de las planillas y se rechazaría
+// con un motivo que no le diría nada a nadie.
+func looksLikeJSONDocument(raw []byte) bool {
+	return bytes.HasPrefix(bytes.TrimSpace(bytes.TrimPrefix(raw, []byte("\xef\xbb\xbf"))), []byte("{"))
+}
+
+// uploadedCatalogFile lee el archivo elegido, si lo hay. Devuelve nil cuando no hay archivo
+// utilizable, y eso incluye el caso que manda de verdad el navegador: un `<input type=file>` sin
+// elegir nada SÍ viaja, como una parte vacía. Tratarla como «hay archivo» dejaría al operador que
+// pegó el documento con un «pega el documento» en la cara.
+func uploadedCatalogFile(c *gin.Context) (raw []byte, filename, msg string) {
 	fh, err := c.FormFile("file")
 	if err != nil || fh == nil || fh.Size == 0 {
-		return "", ""
+		return nil, "", ""
 	}
 	f, err := fh.Open()
 	if err != nil {
 		slog.Warn("no se pudo abrir el archivo de catálogo subido", "error", err)
-		return "", "No se pudo leer el archivo que subiste. Inténtalo de nuevo."
+		return nil, "", "No se pudo leer el archivo que subiste. Inténtalo de nuevo."
 	}
 	defer func() { _ = f.Close() }()
 
 	// El tamaño ya viene acotado por BodyLimitMiddleware, así que aquí se lee lo que haya.
-	raw, err := io.ReadAll(f)
+	raw, err = io.ReadAll(f)
 	if err != nil {
 		slog.Warn("no se pudo leer el archivo de catálogo subido", "error", err)
-		return "", "No se pudo leer el archivo que subiste. Inténtalo de nuevo."
+		return nil, "", "No se pudo leer el archivo que subiste. Inténtalo de nuevo."
 	}
-	return strings.TrimSpace(string(raw)), ""
+	return raw, fh.Filename, ""
 }
 
 // catalogErrorRows traduce los defectos a filas de tabla. Solo se calcula la ubicación legible: el
@@ -345,8 +411,15 @@ func catalogErrorRows(errs []apiclient.CatalogImportFieldError) []catalogImportE
 // catalogErrorLocation redacta dónde está el defecto contando desde 1, como cuenta una persona y
 // como ya cuenta la prosa del motivo. Sin índices el defecto es del documento entero (cabecera,
 // límites), y decirlo así evita que se busque una categoría que no existe.
+//
+// LA FILA MANDA CUANDO VIENE. Quien subió una planilla tiene delante una hoja de cálculo con su
+// margen numerado, no un árbol de categorías, y ese número ya llega en el sistema del operador
+// (cabecera = 1): aquí no se le suma nada. Por el camino JSON no hay filas y mandan los índices, que
+// sí van en base 0 y sí hay que traducir.
 func catalogErrorLocation(e apiclient.CatalogImportFieldError) string {
 	switch {
+	case e.Row > 0:
+		return "Fila " + strconv.Itoa(e.Row)
 	case e.CategoryIndex == nil:
 		return "Todo el documento"
 	case e.ItemIndex == nil:
