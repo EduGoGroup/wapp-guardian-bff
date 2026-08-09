@@ -180,6 +180,25 @@
 
         <form method="POST" action="/catalog-import" class="stack" autocomplete="off" enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+
+            {{/* QUÉ CATÁLOGO SE REEMPLAZA. Este campo faltaba, y su ausencia era un defecto de los
+                 que no fallan: el formulario mandaba la ref vacía, la plataforma caía a su default y
+                 la pantalla enseñaba un diff contra un catálogo distinto del que el operador creía
+                 estar reemplazando —«0 desaparecen» donde de verdad desaparecían 3—. Se confirmaba
+                 convencido. Es un `select` y no un campo de texto a propósito: un tecleo con una
+                 letra de más crearía una ref nueva en silencio, que es el mismo fallo por otra
+                 puerta. */}}
+            <div class="field">
+                <label class="field__label" for="ref">¿Qué catálogo vas a reemplazar?</label>
+                <select class="field__control" id="ref" name="ref">
+                    {{ range .View.Refs }}
+                    <option value="{{ .Value }}"{{ if .Selected }} selected{{ end }}>{{ .Value }}{{ if not .Existing }} (nuevo){{ end }}</option>
+                    {{ end }}
+                </select>
+                <p class="supporting">La comparación de abajo se calcula contra este catálogo, y al
+                    aplicar es el que se sobrescribe. El anterior queda archivado como versión.</p>
+            </div>
+
             <div class="field">
                 <label class="field__label" for="document">Documento del catálogo (JSON)</label>
                 <textarea class="field__control field__control--code" id="document" name="document"

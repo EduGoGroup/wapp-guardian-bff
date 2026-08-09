@@ -29,12 +29,14 @@
         {{/* La advertencia va ARRIBA y en prosa, no en un `confirm()` del navegador: esta consola no
              emite JS (ADR-0035) y, sobre todo, un diálogo del navegador no puede enseñar la lista de
              abajo — que es lo único que convierte esta decisión en una decisión informada. */}}
+        {{/* El conteo exacto va en la advertencia y NO se parte en varias líneas: el texto se compara
+             tal cual en los tests, y un salto aquí lo convertiría en «descartar 2\n solicitudes». */}}
         <div class="snackbar snackbar--error" role="alert">
-            <span>Esto NO se puede deshacer y no hay papelera.</span>
+            <span>Vas a descartar {{ len .Selected }} {{ if eq (len .Selected) 1 }}solicitud{{ else }}solicitudes{{ end }}. Esto NO se puede deshacer y no hay papelera.</span>
         </div>
-        <p class="supporting">Las solicitudes de abajo quedarán como «abandonado» y saldrán de lo que
-            tienes pendiente. No se borra nada de lo que pidió el cliente —sus líneas y su historial
-            siguen ahí y se pueden consultar— y al cliente NO se le avisa.</p>
+        <p class="supporting">Quedarán como «abandonado» y saldrán de lo que tienes pendiente. No se
+            borra nada de lo que pidió el cliente —sus líneas y su historial siguen ahí y se pueden
+            consultar— y al cliente NO se le avisa.</p>
 
         <div class="table-wrap">
             <table class="table">
@@ -64,14 +66,23 @@
 
         {{/* El lote viaja ENTERO otra vez en vez de guardarse entre pasos: así se descarta
              exactamente lo que se acaba de enseñar, aunque haya dos pestañas abiertas. */}}
+        {{/* «Cancelar» va PRIMERO y con `autofocus` (REQ-32f(a)): la salida segura es el foco
+             inicial y el primer parada del tabulador, así que quien llega por teclado y pulsa Enter
+             CANCELA — antes descartaba, porque el único elemento enfocable del formulario era el
+             botón que escribe (los `hidden` no lo son).
+             Cancelar sigue siendo un `<a>`: es navegación, no una acción del formulario. Eso basta
+             mientras este formulario NO tenga campos de texto, porque el envío implícito con Enter
+             solo se dispara desde un campo. Si algún día se añade uno —un motivo, por ejemplo—, ese
+             Enter volvería a caer en el botón que escribe: entonces hay que hacer que la acción
+             destructiva deje de ser el primer `submit` del formulario. */}}
         <form method="POST" action="{{ .Action }}" class="row" autocomplete="off">
             <input type="hidden" name="csrf_token" value="{{ $.CSRFToken }}">
             {{ range .Selected }}
             <input type="hidden" name="intake_id" value="{{ .ID }}">
             {{ end }}
+            <a href="{{ .CancelURL }}" class="btn btn--text" autofocus>Cancelar</a>
             <button type="submit" class="btn btn--filled" name="action" value="discard">
                 Descartar definitivamente</button>
-            <a href="{{ .CancelURL }}" class="btn btn--text">Cancelar</a>
         </form>
     </div>
     {{ end }}

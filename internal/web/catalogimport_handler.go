@@ -39,6 +39,16 @@ const catalogImportNavDataKey = "CatalogImportNav"
 // defaultCatalogTemplateFormat es el formato de plantilla que sirve el enlace cuando no se pide otro.
 const defaultCatalogTemplateFormat = "json"
 
+// fallbackCatalogRef es la ref que el selector ofrece cuando el tenant NO tiene todavía ninguna:
+// hay que poder estrenar catálogo, y un desplegable vacío no dejaría importar nunca.
+//
+// Es un ESPEJO declarado del `defaultCatalogRef` de la plataforma
+// (`cloud/…/internal/publicapi/catalogimport.go`), no una segunda fuente de verdad: solo se usa
+// cuando la lista viene vacía, y si algún día divergen el síntoma es que el primer import de un
+// tenant nuevo crea la ref con otro nombre. La alternativa —mandar la ref vacía y dejar que la
+// plataforma elija— es literalmente el defecto A3 que este selector cierra.
+const fallbackCatalogRef = "catalogo"
+
 // catalogImportNotice es el aviso de una operación sobre el import tal como lo lee la plantilla.
 type catalogImportNotice struct {
 	Success bool
@@ -71,6 +81,33 @@ type catalogImportView struct {
 	Result *apiclient.CatalogImportResult
 	// Prompt es el texto copiable para el asistente, pedido a la plataforma.
 	Prompt catalogPromptView
+	// Refs son las refs entre las que el operador elige en el paso 1: contra cuál se compara el
+	// documento y sobre cuál se escribirá. NUNCA está vacía cuando la pantalla se pinta —ver
+	// catalogImportRefOptions—, porque una ref vacía es exactamente el defecto A3.
+	Refs []catalogRefOption
+	// Ref es la que se eligió en el envío que se está re-pintando. Existe para que un documento
+	// rechazado vuelva con SU ref todavía elegida: si se perdiera, el reintento se compararía
+	// contra otra sin que nadie lo dijera.
+	Ref string
+}
+
+// SelectedRef es la ref que el selector debe traer marcada. Manda la del resultado cuando lo hay
+// —es la que la plataforma usó de verdad, no la que se pidió— y si no, la del envío.
+func (v catalogImportView) SelectedRef() string {
+	if v.Result != nil && v.Result.Ref != "" {
+		return v.Result.Ref
+	}
+	return v.Ref
+}
+
+// catalogRefOption es UNA opción del selector de ref del paso 1.
+type catalogRefOption struct {
+	Value string
+	// Selected marca la que viene elegida de fábrica. Es siempre exactamente una.
+	Selected bool
+	// Existing distingue una ref que YA tiene contenido (se va a reemplazar) de la que se ofrece
+	// para estrenar. La pantalla lo dice con palabras porque no es lo mismo pisar que crear.
+	Existing bool
 }
 
 // catalogPromptView es el prompt-plantilla tal como lo pinta la plantilla.
@@ -151,7 +188,7 @@ func (h *CatalogImportHandler) DoCatalogImport(c *gin.Context) {
 
 	sub, msg := catalogSubmissionFrom(c)
 	if msg != "" {
-		h.render(c, http.StatusBadRequest, ent, catalogImportView{Document: sub.Document},
+		h.render(c, http.StatusBadRequest, ent, catalogImportView{Document: sub.Document, Ref: sub.Ref},
 			&catalogImportNotice{Message: msg})
 		return
 	}
@@ -183,12 +220,12 @@ func (h *CatalogImportHandler) DoCatalogImport(c *gin.Context) {
 			// cuadro de texto se queda vacío a propósito: el archivo se corrige en la hoja de cálculo,
 			// que es donde están las filas que señalan los errores.
 			h.render(c, http.StatusBadRequest, ent,
-				catalogImportView{Document: sub.Document, Errors: catalogErrorRows(invalid.Errors)},
+				catalogImportView{Document: sub.Document, Ref: sub.Ref, Errors: catalogErrorRows(invalid.Errors)},
 				&catalogImportNotice{Message: catalogInvalidMessage(len(invalid.Errors))})
 			return
 		}
 		status, notice := mapCatalogImportError(err, apply)
-		h.render(c, status, ent, catalogImportView{Document: sub.Document}, notice)
+		h.render(c, status, ent, catalogImportView{Document: sub.Document, Ref: sub.Ref}, notice)
 		return
 	}
 
@@ -253,6 +290,10 @@ func (h *CatalogImportHandler) render(c *gin.Context, status int, ent entitlemen
 	// casos solo serviría para llenar el log.
 	if ent.Has(catalogImportFeature) && !view.AwaitingConfirmation() {
 		view.Prompt = h.resolvePrompt(c)
+		// El selector solo se arma cuando se pinta el paso 1. Con un diff esperando confirmación la
+		// ref ya está decidida y viaja en su oculto: volver a listarla ahí sería un viaje de más y,
+		// peor, una segunda oportunidad de cambiarla entre el diff y el apply.
+		view.Refs = h.resolveRefs(c, view.SelectedRef())
 	}
 	render(h.cfg, c, status, "catalog-import.html", gin.H{
 		"Title":                  "Catálogo",
@@ -263,6 +304,69 @@ func (h *CatalogImportHandler) render(c *gin.Context, status int, ent entitlemen
 		catalogImportNavDataKey:  ent.Has(catalogImportFeature),
 		"CatalogTemplateFormats": catalogTemplateLinks,
 	})
+}
+
+// resolveRefs pide las refs de contenido del tenant y arma el selector del paso 1.
+//
+// Como resolvePrompt, no falla nunca hacia arriba: si la lista no se puede leer, la pantalla sigue
+// sirviendo con la ref de arranque. Lo que NO hace —y es la diferencia con el prompt— es degradar a
+// «sin opciones»: el selector tiene que ofrecer siempre algo que mandar, porque una ref vacía es el
+// defecto que esto viene a cerrar.
+func (h *CatalogImportHandler) resolveRefs(c *gin.Context, selected string) []catalogRefOption {
+	var refs []apiclient.TenantContentRef
+	err := h.auth.withAuthRetry(c, func(accessToken string) error {
+		var gerr error
+		refs, gerr = h.api.ListTenantContentRefs(c.Request.Context(), accessToken)
+		return gerr
+	})
+	if err != nil {
+		slog.Warn("no se pudieron listar las refs de contenido (se ofrece solo la de arranque)", "error", err)
+		refs = nil
+	}
+	return catalogImportRefOptions(refs, selected)
+}
+
+// catalogImportRefOptions convierte las refs del tenant en las opciones del desplegable.
+//
+// Tres reglas, y las tres salen del defecto A3:
+//
+//   - La lista NUNCA sale vacía. Sin refs (tenant nuevo, o el listado no se pudo leer) se ofrece
+//     fallbackCatalogRef para estrenar.
+//   - Hay SIEMPRE exactamente una opción marcada. Si `selected` viene con valor —el paso 2, que
+//     tiene que aplicar sobre la misma ref contra la que se calculó el diff— manda esa, y si no
+//     existe en la lista se añade igual: perder la ref elegida entre los dos pasos es justo el
+//     fallo silencioso del que nace todo esto.
+//   - El orden es el que devuelve la plataforma, sin reordenar por «parece un catálogo». Filtrar
+//     por prefijo inventaría una convención que el contrato no tiene.
+func catalogImportRefOptions(refs []apiclient.TenantContentRef, selected string) []catalogRefOption {
+	opts := make([]catalogRefOption, 0, len(refs)+1)
+	found := false
+	for _, r := range refs {
+		if r.Ref == "" {
+			continue
+		}
+		opts = append(opts, catalogRefOption{Value: r.Ref, Existing: true})
+		if r.Ref == selected {
+			found = true
+		}
+	}
+	if selected != "" && !found {
+		opts = append(opts, catalogRefOption{Value: selected})
+	}
+	if len(opts) == 0 {
+		opts = append(opts, catalogRefOption{Value: fallbackCatalogRef})
+	}
+
+	// La marca va en una segunda pasada para que haya exactamente una: con `selected` vacío manda la
+	// primera, que es el caso del paso 1 recién abierto.
+	want := selected
+	if want == "" {
+		want = opts[0].Value
+	}
+	for i := range opts {
+		opts[i].Selected = opts[i].Value == want
+	}
+	return opts
 }
 
 // resolvePrompt pide el prompt-plantilla y devuelve SIEMPRE una vista usable: el fallo se traduce en
