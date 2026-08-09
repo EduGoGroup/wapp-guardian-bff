@@ -152,6 +152,71 @@ func TestDiscardReviewShowsTheBatchWithoutWriting(t *testing.T) {
 	}
 }
 
+// TestDiscardConfirmationNoDescartaConUnEnter es REQ-32f(a), y nace de un defecto REAL (A1 del
+// cierre del Plan 041): «Descartar definitivamente» era el primer —y único— elemento enfocable del
+// formulario, y «Cancelar» iba después, así que quien llegaba por teclado y pulsaba Enter descartaba
+// de forma irreversible. Los `hidden` no son enfocables, de modo que el tabulador caía directo en el
+// botón que escribe.
+//
+// Las tres cosas que verifica son las tres mitades del defecto: que el conteo exacto está en el
+// texto, que la salida segura va ANTES en el DOM (orden del tabulador) y que tiene el foco inicial.
+func TestDiscardConfirmationNoDescartaConUnEnter(t *testing.T) {
+	api := discardAPI(t, discardListBody, nil) // nil ⇒ el test falla si se llama a la puerta que escribe
+	defer api.Close()
+
+	rec := postFormWithCookie(NewRouter(authTestCfg(api.URL)), "/intakes/discard?status=open",
+		discardForm("review", "in-open", "in-old"), validSessionCookie(t))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("revisar el lote debía renderizar 200, got %d", rec.Code)
+	}
+	out := rec.Body.String()
+
+	// (a) El conteo exacto, no un «las solicitudes de abajo».
+	if !strings.Contains(out, "Vas a descartar 2 solicitudes") {
+		t.Error("el modal debía decir CUÁNTAS solicitudes se van a descartar (REQ-32f(a))")
+	}
+
+	// (b) Cancelar va antes que el botón que escribe: es el primer parada del tabulador.
+	cancel := strings.Index(out, `<a href="/intakes?page=1&amp;status=open" class="btn btn--text" autofocus>`)
+	discard := strings.Index(out, `name="action" value="discard"`)
+	if cancel < 0 {
+		t.Fatal("no se encontró el enlace de cancelar con autofocus")
+	}
+	if discard < 0 {
+		t.Fatal("no se encontró el botón que descarta")
+	}
+	if cancel > discard {
+		t.Error("la salida segura debe ir ANTES que la acción destructiva: si el tabulador llega " +
+			"primero al botón que escribe, un Enter descarta sin vuelta atrás")
+	}
+
+	// (c) El foco inicial está en la salida segura, no en la destructiva.
+	if !strings.Contains(out, `class="btn btn--text" autofocus>Cancelar`) {
+		t.Error("«Cancelar» debía llevar autofocus: el foco inicial no puede estar en lo que borra")
+	}
+	if strings.Contains(out, `value="discard" autofocus`) || strings.Contains(out, `autofocus class="btn btn--filled"`) {
+		t.Error("el botón que descarta NUNCA puede llevar el foco inicial")
+	}
+}
+
+// TestDiscardConfirmationCuentaUnaSolaEnSingular acompaña al anterior: el conteo exacto se lee
+// también cuando el lote es de una, y ahí «2 solicitudes» en plural sonaría a error de la consola.
+func TestDiscardConfirmationCuentaUnaSolaEnSingular(t *testing.T) {
+	api := discardAPI(t, discardListBody, nil)
+	defer api.Close()
+
+	rec := postFormWithCookie(NewRouter(authTestCfg(api.URL)), "/intakes/discard?status=open",
+		discardForm("review", "in-open"), validSessionCookie(t))
+	out := rec.Body.String()
+
+	if !strings.Contains(out, "Vas a descartar 1 solicitud.") {
+		t.Error("con una sola solicitud el modal debía contarla en singular")
+	}
+	if strings.Contains(out, "Vas a descartar 1 solicitudes") {
+		t.Error("el plural mal concordado hace dudar de si la consola sabe lo que va a borrar")
+	}
+}
+
 // TestDiscardMixedBatchTellsWhatHappenedToEach (criterio (a) del plan, adaptado por la enmienda):
 // un lote mixto se cuenta SOLICITUD POR SOLICITUD. Ni un «listo» global ni jerga del contrato.
 func TestDiscardMixedBatchTellsWhatHappenedToEach(t *testing.T) {
