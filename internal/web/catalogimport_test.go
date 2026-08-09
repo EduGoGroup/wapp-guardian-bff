@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 )
 
 // Anclas del gate: si `catalog_import` no está contratada, estas cadenas NO aparecen en el HTML. Eso
@@ -39,7 +41,16 @@ type catalogImportAPI struct {
 	srv         *httptest.Server
 	// prompt, si está puesto, contesta el prompt-plantilla en lugar del canned (para probar fallos).
 	prompt http.HandlerFunc
+	// contentRefs, si está puesto, contesta el listado de refs en lugar del canned (para probar que
+	// la pantalla sigue sirviendo cuando no se pueden listar).
+	contentRefs http.HandlerFunc
 }
+
+// contentRefsBody son las refs de contenido que el tenant de los tests ya tiene. Son DOS y con el
+// mismo prefijo a propósito: el defecto A3 se manifestó justo entre «catalogo» y «catalogo-1», que
+// es el par que un operador confunde sin darse cuenta.
+const contentRefsBody = `[{"ref":"catalogo","updated_at":"2026-08-01T10:00:00Z"},` +
+	`{"ref":"catalogo-1","updated_at":"2026-08-05T10:00:00Z"}]`
 
 // promptBody es el prompt tal como lo sirve la plataforma: el texto viaja con el format y la VERSIÓN
 // del contrato al que corresponde. El BFF no tiene copia de este texto (a propósito), así que todo
@@ -81,6 +92,20 @@ func newCatalogImportAPI(features []string, handle http.HandlerFunc) *catalogImp
 				}
 			}
 			api.mu.Unlock()
+		}
+		// Las refs de contenido se sirven SIEMPRE por defecto y por el mismo motivo que el prompt: las
+		// pide cualquier render del paso 1 para armar el selector de ref, y sin este caso caerían en el
+		// handler del test, que solo espera peticiones del import.
+		if r.URL.Path == "/api/v1/tenant-content" {
+			api.mu.Lock()
+			custom := api.contentRefs
+			api.mu.Unlock()
+			if custom != nil {
+				custom(w, r)
+				return
+			}
+			_, _ = io.WriteString(w, contentRefsBody)
+			return
 		}
 		// El prompt se sirve SIEMPRE por defecto (lo pide cualquier render del formulario), antes de
 		// delegar: así un test que fuerza un fallo del import no fuerza también el del prompt.
@@ -971,4 +996,121 @@ func TestCatalogImportUpstreamRejections(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ─────────────────────── El selector de ref (defecto A3 del Plan 041) ───────────────────────
+//
+// A3: el paso 1 no tenía campo `ref`. El handler la leía —`c.PostForm("ref")`— pero el formulario
+// no la mandaba nunca, así que viajaba vacía y la plataforma caía a su default `catalogo`. El
+// resultado no era un error sino una MENTIRA: el mismo documento enseñaba «5 nuevos, 0 desaparecen»
+// por la consola y «5 nuevos, 3 desaparecen» por la API con `?ref=catalogo-1`. El operador
+// confirmaba convencido contra un catálogo que no era el suyo.
+
+// TestCatalogImportOfreceElegirLaRef es el defecto en su forma más directa: la pantalla tiene que
+// emitir el selector con las refs que el tenant ya tiene.
+func TestCatalogImportOfreceElegirLaRef(t *testing.T) {
+	api := newCatalogImportAPI([]string{"catalog_import"}, nil)
+	defer api.close()
+
+	rec := getWithCookie(NewRouter(authTestCfg(api.srv.URL)), "/catalog-import", validSessionCookie(t))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("la pantalla debía responder 200, got %d", rec.Code)
+	}
+	out := rec.Body.String()
+
+	if !strings.Contains(out, `<select class="field__control" id="ref" name="ref">`) {
+		t.Fatal("el paso 1 debía ofrecer el selector de ref: sin él se manda vacía y la plataforma elige")
+	}
+	for _, ref := range []string{"catalogo", "catalogo-1"} {
+		if !strings.Contains(out, `<option value="`+ref+`"`) {
+			t.Errorf("el selector debía ofrecer la ref %q que el tenant ya tiene", ref)
+		}
+	}
+	if !strings.Contains(out, `<option value="catalogo" selected>`) {
+		t.Error("exactamente una opción debía venir marcada, y sin refs previas manda la primera")
+	}
+	if strings.Count(out, " selected>") != 1 {
+		t.Errorf("debía haber UNA sola opción marcada, hay %d", strings.Count(out, " selected>"))
+	}
+}
+
+// TestCatalogImportMandaLaRefElegida es la otra mitad: que lo elegido LLEGUE a la plataforma. Es la
+// comprobación que separa este arreglo de un adorno — el diff se calcula contra la ref que viaje.
+func TestCatalogImportMandaLaRefElegida(t *testing.T) {
+	api := newCatalogImportAPI([]string{"catalog_import"}, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"mode":"validate","ref":"catalogo-1","applied":false,"items":5,
+		 "diff":{"price_changes":[],"added":[],"removed":[],"changed_details":[],"unchanged":5}}`)
+	})
+	defer api.close()
+
+	rec := postFormWithCookie(NewRouter(authTestCfg(api.srv.URL)), "/catalog-import",
+		url.Values{"document": {validCatalogDoc}, "ref": {"catalogo-1"}}, validSessionCookie(t))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("comprobar debía responder 200, got %d", rec.Code)
+	}
+
+	query, _, _ := api.seen()
+	if got := query.Get("ref"); got != "catalogo-1" {
+		t.Fatalf("la ref elegida debía viajar a la plataforma, llegó %q "+
+			"(con la ref vacía el diff se calcula contra otro catálogo: ese era el defecto A3)", got)
+	}
+}
+
+// TestCatalogImportSinRefsSigueOfreciendoUna cubre el tenant que estrena catálogo y, de paso, el
+// listado que no se puede leer: la pantalla NO puede degradar a un selector vacío, porque eso
+// devolvería la ref vacía y con ella el defecto.
+func TestCatalogImportSinRefsSigueOfreciendoUna(t *testing.T) {
+	api := newCatalogImportAPI([]string{"catalog_import"}, nil)
+	api.contentRefs = func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+	defer api.close()
+
+	rec := getWithCookie(NewRouter(authTestCfg(api.srv.URL)), "/catalog-import", validSessionCookie(t))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("un listado de refs caído no puede tumbar la pantalla, got %d", rec.Code)
+	}
+	out := rec.Body.String()
+	if !strings.Contains(out, `<option value="catalogo" selected>`) {
+		t.Error("sin refs legibles debía ofrecerse la de arranque, marcada: un selector vacío manda la ref vacía")
+	}
+	if !strings.Contains(out, catalogFormMarker) {
+		t.Error("el formulario debía seguir sirviéndose: listar refs es ayuda, no la operación")
+	}
+}
+
+// TestCatalogImportRefOptions ejercita las tres reglas del armado sin pasar por HTTP.
+func TestCatalogImportRefOptions(t *testing.T) {
+	refs := []apiclient.TenantContentRef{{Ref: "catalogo"}, {Ref: ""}, {Ref: "menu-x"}}
+
+	t.Run("descarta las vacías y conserva el orden de la plataforma", func(t *testing.T) {
+		opts := catalogImportRefOptions(refs, "")
+		if len(opts) != 2 {
+			t.Fatalf("una ref vacía no es una opción: esperaba 2, got %d", len(opts))
+		}
+		if opts[0].Value != "catalogo" || opts[1].Value != "menu-x" {
+			t.Errorf("el orden debía ser el de la plataforma, got %+v", opts)
+		}
+		if !opts[0].Selected || opts[1].Selected {
+			t.Error("sin ref elegida manda la primera, y solo ella")
+		}
+	})
+
+	t.Run("la ref elegida que ya no existe se conserva igual", func(t *testing.T) {
+		opts := catalogImportRefOptions(refs, "catalogo-viejo")
+		last := opts[len(opts)-1]
+		if last.Value != "catalogo-viejo" || !last.Selected {
+			t.Fatalf("perder la ref elegida entre los dos pasos es el fallo silencioso de A3, got %+v", opts)
+		}
+		if last.Existing {
+			t.Error("una ref que no vino en el listado no puede pintarse como existente")
+		}
+	})
+
+	t.Run("sin ninguna ref se ofrece la de arranque", func(t *testing.T) {
+		opts := catalogImportRefOptions(nil, "")
+		if len(opts) != 1 || opts[0].Value != fallbackCatalogRef || !opts[0].Selected {
+			t.Fatalf("un tenant nuevo tiene que poder estrenar catálogo, got %+v", opts)
+		}
+	})
 }

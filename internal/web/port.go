@@ -98,6 +98,10 @@ type CatalogImporter interface {
 	ImportCatalogTabular(ctx context.Context, accessToken, filename string, content []byte, apply bool, ref string) (*apiclient.CatalogImportResult, error)
 	GetCatalogTemplate(ctx context.Context, accessToken, format string) (*apiclient.CatalogTemplate, error)
 	GetCatalogPrompt(ctx context.Context, accessToken string) (*apiclient.CatalogPrompt, error)
+	// ListTenantContentRefs alimenta el selector de ref del paso 1. Sin él la pantalla mandaba la ref
+	// vacía y la plataforma caía a su default, enseñando un diff contra un catálogo distinto del que
+	// el operador creía reemplazar (defecto A3 del cierre del Plan 041).
+	ListTenantContentRefs(ctx context.Context, accessToken string) ([]apiclient.TenantContentRef, error)
 }
 
 // CatalogImportAPI es lo que la pantalla de import consume: el import más las features efectivas,
