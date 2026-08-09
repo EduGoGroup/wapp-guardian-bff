@@ -32,18 +32,29 @@ type Trigger struct {
 	TriggerID string `json:"trigger_id"`
 	Kind      string `json:"kind"`
 	Keyword   string `json:"keyword,omitempty"`
+	// EventKind solo viaja en triggers kind=event_start (Plan 043 · T2.1): qué tipo de evento
+	// arranca/conmuta (menu|cart|survey|media). Vacío en el resto de los kinds.
+	EventKind string `json:"event_kind,omitempty"`
 	MatchType string `json:"match_type"`
 	FlowID    string `json:"flow_id,omitempty"`
 	Priority  int    `json:"priority"`
 	Enabled   bool   `json:"enabled"`
 	Message   string `json:"message,omitempty"`
 	SessionID string `json:"session_id,omitempty"`
+	// ShadowedByEventList es una marca DERIVADA (D-043.20/REQ-27b, MD-043.11): la plataforma la
+	// calcula para triggers kind=fallback cuando, a partir de esta ola, una conversación SIN
+	// evento activo la lista de eventos del despachador se ofrece primero y el fallback del
+	// tenant ya no suena ahí. El BFF solo la pinta — no la calcula ni la persiste.
+	ShadowedByEventList bool `json:"shadowed_by_event_list,omitempty"`
 }
 
 // CreateTriggerRequest es el cuerpo de POST /api/v1/triggers.
 type CreateTriggerRequest struct {
-	Kind      string `json:"kind"`
-	Keyword   string `json:"keyword,omitempty"`
+	Kind    string `json:"kind"`
+	Keyword string `json:"keyword,omitempty"`
+	// EventKind solo aplica —y solo se envía— cuando Kind es event_start (defensa en
+	// profundidad: la plataforma también lo exige y lo rechaza sin él).
+	EventKind string `json:"event_kind,omitempty"`
 	MatchType string `json:"match_type,omitempty"`
 	FlowID    string `json:"flow_id,omitempty"`
 	Priority  int    `json:"priority"`
