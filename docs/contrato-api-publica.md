@@ -95,9 +95,9 @@ llamador es un handler del dashboard/editor.
 | `GET /api/v1/flows` | — | `[]FlowSummary{flow_id, version, created_at?}` | `401` | `ListFlows` (`editor.go:102`) |
 | `GET /api/v1/flows/{id}` | — | `model.Flow` crudo (`{flow_id, version, initial, nodes}`), devuelto sin re-serializar | `401` · `404` (ajeno/inexistente, opaco) | `GetFlow` (`editor.go:123`) |
 | `POST /api/v1/flows` | `{definition: <model.Flow>}` (**anidado**, `publishFlowRequest`) | `PublishFlowResult{flow_id, version}` (201) | `401` · `4xx` rechazo de validación (mensaje mostrable) · `5xx` | `PublishFlow` (`editor.go:144`) |
-| `GET /api/v1/triggers` | — | `[]Trigger{trigger_id, kind, keyword?, match_type, flow_id?, priority, enabled, message?, session_id?}` | `401` | `ListTriggers` (`editor.go:166`) |
-| `POST /api/v1/triggers` | `CreateTriggerRequest{kind, keyword?, match_type?, flow_id?, priority, message?, session_id?}` | `Trigger` creado (201) | `401` · `4xx` rechazo de validación (mensaje mostrable) · `5xx` | `CreateTrigger` (`editor.go:187`) |
-| `DELETE /api/v1/triggers/{id}` | — | sin body (204) | `401` · `404` (ajeno/inexistente, opaco) | `DeleteTrigger` (`editor.go:208`) |
+| `GET /api/v1/triggers` | — | `[]Trigger{trigger_id, kind, keyword?, event_kind?, match_type, flow_id?, priority, enabled, message?, session_id?, shadowed_by_event_list?}` | `401` | `ListTriggers` (`editor.go:188`) |
+| `POST /api/v1/triggers` | `CreateTriggerRequest{kind, keyword?, event_kind?, match_type?, flow_id?, priority, message?, session_id?}` | `Trigger` creado (201) | `401` · `4xx` rechazo de validación (mensaje mostrable) · `5xx` | `CreateTrigger` (`editor.go:209`) |
+| `DELETE /api/v1/triggers/{id}` | — | sin body (204) | `401` · `404` (ajeno/inexistente, opaco) | `DeleteTrigger` (`editor.go:230`) |
 
 Notas de contrato:
 - **Entitlements: lista de habilitadas, no mapa** (`Entitlements`, `entitlements.go:17`). `features`
@@ -119,9 +119,20 @@ Notas de contrato:
   (INV-8) y el `session_id` del path; el body solo lleva `{role}`. Este BFF valida el rol
   client-side antes de enviar (ver §4) y tras el 200 re-lista las sesiones (el rol nuevo se ve en
   la tabla).
-- **`kind` de trigger** ∈ `{keyword, fallback, escape}`; **`match_type`** ∈ `{exact, contains}`.
-  Campos requeridos según `kind` (este BFF los valida client-side antes de enviar, ver §4):
-  `keyword` → `keyword`+`flow_id`; `fallback` → `flow_id`; `escape` → `keyword`.
+- **`kind` de trigger** ∈ `{keyword, fallback, escape, event_start, event_stop}` (Plan 043 · T2.1
+  añade los dos últimos; el kind `llm` existe en la plataforma desde el Plan 029 pero este BFF
+  todavía no lo ofrece — deuda pendiente, no confundir con "no soportado por la API").
+  **`match_type`** ∈ `{exact, contains}`. Campos requeridos según `kind` (este BFF los valida
+  client-side antes de enviar, ver §4): `keyword` → `keyword`+`flow_id`; `fallback` → `flow_id`;
+  `escape` → `keyword`; `event_start` → `keyword`+`event_kind` (con `event_kind ∈ {menu, cart,
+  survey, media}`, los kinds de fábrica del despachador — D-043.3); `event_stop` → `keyword`.
+  `event_kind` **solo** viaja en el request cuando `kind = event_start`.
+- **`shadowed_by_event_list`** (solo en la respuesta de `GET /api/v1/triggers`, nunca en el POST):
+  marca booleana **derivada** que la plataforma calcula sobre los triggers `kind = fallback` del
+  tenant (D-043.20/REQ-27b). Desde el Plan 043 · Ola 2, una conversación nueva sin evento activo la
+  responde la **lista de eventos** del despachador primero, así que un `fallback` marcado así ya no
+  suena ahí. Este BFF solo la pinta como aviso en la tabla de triggers — no la calcula ni la
+  persiste.
 
 ## 4. Manejo de errores y códigos
 

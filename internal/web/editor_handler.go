@@ -211,10 +211,15 @@ func (h *EditorHandler) renderTriggers(c *gin.Context, status int, notice *edito
 	render(h.cfg, c, status, "triggers.html", data)
 }
 
+// validEventKinds son los kinds de fábrica v1 del despachador (D-043.3, INV-07). `cart_llm`
+// llega con el Plan 044 y no se ofrece todavía.
+var validEventKinds = map[string]bool{"menu": true, "cart": true, "survey": true, "media": true}
+
 // DoCreateTrigger crea una regla de disparo desde el formulario.
 func (h *EditorHandler) DoCreateTrigger(c *gin.Context) {
 	kind := strings.TrimSpace(c.PostForm("kind"))
 	keyword := strings.TrimSpace(c.PostForm("keyword"))
+	eventKind := strings.TrimSpace(c.PostForm("event_kind"))
 	matchType := strings.TrimSpace(c.PostForm("match_type"))
 	flowID := strings.TrimSpace(c.PostForm("flow_id"))
 	sessionID := strings.TrimSpace(c.PostForm("session_id"))
@@ -222,7 +227,7 @@ func (h *EditorHandler) DoCreateTrigger(c *gin.Context) {
 	priorityStr := strings.TrimSpace(c.PostForm("priority"))
 
 	form := gin.H{
-		"FormKind": kind, "FormKeyword": keyword, "FormMatchType": matchType,
+		"FormKind": kind, "FormKeyword": keyword, "FormEventKind": eventKind, "FormMatchType": matchType,
 		"FormFlowID": flowID, "FormSessionID": sessionID, "FormMessage": message,
 		"FormPriority": priorityStr,
 	}
@@ -238,13 +243,20 @@ func (h *EditorHandler) DoCreateTrigger(c *gin.Context) {
 		priority = p
 	}
 
-	if msg := validateTriggerForm(kind, keyword, flowID); msg != "" {
+	if msg := validateTriggerForm(kind, keyword, flowID, eventKind); msg != "" {
 		h.renderTriggers(c, http.StatusBadRequest, &editorNotice{Success: false, Message: msg}, form)
 		return
 	}
 
+	// event_kind solo aplica al kind event_start: en cualquier otro caso no viaja a la API, aunque
+	// el navegador lo hubiera enviado (el select queda con un valor residual de un envío previo).
+	reqEventKind := ""
+	if kind == "event_start" {
+		reqEventKind = eventKind
+	}
+
 	req := apiclient.CreateTriggerRequest{
-		Kind: kind, Keyword: keyword, MatchType: matchType, FlowID: flowID,
+		Kind: kind, Keyword: keyword, EventKind: reqEventKind, MatchType: matchType, FlowID: flowID,
 		Priority: priority, Message: message, SessionID: sessionID,
 	}
 	err := h.auth.withAuthRetry(c, func(accessToken string) error {
@@ -260,7 +272,7 @@ func (h *EditorHandler) DoCreateTrigger(c *gin.Context) {
 		&editorNotice{Success: true, Message: "Regla de disparo creada."}, gin.H{})
 }
 
-func validateTriggerForm(kind, keyword, flowID string) string {
+func validateTriggerForm(kind, keyword, flowID, eventKind string) string {
 	switch kind {
 	case "keyword":
 		if keyword == "" || flowID == "" {
@@ -274,8 +286,22 @@ func validateTriggerForm(kind, keyword, flowID string) string {
 		if keyword == "" {
 			return "Un trigger de tipo escape necesita la palabra clave."
 		}
+	case "event_start":
+		if keyword == "" {
+			return "Un trigger de tipo event_start necesita la palabra clave."
+		}
+		if eventKind == "" {
+			return "Un trigger de tipo event_start necesita elegir el tipo de evento (menu, cart, survey o media)."
+		}
+		if !validEventKinds[eventKind] {
+			return "Tipo de evento no reconocido. Elige menu, cart, survey o media."
+		}
+	case "event_stop":
+		if keyword == "" {
+			return "Un trigger de tipo event_stop necesita la palabra clave."
+		}
 	default:
-		return "Elige un tipo de trigger válido (keyword, fallback o escape)."
+		return "Elige un tipo de trigger válido (keyword, fallback, escape, event_start o event_stop)."
 	}
 	return ""
 }
