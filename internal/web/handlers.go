@@ -22,6 +22,7 @@ type Handler struct {
 	*IntakesHandler
 	*TenantVariablesHandler
 	*CatalogImportHandler
+	*IntegrationsHandler
 }
 
 // NewHandler construye el Handler de producción: cliente real de la API, eligiendo entre login directo
@@ -58,6 +59,7 @@ func NewHandlerWithAPI(cfg *config.Config, api APIPort) *Handler {
 	ih := NewIntakesHandler(cfg, api, ah)
 	vh := NewTenantVariablesHandler(cfg, api, ah)
 	ch := NewCatalogImportHandler(cfg, api, ah)
+	gh := NewIntegrationsHandler(cfg, api, ah)
 	return &Handler{
 		cfg:                    cfg,
 		api:                    api,
@@ -68,6 +70,7 @@ func NewHandlerWithAPI(cfg *config.Config, api APIPort) *Handler {
 		IntakesHandler:         ih,
 		TenantVariablesHandler: vh,
 		CatalogImportHandler:   ch,
+		IntegrationsHandler:    gh,
 	}
 }
 
