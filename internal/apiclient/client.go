@@ -9,6 +9,7 @@ type Client struct {
 	*IntakesClient
 	*TenantVariablesClient
 	*CatalogImportClient
+	*IntegrationsClient
 }
 
 // New construye el cliente unificado con un http.Client de timeout por defecto (15s).
@@ -22,5 +23,6 @@ func New(baseURL string) *Client {
 		IntakesClient:         NewIntakesClient(t),
 		TenantVariablesClient: NewTenantVariablesClient(t),
 		CatalogImportClient:   NewCatalogImportClient(t),
+		IntegrationsClient:    NewIntegrationsClient(t),
 	}
 }

@@ -219,6 +219,20 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	protected.POST(catalogImportRoute, h.DoCatalogImport)
 	protected.GET(catalogImportRoute+"/template", h.DownloadCatalogTemplate)
 
+	// Integraciones (Plan 042 · T5.2): la configuración del puente CRM del tenant —por dónde salen los
+	// pedidos, a qué endpoint y con qué secreto de firma—, gateada por la feature `crm_bridge` en la
+	// plantilla y por RequireFeature en la plataforma, que la exige en los TRES verbos (también el GET).
+	// PANTALLA PERMANENTE: es capa técnica (ADR-0035, doc 14 D-03/D-14) y no migra a KMP.
+	//
+	// El borrado cuelga de una ruta propia y va por POST porque un formulario HTML solo sabe GET y
+	// POST; fingir el DELETE con un campo oculto añadiría una convención que esta consola no tiene en
+	// ninguna otra pantalla. La traducción al verbo real la hace el apiclient, que es quien habla el
+	// contrato. Y va aparte del guardado a propósito: borra la fila entera con su secreto, que es la
+	// única forma de retirarlo.
+	protected.GET(integrationsRoute, h.ShowIntegrations)
+	protected.POST(integrationsRoute, h.DoSaveIntegration)
+	protected.POST(integrationsRoute+"/delete", h.DoDeleteIntegration)
+
 	return router, rateLimiter
 }
 
