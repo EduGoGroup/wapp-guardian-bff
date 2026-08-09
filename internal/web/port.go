@@ -111,6 +111,38 @@ type CatalogImportAPI interface {
 	EntitlementsReader
 }
 
+// IntegrationsManager define el contrato de la CONFIGURACIÓN DEL PUENTE CRM (Plan 042 · T5.2): leer
+// la del tenant, guardarla entera y quitarla.
+//
+// El secreto de firma entra por `SaveIntegration` y NO SALE POR NINGÚN MÉTODO, que es el contrato
+// dicho en tipos: `apiclient.Integration` no tiene campo donde ponerlo. Por eso ninguna vista de esta
+// consola puede pintarlo aunque quiera —lo que se pinta es `SecretSet` y la huella corta—, y el
+// campo vacío del formulario no borra nada: significa «deja el que está» (D-042.7).
+//
+// Va segregado del resto por lo mismo que la bandeja: es un frente de pago (feature `crm_bridge`,
+// que la plataforma exige en los TRES verbos, también el GET). A diferencia de la bandeja, su
+// pantalla es PERMANENTE: es capa técnica (ADR-0035, doc 14 D-03/D-14) y no migra a KMP.
+type IntegrationsManager interface {
+	GetIntegration(ctx context.Context, accessToken string) (*apiclient.Integration, error)
+	SaveIntegration(ctx context.Context, accessToken string, s apiclient.IntegrationSettings) (*apiclient.Integration, error)
+	DeleteIntegration(ctx context.Context, accessToken string) error
+	// GetOutboxCounters es la otra mitad de la pantalla: la configuración dice a dónde se entrega,
+	// esto dice si está llegando. Va en el MISMO contrato porque comparte guardias (scope
+	// `integrations.read` + feature `crm_bridge`) y porque es la pregunta que sigue a configurar el
+	// puente — separarlo en un puerto propio sugeriría que una pantalla puede tener una sin la otra.
+	//
+	// Devuelve CONTADORES. No hay método aquí para mirar dentro de una entrega, y no es un hueco por
+	// llenar: el contenido de las entregas no se publica por esta puerta.
+	GetOutboxCounters(ctx context.Context, accessToken string) (*apiclient.OutboxCounters, error)
+}
+
+// IntegrationsAPI es lo que la pantalla de integraciones consume: el CRUD del puente más las features
+// efectivas, que son las que deciden si la sección se emite siquiera.
+type IntegrationsAPI interface {
+	IntegrationsManager
+	EntitlementsReader
+}
+
 // EditorManager define el contrato para la edición de flujos y la gestión de reglas de disparo.
 type EditorManager interface {
 	ListFlows(ctx context.Context, accessToken string) ([]apiclient.FlowSummary, error)
@@ -130,6 +162,7 @@ type APIPort interface {
 	IntakeManager
 	TenantVariablesManager
 	CatalogImporter
+	IntegrationsManager
 }
 
 // Verificación en compilación de que los clientes concretos satisfacen las interfaces segregadas.
@@ -148,6 +181,7 @@ var (
 
 	_ TenantVariablesManager = (*apiclient.TenantVariablesClient)(nil)
 	_ CatalogImporter        = (*apiclient.CatalogImportClient)(nil)
+	_ IntegrationsManager    = (*apiclient.IntegrationsClient)(nil)
 	_ APIPort                = (*apiclient.Client)(nil)
 	_ APIPort                = (*apiclient.DelegatedClient)(nil)
 )

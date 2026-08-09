@@ -169,6 +169,7 @@ func (h *IntakesHandler) renderIntakesList(c *gin.Context, r intakesListRender) 
 		entitlementsDataKey:     entitlements,
 		intakesNavDataKey:       entitlements.Has(intakesFeature),
 		catalogImportNavDataKey: entitlements.Has(catalogImportFeature),
+		integrationsNavDataKey:  entitlements.Has(integrationsFeature),
 	}
 
 	// Sin la capacidad no se llama a la API: la plataforma cortaría con 403 igualmente, y gastar el
@@ -243,6 +244,7 @@ func (h *IntakesHandler) renderIntakeDetail(c *gin.Context, r intakeDetailRender
 		entitlementsDataKey:     entitlements,
 		intakesNavDataKey:       entitlements.Has(intakesFeature),
 		catalogImportNavDataKey: entitlements.Has(catalogImportFeature),
+		integrationsNavDataKey:  entitlements.Has(integrationsFeature),
 	}
 
 	if !entitlements.Has(intakesFeature) {

@@ -169,6 +169,7 @@ func (h *DashboardHandler) renderDashboard(c *gin.Context, status int, send *sen
 		entitlementsDataKey:     entitlements,
 		intakesNavDataKey:       entitlements.Has(intakesFeature),
 		catalogImportNavDataKey: entitlements.Has(catalogImportFeature),
+		integrationsNavDataKey:  entitlements.Has(integrationsFeature),
 	}
 	for k, v := range extra {
 		data[k] = v

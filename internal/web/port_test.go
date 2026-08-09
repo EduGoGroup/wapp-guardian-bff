@@ -34,6 +34,12 @@ type fakeAPIPort struct {
 	getCatalogTemplate    func(ctx context.Context, accessToken, format string) (*apiclient.CatalogTemplate, error)
 	getCatalogPrompt      func(ctx context.Context, accessToken string) (*apiclient.CatalogPrompt, error)
 	listTenantContentRefs func(ctx context.Context, accessToken string) ([]apiclient.TenantContentRef, error)
+
+	getIntegration     func(ctx context.Context, accessToken string) (*apiclient.Integration, error)
+	saveIntegration    func(ctx context.Context, accessToken string, s apiclient.IntegrationSettings) (*apiclient.Integration, error)
+	deleteIntegration  func(ctx context.Context, accessToken string) error
+	getOutboxCounters  func(ctx context.Context, accessToken string) (*apiclient.OutboxCounters, error)
+	outboxCounterCalls int
 }
 
 var _ APIPort = (*fakeAPIPort)(nil)
@@ -153,6 +159,42 @@ func (f *fakeAPIPort) ListTenantContentRefs(ctx context.Context, at string) ([]a
 		return f.listTenantContentRefs(ctx, at)
 	}
 	return nil, nil
+}
+func (f *fakeAPIPort) GetIntegration(ctx context.Context, at string) (*apiclient.Integration, error) {
+	if f.getIntegration != nil {
+		return f.getIntegration(ctx, at)
+	}
+	// El default es el de la plataforma para un tenant sin fila: local/local apagado.
+	return &apiclient.Integration{CatalogAdapter: "local", EventsAdapter: "local"}, nil
+}
+func (f *fakeAPIPort) SaveIntegration(ctx context.Context, at string, s apiclient.IntegrationSettings) (*apiclient.Integration, error) {
+	if f.saveIntegration != nil {
+		return f.saveIntegration(ctx, at, s)
+	}
+	// El doble devuelve la foto guardada SIN el secreto, igual que la API: no hay campo donde ponerlo.
+	return &apiclient.Integration{
+		Configured:     true,
+		CatalogAdapter: s.CatalogAdapter,
+		EventsAdapter:  s.EventsAdapter,
+		EndpointURL:    s.EndpointURL,
+		Enabled:        s.Enabled,
+		SecretSet:      s.Secret != "",
+	}, nil
+}
+func (f *fakeAPIPort) DeleteIntegration(ctx context.Context, at string) error {
+	if f.deleteIntegration != nil {
+		return f.deleteIntegration(ctx, at)
+	}
+	return nil
+}
+func (f *fakeAPIPort) GetOutboxCounters(ctx context.Context, at string) (*apiclient.OutboxCounters, error) {
+	f.outboxCounterCalls++
+	if f.getOutboxCounters != nil {
+		return f.getOutboxCounters(ctx, at)
+	}
+	// El default es una cola vacía: 200 con todo a cero, que es lo que responde la plataforma para un
+	// tenant que nunca encoló nada. NO es un error, y por eso el doble tampoco lo trata como tal.
+	return &apiclient.OutboxCounters{}, nil
 }
 
 // TestWithAuthRetryRefreshesOn401 ejercita el seam del puerto SIN HTTP: la primera llamada de negocio

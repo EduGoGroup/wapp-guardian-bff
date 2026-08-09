@@ -302,6 +302,7 @@ func (h *CatalogImportHandler) render(c *gin.Context, status int, ent entitlemen
 		entitlementsDataKey:      ent,
 		intakesNavDataKey:        ent.Has(intakesFeature),
 		catalogImportNavDataKey:  ent.Has(catalogImportFeature),
+		integrationsNavDataKey:   ent.Has(integrationsFeature),
 		"CatalogTemplateFormats": catalogTemplateLinks,
 	})
 }

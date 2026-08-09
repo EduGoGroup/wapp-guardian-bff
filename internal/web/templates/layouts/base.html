@@ -54,6 +54,13 @@
             {{/* Variables de empresa: capa técnica, sin gate de feature, así que el enlace sale para
                  cualquier sesión autenticada (a diferencia del de Solicitudes). */}}
             <a href="/variables" class="btn btn--text{{ if hasPrefix .CurrentPath "/variables" }} btn--active{{ end }}">Variables</a>
+            {{/* Integraciones: capa técnica igual que Variables, pero SÍ gateada — el puente CRM es una
+                 capacidad de pago (`crm_bridge`), y sin ella la plataforma corta hasta el GET. Mismo
+                 criterio fail-closed que los otros dos: en una página que no resolvió las features la
+                 clave no existe y el enlace no llega al HTML. */}}
+            {{ if .IntegrationsNav }}
+            <a href="/integrations" class="btn btn--text{{ if hasPrefix .CurrentPath "/integrations" }} btn--active{{ end }}">Integraciones</a>
+            {{ end }}
             <form method="POST" action="/logout" class="app-bar__logout">
                 <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
                 <button type="submit" class="btn btn--text">Cerrar sesión</button>

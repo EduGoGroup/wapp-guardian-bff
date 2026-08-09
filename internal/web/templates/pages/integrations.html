@@ -1,0 +1,179 @@
+{{ define "integrations.html" }}
+<section class="stack">
+
+    {{/* Esta pantalla NO lleva marca de provisionalidad, al revés que las de negocio (bandeja,
+         catálogo): configurar el puente es CAPA TÉCNICA (ADR-0035, doc 14 D-03/D-14) y se queda en
+         la consola. No migra a KMP. */}}
+
+    {{ if .Notice }}
+    <div class="snackbar {{ if .Notice.Success }}snackbar--success{{ else }}snackbar--error{{ end }}" role="alert">
+        <span>{{ .Notice.Message }}</span>
+    </div>
+    {{ end }}
+
+    {{/* GATE SERVER-SIDE POR FEATURE (patrón del Plan 040 · T2.5). Sin `crm_bridge` no se emite NADA
+         de lo de abajo: ni el formulario, ni el endpoint, ni la huella del secreto. No queda escondido
+         por CSS ni por JS, no está en el HTML. El gate decide lo que se PINTA; lo que se PUEDE lo
+         corta RequireFeature en la plataforma —en los TRES verbos, también el GET—, que sigue siendo
+         la autoridad. */}}
+    {{ if .Entitlements.Has "crm_bridge" }}
+
+    <div class="card" id="section-integrations">
+        <h1 class="headline">Integraciones</h1>
+        <p class="supporting">Aquí decides qué pasa con los pedidos que tus clientes arman por WhatsApp:
+            si se quedan dentro de wApp o si además viajan a tu sistema (un CRM, un ERP, lo que uses).
+            Cuando viajan, wApp los entrega firmados a la URL que pongas y reintenta si tu sistema no
+            está disponible.</p>
+
+        {{ if not .View.Loaded }}
+        <p class="body">No hay nada que mostrar hasta que la plataforma vuelva a responder.</p>
+        {{ else }}
+
+        <p class="body">
+            {{ if .View.IsWebhook }}
+            <span class="chip chip--info">eventos · por el puente</span>
+            {{ else }}
+            <span class="chip chip--neutral">eventos · dentro de wApp</span>
+            {{ end }}
+            {{ if .View.Enabled }}
+            <span class="chip chip--ok">encendido</span>
+            {{ else }}
+            <span class="chip chip--neutral">apagado</span>
+            {{ end }}
+            {{/* El secreto se representa por su ESTADO y su huella. El valor no está aquí ni puede
+                 estar: la API no lo devuelve y la vista no tiene dónde guardarlo. */}}
+            {{ if .View.SecretSet }}
+            <span class="chip chip--ok">secreto configurado{{ if .View.SecretFingerprint }} · huella {{ .View.SecretFingerprint }}{{ end }}</span>
+            {{ else }}
+            <span class="chip chip--neutral">sin secreto</span>
+            {{ end }}
+            <span class="chip chip--neutral">catálogo · {{ .View.CatalogAdapter }}</span>
+        </p>
+        {{ if .View.UpdatedAt }}<p class="supporting">Último cambio: {{ .View.UpdatedAt }} (UTC).</p>{{ end }}
+
+        <form method="POST" action="/integrations" class="stack" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+
+            <div class="field">
+                <label class="field__label" for="events_adapter">¿Por dónde salen los pedidos?</label>
+                <select class="field__control" id="events_adapter" name="events_adapter">
+                    <option value="local" {{ if not .View.IsWebhook }}selected{{ end }}>Se quedan dentro de wApp</option>
+                    <option value="webhook" {{ if .View.IsWebhook }}selected{{ end }}>Se entregan a mi sistema (puente)</option>
+                </select>
+                <p class="supporting">Con «dentro de wApp» no se entrega nada afuera y la consola sigue siendo
+                    el sitio donde se trabajan los pedidos.</p>
+            </div>
+
+            <div class="field">
+                <label class="field__label" for="endpoint_url">URL de tu sistema</label>
+                <input class="field__control" type="url" id="endpoint_url" name="endpoint_url"
+                       value="{{ .View.EndpointURL }}" placeholder="https://crm.tu-empresa.cl/wapp/eventos"
+                       maxlength="2000">
+                <p class="supporting">Ahí llegan los pedidos, uno a uno, con la firma en la cabecera. Debe ser
+                    una dirección completa (empieza por https://).</p>
+            </div>
+
+            {{/* CAMPO DE ESCRITURA PURA. Lo que ya está guardado NO se pinta —el contrato no lo
+                 devuelve y esta pantalla no lo pide—, así que el campo sale siempre vacío, también
+                 después de un rechazo. Vacío significa «deja el secreto que está»: es lo que permite
+                 cambiar la URL sin volver a escribir el secreto. */}}
+            <div class="field">
+                <label class="field__label" for="secret">Secreto de firma</label>
+                <input class="field__control" type="password" id="secret" name="secret"
+                       value="" autocomplete="new-password" minlength="24" maxlength="256"
+                       placeholder="{{ if .View.SecretSet }}Déjalo en blanco para conservar el actual{{ else }}Al menos 24 caracteres, al azar{{ end }}">
+                <p class="supporting">
+                    {{ if .View.SecretSet }}Ya hay uno guardado{{ if .View.SecretFingerprint }} (huella {{ .View.SecretFingerprint }}, compárala con la de tu sistema){{ end }}.
+                    Escribe uno nuevo solo si quieres reemplazarlo; en blanco se conserva el actual.
+                    {{ else }}Con este secreto se firma cada entrega para que tu sistema pueda comprobar que
+                    viene de wApp. Genera uno largo al azar y guárdalo también en tu sistema.{{ end }}
+                    wApp no vuelve a mostrarlo: si lo pierdes, escribe otro aquí y cámbialo allí.
+                </p>
+            </div>
+
+            <div class="field">
+                <label class="field__label" for="enabled">
+                    <input type="checkbox" id="enabled" name="enabled" value="on" {{ if .View.Enabled }}checked{{ end }}>
+                    Entregar de verdad (encendido)
+                </label>
+                <p class="supporting">Déjalo apagado mientras preparas tu sistema: la configuración se guarda
+                    igual y no se entrega nada hasta que lo enciendas.</p>
+            </div>
+
+            <div class="row">
+                <button type="submit" class="btn btn--filled">Guardar configuración</button>
+            </div>
+        </form>
+        {{ end }}
+    </div>
+
+    {{/* Quitar va en su propio formulario porque es otra operación y tiene otra consecuencia: borra
+         la fila entera, secreto incluido. Es la única forma de retirar el secreto —el guardado nunca
+         lo borra— y por eso se dice con esas palabras. */}}
+    {{ if .View.Configured }}
+    <div class="card" id="section-integrations-remove">
+        <h2 class="title title--m">Quitar la integración</h2>
+        <p class="body">El tenant vuelve a lo de siempre: los pedidos se quedan dentro de wApp y el secreto
+            de firma se borra. Nada de lo ya entregado se deshace.</p>
+        <form method="POST" action="/integrations/delete">
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+            <button type="submit" class="btn btn--outlined">Quitar la integración</button>
+        </form>
+    </div>
+    {{ end }}
+
+    {{/* ENTREGAS PENDIENTES Y FALLIDAS. Son CONTADORES: la API publica cuántas hay en cada estado y
+         desde cuándo espera la más antigua, y nada del contenido de las entregas. Aquí se traducen los
+         cuatro estados de la plataforma (pending/delivering/delivered/dead) a lo que significan para
+         quien lleva el negocio; la traducción vive en este HTML porque es donde está el lector.
+
+         El panel NO puede tumbar la pantalla: si no se pudo consultar se dice, y el formulario de
+         arriba —que es lo que arregla el problema— sigue sirviendo igual. */}}
+    <div class="card" id="section-integrations-outbox">
+        <h2 class="title title--m">Entregas a tu sistema</h2>
+
+        {{ if not .Outbox.Loaded }}
+        <p class="body">{{ if .Outbox.Notice }}{{ .Outbox.Notice }}{{ else }}No se pudo consultar el estado de
+            las entregas ahora mismo.{{ end }}</p>
+        <p class="supporting">Los contadores no se pudieron leer, que no es lo mismo que estar en cero: puede
+            haber entregas esperando. La configuración de arriba se puede cambiar igual.</p>
+        {{ else }}
+
+        <p class="body">
+            <span class="chip {{ if .Outbox.Pending }}chip--info{{ else }}chip--neutral{{ end }}">en cola · {{ .Outbox.Pending }}</span>
+            <span class="chip chip--neutral">saliendo ahora · {{ .Outbox.Delivering }}</span>
+            <span class="chip chip--ok">entregadas · {{ .Outbox.Delivered }}</span>
+            <span class="chip {{ if .Outbox.HasDead }}chip--error{{ else }}chip--neutral{{ end }}">no entregadas · {{ .Outbox.Dead }}</span>
+        </p>
+
+        {{/* LA ANTIGÜEDAD ES EL DATO QUE DISTINGUE una cola sana de una atascada: el número de
+             pendientes es el mismo si se encolaron hace dos segundos que si llevan seis horas
+             esperando. Solo aparece cuando hay algo en cola. */}}
+        {{ if .Outbox.OldestPendingAge }}
+        <p class="supporting">La más antigua lleva esperando {{ .Outbox.OldestPendingAge }}. Si eso no baja,
+            tu sistema no las está recibiendo: revisa que la URL responda y que el secreto sea el mismo de
+            los dos lados.</p>
+        {{ else if .Outbox.AllDelivered }}
+        <p class="supporting">No hay nada esperando: todo lo que se generó ya se entregó.</p>
+        {{ end }}
+
+        {{ if .Outbox.HasDead }}
+        <p class="supporting">Las «no entregadas» se reintentaron hasta agotar los intentos
+            y se dieron por perdidas: tu sistema no las tiene y wApp no volverá a mandarlas solo.
+            Los pedidos siguen enteros en la bandeja de wApp, así que no se ha perdido nada del negocio;
+            lo que falta es la copia en tu sistema.</p>
+        {{ end }}
+
+        <p class="supporting">wApp entrega una por una y reintenta cuando tu sistema no está disponible.
+            «Entregadas» son las que tu sistema confirmó recibiendo.</p>
+        {{ end }}
+    </div>
+
+    {{ else }}
+    <div class="card">
+        <h1 class="headline">Integraciones</h1>
+        <p class="body">El plan de este tenant no incluye el puente con un CRM.</p>
+    </div>
+    {{ end }}
+</section>
+{{ end }}
