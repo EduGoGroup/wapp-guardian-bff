@@ -1,0 +1,73 @@
+name: CI
+
+# CI de wapp-guardian-bff (módulo Go único, público).
+#
+# Régimen local (decisión del dueño, 2026-08-01): la validación continua vive en
+# la máquina de desarrollo — `make ci-local` / `make ci-docker`, con Go 1.26.5 y
+# golangci-lint v2.12.2 FIJADOS en el Makefile. Este workflow no se dispara con
+# push ni con pull_request: queda para corridas manuales (verificación puntual y
+# base para un release futuro), igual que sus pares wapp-cloud-platform,
+# wapp-edge-agent, wapp-cloudlink y wapp-edge-intent.
+#
+# Los gates son los MISMOS targets del Makefile que corre el desarrollador, para
+# que CI y local no puedan divergir. La excepción es el lint: en el runner se usa
+# la action oficial con la versión fijada, en vez de instalar el binario a mano.
+#
+# El módulo es PÚBLICO (github.com/EduGoGroup/wapp-guardian-bff): sin GOPRIVATE
+# ni token; el proxy público resuelve wapp-shared/*. Sin deploy a GCP.
+on:
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '1.26.5'
+
+jobs:
+  test:
+    name: Tests + estática
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: gofmt (sin archivos sin formatear)
+        run: make fmt-check
+
+      - name: Descargar dependencias
+        run: go mod download
+
+      - name: go.mod / go.sum tidy (sin diff)
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: go vet
+        run: make vet
+
+      - name: Tests (race)
+        run: make test
+
+      - name: Build
+        run: make build
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: go.sum
+      - name: golangci-lint
+        # v2.12.2: la misma versión que fija LINT_VERSION en el Makefile. Es la
+        # primera compilada con go1.26 — v2.4.0 iba con go1.25 y no podía cargar
+        # un go.mod que apunta a go 1.26 (exit 3, "can't load config"). Plan 027.
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          args: --timeout=5m

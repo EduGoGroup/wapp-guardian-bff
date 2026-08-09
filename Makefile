@@ -1,8 +1,11 @@
 # Makefile — wapp-guardian-bff
 #
-# Régimen CI/CD nuevo (decisión del dueño, 2026-08-01): este repo NO tiene
-# workflows de GitHub Actions — el BFF no corta releases, así que su red es
-# íntegramente LOCAL. Valida aquí antes de mergear y pushear.
+# Régimen CI/CD nuevo (decisión del dueño, 2026-08-01): la validación de este
+# repo es LOCAL. Valida aquí antes de mergear y pushear.
+# Desde 2026-08-09 el repo sí tiene workflows, pero ninguno sustituye a esto:
+# `.github/workflows/ci.yml` corre estos mismos targets solo bajo demanda
+# (workflow_dispatch), y `sync-main-to-dev.yml` alinea dev con main tras cada
+# push a main — no valida nada.
 #   - ci-local  agrega los gates que exige el grupo (fmt, vet, lint, test, build).
 #   - ci-docker reproduce el toolchain fijado (imagen golang + golangci-lint).
 #
