@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	github.com/EduGoGroup/identity-shared/auth v0.3.1
-	github.com/EduGoGroup/wapp-shared/auth v0.4.0
+	github.com/EduGoGroup/wapp-shared/auth v0.4.1
 	github.com/EduGoGroup/wapp-shared/config v0.3.0
 	github.com/EduGoGroup/wapp-shared/logger v0.2.0
 	github.com/EduGoGroup/wapp-shared/ui v0.1.0
