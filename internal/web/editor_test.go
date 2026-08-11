@@ -17,9 +17,10 @@ import (
 // verificar el envoltorio {definition} y el "no se envía si el JSON es inválido").
 type recordingAPI struct {
 	*httptest.Server
-	mu   sync.Mutex
-	hits []string // "MÉTODO /ruta"
-	last string   // último cuerpo recibido
+	mu     sync.Mutex
+	hits   []string // "MÉTODO /ruta", en orden
+	bodies []string // cuerpo recibido, mismo índice que hits
+	last   string   // último cuerpo recibido (cualquier ruta)
 }
 
 func newRecordingAPI(routes map[string]struct {
@@ -31,6 +32,7 @@ func newRecordingAPI(routes map[string]struct {
 		body, _ := io.ReadAll(r.Body)
 		rec.mu.Lock()
 		rec.hits = append(rec.hits, r.Method+" "+r.URL.Path)
+		rec.bodies = append(rec.bodies, string(body))
 		rec.last = string(body)
 		rec.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
@@ -61,6 +63,21 @@ func (r *recordingAPI) lastBody() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.last
+}
+
+// bodyFor devuelve el ÚLTIMO cuerpo recibido para esa ruta concreta ("MÉTODO /ruta"), a
+// diferencia de lastBody() que es el último cuerpo de CUALQUIER ruta — necesario cuando,
+// como en la creación de un trigger, el handler encadena otra llamada (el re-listado) que
+// pisaría el cuerpo que el test quiere inspeccionar.
+func (r *recordingAPI) bodyFor(methodPath string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := len(r.hits) - 1; i >= 0; i-- {
+		if r.hits[i] == methodPath {
+			return r.bodies[i]
+		}
+	}
+	return ""
 }
 
 // ---------------------------------------------------------------------------
@@ -334,6 +351,168 @@ func TestDeleteTriggerRemoves(t *testing.T) {
 	out := rec.Body.String()
 	if !strings.Contains(out, "snackbar--success") || !strings.Contains(out, "borrada") {
 		t.Errorf("borrar debía mostrar un snackbar de éxito; body=%s", out)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Triggers · kinds event_start/event_stop (Plan 043 · T2.1)
+// ---------------------------------------------------------------------------
+
+// TestTriggersListRendersEventKindAndShadowedNotice: GET /triggers con un event_start
+// (event_kind) y un fallback marcado shadowed_by_event_list → la tabla pinta el tipo
+// de evento y el aviso de sombreado (D-043.20/REQ-27b, MD-043.11).
+func TestTriggersListRendersEventKindAndShadowedNotice(t *testing.T) {
+	body := `[{"trigger_id":"tr-1","kind":"event_start","keyword":"carrito","event_kind":"cart","match_type":"exact","priority":0,"enabled":true},` +
+		`{"trigger_id":"tr-2","kind":"fallback","match_type":"exact","flow_id":"menu","priority":0,"enabled":true,"shadowed_by_event_list":true}]`
+	api := routedAPI(map[string]struct {
+		status int
+		body   string
+	}{
+		"GET /api/v1/triggers": {http.StatusOK, body},
+	})
+	defer api.Close()
+
+	router := NewRouter(authTestCfg(api.URL))
+	rec := getWithCookie(router, "/triggers", validSessionCookie(t))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /triggers debía renderizar 200, got %d", rec.Code)
+	}
+	out := rec.Body.String()
+	for _, want := range []string{"event_start", "carrito", "cart", "chip--error\">sombreado", "no llega a dispararse"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("la lista de triggers debía contener %q; body=%s", want, out)
+		}
+	}
+}
+
+// TestCreateTriggerEventStartOK: POST /triggers event_start con keyword + event_kind
+// válidos → se envía a la API con event_kind incluido (REQ-05).
+func TestCreateTriggerEventStartOK(t *testing.T) {
+	api := newRecordingAPI(map[string]struct {
+		status int
+		body   string
+	}{
+		"POST /api/v1/triggers": {http.StatusCreated, `{"trigger_id":"tr-9","kind":"event_start","keyword":"carrito","event_kind":"cart"}`},
+		"GET /api/v1/triggers":  {http.StatusOK, `[]`},
+	})
+	defer api.Close()
+
+	router := NewRouter(authTestCfg(api.URL))
+	form := url.Values{"kind": {"event_start"}, "keyword": {"carrito"}, "event_kind": {"cart"}}
+	rec := postFormWithCookie(router, "/triggers", form, validSessionCookie(t))
+
+	if api.hitCount("POST /api/v1/triggers") != 1 {
+		t.Error("un event_start válido debía enviarse a la API")
+	}
+	sent := api.bodyFor("POST /api/v1/triggers")
+	if !strings.Contains(sent, `"event_kind":"cart"`) {
+		t.Errorf("el cuerpo debía incluir event_kind para un event_start; got %s", sent)
+	}
+	out := rec.Body.String()
+	if !strings.Contains(out, "snackbar--success") {
+		t.Errorf("crear OK debía mostrar un snackbar de éxito; body=%s", out)
+	}
+}
+
+// TestCreateTriggerEventStartMissingEventKind: event_start sin event_kind → error
+// claro SIN llegar a la API (defensa en profundidad; la plataforma también lo rechaza).
+func TestCreateTriggerEventStartMissingEventKind(t *testing.T) {
+	api := newRecordingAPI(map[string]struct {
+		status int
+		body   string
+	}{
+		"POST /api/v1/triggers": {http.StatusCreated, `{}`},
+		"GET /api/v1/triggers":  {http.StatusOK, `[]`},
+	})
+	defer api.Close()
+
+	router := NewRouter(authTestCfg(api.URL))
+	form := url.Values{"kind": {"event_start"}, "keyword": {"carrito"}, "event_kind": {""}}
+	rec := postFormWithCookie(router, "/triggers", form, validSessionCookie(t))
+
+	if api.hitCount("POST /api/v1/triggers") != 0 {
+		t.Error("un event_start sin event_kind NO debía enviarse a la API")
+	}
+	out := rec.Body.String()
+	if !strings.Contains(out, "snackbar--error") || !strings.Contains(out, "tipo de evento") {
+		t.Errorf("debía mostrarse un error claro pidiendo el tipo de evento; body=%s", out)
+	}
+}
+
+// TestCreateTriggerEventStartInvalidEventKind: event_kind fuera del catálogo de fábrica
+// (menu|cart|survey|media) → rechazado localmente, sin llegar a la API.
+func TestCreateTriggerEventStartInvalidEventKind(t *testing.T) {
+	api := newRecordingAPI(map[string]struct {
+		status int
+		body   string
+	}{
+		"POST /api/v1/triggers": {http.StatusCreated, `{}`},
+		"GET /api/v1/triggers":  {http.StatusOK, `[]`},
+	})
+	defer api.Close()
+
+	router := NewRouter(authTestCfg(api.URL))
+	form := url.Values{"kind": {"event_start"}, "keyword": {"carrito"}, "event_kind": {"factura"}}
+	rec := postFormWithCookie(router, "/triggers", form, validSessionCookie(t))
+
+	if api.hitCount("POST /api/v1/triggers") != 0 {
+		t.Error("un event_kind fuera de catálogo NO debía enviarse a la API")
+	}
+	out := rec.Body.String()
+	if !strings.Contains(out, "snackbar--error") {
+		t.Errorf("debía mostrarse un error para el event_kind inválido; body=%s", out)
+	}
+}
+
+// TestCreateTriggerEventStopOK: POST /triggers event_stop con keyword → se envía a la
+// API (REQ-06), sin event_kind (kind que no lo usa).
+func TestCreateTriggerEventStopOK(t *testing.T) {
+	api := newRecordingAPI(map[string]struct {
+		status int
+		body   string
+	}{
+		"POST /api/v1/triggers": {http.StatusCreated, `{"trigger_id":"tr-9","kind":"event_stop","keyword":"salir"}`},
+		"GET /api/v1/triggers":  {http.StatusOK, `[]`},
+	})
+	defer api.Close()
+
+	router := NewRouter(authTestCfg(api.URL))
+	form := url.Values{"kind": {"event_stop"}, "keyword": {"salir"}}
+	rec := postFormWithCookie(router, "/triggers", form, validSessionCookie(t))
+
+	if api.hitCount("POST /api/v1/triggers") != 1 {
+		t.Error("un event_stop válido debía enviarse a la API")
+	}
+	out := rec.Body.String()
+	if !strings.Contains(out, "snackbar--success") {
+		t.Errorf("crear OK debía mostrar un snackbar de éxito; body=%s", out)
+	}
+}
+
+// TestCreateTriggerEventKindNotSentForOtherKinds: un event_kind "colgado" de un envío
+// anterior en el formulario (p. ej. el operador cambió el <select> de kind sin limpiar
+// el de event_kind) NO debe viajar a la API cuando el kind elegido no es event_start.
+func TestCreateTriggerEventKindNotSentForOtherKinds(t *testing.T) {
+	api := newRecordingAPI(map[string]struct {
+		status int
+		body   string
+	}{
+		"POST /api/v1/triggers": {http.StatusCreated, `{"trigger_id":"tr-9","kind":"keyword","keyword":"hola","flow_id":"menu"}`},
+		"GET /api/v1/triggers":  {http.StatusOK, `[]`},
+	})
+	defer api.Close()
+
+	router := NewRouter(authTestCfg(api.URL))
+	form := url.Values{"kind": {"keyword"}, "keyword": {"hola"}, "flow_id": {"menu"}, "event_kind": {"cart"}}
+	rec := postFormWithCookie(router, "/triggers", form, validSessionCookie(t))
+
+	if api.hitCount("POST /api/v1/triggers") != 1 {
+		t.Fatalf("el trigger keyword válido debía enviarse a la API; body=%s", rec.Body.String())
+	}
+	sent := api.bodyFor("POST /api/v1/triggers")
+	if strings.Contains(sent, "event_kind") {
+		t.Errorf("event_kind NO debía viajar en un trigger que no es event_start; got %s", sent)
 	}
 }
 

@@ -2,6 +2,8 @@ github.com/EduGoGroup/identity-shared/auth v0.3.1 h1:tvjzlKUewcldbmhagTiEsv5vGwe
 github.com/EduGoGroup/identity-shared/auth v0.3.1/go.mod h1:e3n7q0UDi6u2vFjcM+yFMbyHqW/BnPH0mNR00cvYuxM=
 github.com/EduGoGroup/wapp-shared/auth v0.4.0 h1:VCo7kOYGIMMedHvvy71NklkN4ojohg3A5lQyhdvp6AY=
 github.com/EduGoGroup/wapp-shared/auth v0.4.0/go.mod h1:HhE13PHPpPKMDYPYh5qL8/KedX3itJZuVGs/WCENnmg=
+github.com/EduGoGroup/wapp-shared/auth v0.4.1 h1:MHEJ6I4n1abHiVVJZhKToYyH+ajswygQhegk2zIetFA=
+github.com/EduGoGroup/wapp-shared/auth v0.4.1/go.mod h1:DcoZTsKO30A2B0Fgh8Mqzvg8du4qd0CB0eMCIP6Dm9Y=
 github.com/EduGoGroup/wapp-shared/config v0.3.0 h1:wDV0+aieMC5ByiWDzwkNdUUe28Yc3LJBF2nO+CS7n/k=
 github.com/EduGoGroup/wapp-shared/config v0.3.0/go.mod h1:WCDy0MET1u/9rnKAWZwEHa1JQ7HA7rxXwWLqBJHS92w=
 github.com/EduGoGroup/wapp-shared/logger v0.2.0 h1:5GWxS+fyWqnCrjedsm0t6a368uo59Xl7Om1/OBoJyfU=

@@ -24,6 +24,7 @@
                 <thead>
                     <tr>
                         <th>Tipo</th>
+                        <th>Tipo de evento</th>
                         <th>Palabra clave</th>
                         <th>Coincidencia</th>
                         <th>Flujo</th>
@@ -36,7 +37,17 @@
                 <tbody>
                     {{ range .Triggers }}
                     <tr>
-                        <td><span class="chip chip--info">{{ .Kind }}</span></td>
+                        <td>
+                            <span class="chip chip--info">{{ .Kind }}</span>
+                            {{ if .ShadowedByEventList }}
+                            <span class="chip chip--error">sombreado</span>
+                            <p class="supporting">
+                                En conversación nueva responde la lista de eventos primero: este
+                                fallback no llega a dispararse ahí.
+                            </p>
+                            {{ end }}
+                        </td>
+                        <td>{{ if .EventKind }}{{ .EventKind }}{{ else }}—{{ end }}</td>
                         <td>{{ if .Keyword }}{{ .Keyword }}{{ else }}—{{ end }}</td>
                         <td>{{ .MatchType }}</td>
                         <td>{{ if .FlowID }}{{ .FlowID }}{{ else }}—{{ end }}</td>
@@ -64,6 +75,9 @@
         <p class="supporting">
             <strong>keyword</strong>: palabra clave + flujo. <strong>fallback</strong>: flujo por defecto.
             <strong>escape</strong>: palabra clave que corta la conversación (mensaje opcional).
+            <strong>event_start</strong>: palabra clave que arranca o conmuta el evento del tipo
+            elegido (menu/cart/survey/media). <strong>event_stop</strong>: palabra clave que
+            desactiva el evento activo sin cerrarlo.
         </p>
 
         <form method="POST" action="/triggers" class="stack" autocomplete="off">
@@ -74,12 +88,24 @@
                     <option value="keyword" {{ if or (not .FormKind) (eq .FormKind "keyword") }}selected{{ end }}>keyword</option>
                     <option value="fallback" {{ if eq .FormKind "fallback" }}selected{{ end }}>fallback</option>
                     <option value="escape" {{ if eq .FormKind "escape" }}selected{{ end }}>escape</option>
+                    <option value="event_start" {{ if eq .FormKind "event_start" }}selected{{ end }}>event_start</option>
+                    <option value="event_stop" {{ if eq .FormKind "event_stop" }}selected{{ end }}>event_stop</option>
                 </select>
             </div>
             <div class="field">
-                <label class="field__label" for="keyword">Palabra clave <span class="supporting">(keyword/escape)</span></label>
+                <label class="field__label" for="keyword">Palabra clave <span class="supporting">(keyword/escape/event_start/event_stop)</span></label>
                 <input class="field__input" type="text" id="keyword" name="keyword"
                        value="{{ .FormKeyword }}" placeholder="p. ej. hola">
+            </div>
+            <div class="field">
+                <label class="field__label" for="event_kind">Tipo de evento <span class="supporting">(solo event_start)</span></label>
+                <select class="field__control" id="event_kind" name="event_kind">
+                    <option value="" {{ if not .FormEventKind }}selected{{ end }}>—</option>
+                    <option value="menu" {{ if eq .FormEventKind "menu" }}selected{{ end }}>menu</option>
+                    <option value="cart" {{ if eq .FormEventKind "cart" }}selected{{ end }}>cart</option>
+                    <option value="survey" {{ if eq .FormEventKind "survey" }}selected{{ end }}>survey</option>
+                    <option value="media" {{ if eq .FormEventKind "media" }}selected{{ end }}>media</option>
+                </select>
             </div>
             <div class="field">
                 <label class="field__label" for="match_type">Coincidencia</label>
