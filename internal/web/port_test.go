@@ -54,6 +54,9 @@ func (f *fakeAPIPort) Refresh(ctx context.Context, rt string) (*apiclient.AuthRe
 	return nil, nil
 }
 func (f *fakeAPIPort) Logout(context.Context, string, string) error { return nil }
+func (f *fakeAPIPort) Signup(context.Context, string, string, string, string, string) error {
+	return nil
+}
 func (f *fakeAPIPort) ListSessions(context.Context, string) ([]apiclient.Session, error) {
 	return nil, nil
 }

@@ -159,6 +159,9 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	// Login server-to-server contra la API pública. GET pinta el form; POST autentica y custodia el JWT.
 	router.GET("/login", h.ShowLogin)
 	router.POST("/login", h.DoLogin)
+	// Signup público (Plan 056 · T3.5): solicitud de alta de cuenta en wApp.
+	router.GET("/signup", h.ShowSignup)
+	router.POST("/signup", h.DoSignup)
 	// Logout: borra la cookie de sesión (best-effort en la API) y vuelve al login. SOLO POST (muta estado):
 	// un GET no debe cerrar sesión (evita cierres por prefetch/enlaces cruzados) y va con token CSRF.
 	router.POST("/logout", h.DoLogout)
@@ -166,6 +169,8 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	// --- Rutas protegidas (AuthMiddleware: cookie válida o redirect a /login) ---
 	protected := router.Group("/")
 	protected.Use(h.AuthMiddleware())
+	// Pantalla de estado "en espera" (sin tenant asignado, Plan 056 · T3.5)
+	protected.GET("/pending", h.ShowPending)
 	// Deadline por petición: acota TODA la cadena withAuthRetry hacia la API pública (H4) para que un
 	// upstream lento no cuelgue el handler más allá del presupuesto (bajo el WriteTimeout del servidor).
 	protected.Use(RequestDeadlineMiddleware(cfg))

@@ -82,3 +82,35 @@ func (c *AuthClient) Logout(ctx context.Context, accessToken, refreshToken strin
 	}
 	return nil
 }
+
+type signupPayload struct {
+	Email     string `json:"email"`
+	Password  string `json:"password"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Origin    string `json:"origin"`
+}
+
+// Signup registra una solicitud de usuario en la plataforma pública vía POST /api/v1/signup.
+func (c *AuthClient) Signup(ctx context.Context, email, password, firstName, lastName, origin string) error {
+	req, err := c.t.newJSONRequest(ctx, http.MethodPost, "/api/v1/signup",
+		signupPayload{
+			Email:     email,
+			Password:  password,
+			FirstName: firstName,
+			LastName:  lastName,
+			Origin:    origin,
+		})
+	if err != nil {
+		return err
+	}
+	resp, err := c.t.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("apiclient: signup: %w", err)
+	}
+	defer drainClose(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return reasonedStatusError("signup", resp, http.StatusBadRequest, http.StatusTooManyRequests)
+	}
+	return nil
+}

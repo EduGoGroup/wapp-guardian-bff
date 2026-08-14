@@ -145,6 +145,20 @@ func (h *AuthHandler) AuthMiddleware() gin.HandlerFunc {
 		c.Set(ctxRefreshToken, refreshToken)
 		c.Set(ctxUserID, claims.UserID)
 		c.Set(ctxTenantID, claims.TenantID)
+
+		// Usuario en estado "en espera" (sin tenant asignado, Plan 056 · T3.5 / D-056.12)
+		if claims.TenantID == "" {
+			if c.Request.URL.Path != "/pending" && c.Request.URL.Path != "/logout" {
+				c.Redirect(http.StatusSeeOther, "/pending")
+				c.Abort()
+				return
+			}
+		} else if c.Request.URL.Path == "/pending" {
+			c.Redirect(http.StatusSeeOther, "/")
+			c.Abort()
+			return
+		}
+
 		c.Next()
 	}
 }

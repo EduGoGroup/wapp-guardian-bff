@@ -1,0 +1,26 @@
+{{ define "pending.html" }}
+<section class="wapp-auth-container">
+    <div class="wapp-card wapp-login-card" style="text-align: center;">
+        <div class="wapp-login-header">
+            <div class="wapp-brand-badge" style="background: rgba(255, 183, 77, 0.15); color: #F57C00;">
+                <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2Zm1 15h-2v-2h2v2Zm0-4h-2V7h2v6Z"/>
+                </svg>
+            </div>
+            <h1 class="wapp-title">Tu acceso está en revisión</h1>
+            <p class="wapp-subtitle">Tu solicitud ha sido recibida y está pendiente de aprobación por el administrador de la plataforma.</p>
+        </div>
+
+        <p class="wapp-body-text" style="color: var(--md-sys-color-on-surface-variant); margin: 1.5rem 0;">
+            Una vez aprobada tu cuenta y asignada tu empresa, podrás acceder a todas las funcionalidades de la consola.
+        </p>
+
+        <form method="POST" action="/logout" class="wapp-actions">
+            {{ if .CSRFToken }}
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+            {{ end }}
+            <button type="submit" class="wapp-btn wapp-btn--outlined">Cerrar sesión</button>
+        </form>
+    </div>
+</section>
+{{ end }}

@@ -1,0 +1,74 @@
+{{ define "signup.html" }}
+<section class="wapp-auth-container">
+    <div class="wapp-card wapp-login-card">
+        <!-- Encabezado de la Tarjeta -->
+        <div class="wapp-login-header">
+            <div class="wapp-brand-badge">
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
+                    <path d="M12 2a10 10 0 0 0-8.5 15.3L2 22l4.8-1.5A10 10 0 1 0 12 2Zm0 2a8 8 0 1 1-4.2 14.8l-.3-.2-2.7.8.8-2.6-.2-.3A8 8 0 0 1 12 4Z"/>
+                </svg>
+            </div>
+            <h1 class="wapp-title">Crear cuenta</h1>
+            <p class="wapp-subtitle">Solicitud de acceso a wApp</p>
+        </div>
+
+        <!-- Mensaje de Éxito -->
+        {{ if .Success }}
+        <div class="wapp-snackbar wapp-snackbar--success" role="status">
+            {{ .Success }}
+        </div>
+        <div class="wapp-actions" style="margin-top: 1.5rem;">
+            <a href="/login" class="wapp-btn wapp-btn--filled" style="text-align: center; text-decoration: none;">Ir a iniciar sesión</a>
+        </div>
+        {{ else }}
+
+        <!-- Mensaje de Error / Alerta -->
+        {{ if .Error }}
+        <div class="wapp-snackbar wapp-snackbar--error" role="alert">
+            {{ .Error }}
+        </div>
+        {{ end }}
+
+        <!-- Formulario de Registro -->
+        <form id="signup-form" method="POST" action="/signup" class="wapp-form-stack" autocomplete="on">
+            {{ if .CSRFToken }}
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+            {{ end }}
+
+            <div class="wapp-field">
+                <label class="wapp-field__label" for="signup-first-name">Nombre</label>
+                <input class="wapp-field__control" type="text" id="signup-first-name" name="first_name"
+                       autocomplete="given-name" required autofocus placeholder="Tu nombre">
+            </div>
+
+            <div class="wapp-field">
+                <label class="wapp-field__label" for="signup-last-name">Apellido</label>
+                <input class="wapp-field__control" type="text" id="signup-last-name" name="last_name"
+                       autocomplete="family-name" required placeholder="Tu apellido">
+            </div>
+
+            <div class="wapp-field">
+                <label class="wapp-field__label" for="signup-email">Correo electrónico</label>
+                <input class="wapp-field__control" type="email" id="signup-email" name="email"
+                       autocomplete="email" required placeholder="tu@empresa.com">
+            </div>
+
+            <div class="wapp-field">
+                <label class="wapp-field__label" for="signup-password">Contraseña (mínimo 12 caracteres)</label>
+                <input class="wapp-field__control" type="password" id="signup-password" name="password"
+                       autocomplete="new-password" required minlength="12" placeholder="••••••••••••">
+            </div>
+
+            <div class="wapp-actions">
+                <button type="submit" id="signup-submit" class="wapp-btn wapp-btn--filled">Solicitar acceso</button>
+            </div>
+            
+            <div style="text-align: center; margin-top: 1rem;">
+                <span class="wapp-caption">¿Ya tienes cuenta? </span>
+                <a href="/login" class="wapp-link">Inicia sesión</a>
+            </div>
+        </form>
+        {{ end }}
+    </div>
+</section>
+{{ end }}

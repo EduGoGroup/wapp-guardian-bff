@@ -59,6 +59,12 @@ func (a *DelegatedAuthenticator) Logout(ctx context.Context, _, refreshToken str
 	return a.identity.Logout(ctx, refreshToken)
 }
 
+// Signup delega la solicitud de registro público en la plataforma pública (:8103).
+func (a *DelegatedAuthenticator) Signup(ctx context.Context, email, password, firstName, lastName, origin string) error {
+	authClient := NewAuthClient(a.exchange.t)
+	return authClient.Signup(ctx, email, password, firstName, lastName, origin)
+}
+
 // session canjea el Identity Token y arma la sesión que el BFF custodia: Context Token como access,
 // refresh de identity, y el vencimiento que la plataforma acotó con el del Identity Token.
 func (a *DelegatedAuthenticator) session(ctx context.Context, tokens *IdentityTokens) (*AuthResult, error) {

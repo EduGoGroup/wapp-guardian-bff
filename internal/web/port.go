@@ -12,6 +12,7 @@ type Authenticator interface {
 	Login(ctx context.Context, email, password string) (*apiclient.AuthResult, error)
 	Refresh(ctx context.Context, refreshToken string) (*apiclient.AuthResult, error)
 	Logout(ctx context.Context, accessToken, refreshToken string) error
+	Signup(ctx context.Context, email, password, firstName, lastName, origin string) error
 }
 
 // SessionManager define el contrato para administrar sesiones del tenant y envío de mensajes.
