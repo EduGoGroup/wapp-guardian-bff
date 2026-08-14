@@ -48,10 +48,10 @@ func NewExchangeClient(t *Transport) *ExchangeClient {
 
 // Exchange presenta un Identity Token y recibe el Context Token del tenant del usuario.
 //
-// Los dos errores con nombre del contrato:
+// Los errores con nombre del contrato:
 //   - **503** — modo dual apagado en la plataforma (ErrDualModeOff).
-//   - **401** — el `sub` del Identity Token no corresponde a ningún usuario migrado de wApp
-//     (ErrUnauthorized). Es un error explícito y deliberado: no se crea un usuario al vuelo.
+//   - **401** — el Identity Token es inválido, vencido o no aceptado por la plataforma (ErrUnauthorized).
+//   - **409** — conflicto multi-tenant (más de un tenant).
 func (c *ExchangeClient) Exchange(ctx context.Context, identityToken string) (*ExchangeResult, error) {
 	req, err := c.t.newJSONRequest(ctx, http.MethodPost, "/api/v1/auth/exchange",
 		exchangeRequest{IdentityToken: identityToken})
