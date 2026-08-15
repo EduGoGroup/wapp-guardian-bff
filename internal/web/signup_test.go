@@ -179,11 +179,36 @@ func TestDoSignup_RateLimited429(t *testing.T) {
 	}
 }
 
+// TestDoSignup_BadGateway502 cubre el hallazgo de seguimiento a A-11: un 502 (p.ej. identity caído en
+// registerIdentityUser, o ReplaceUserSystems fallando) es, hoy, el caso COMÚN mientras T0.2 (credencial
+// M2M de wApp hacia identity) siga sin hacerse — no un caso raro que pueda caer al genérico. Debe
+// mostrar el mismo mensaje "no es culpa tuya" que el 503, sin revelar qué pieza interna falló.
+func TestDoSignup_BadGateway502(t *testing.T) {
+	t.Parallel()
+	api := signupTestServer(t, http.StatusBadGateway, "servicio de identidad no disponible")
+	defer api.Close()
+
+	router := NewRouter(authTestCfg(api.URL))
+	rec := postForm(router, "/signup", signupForm())
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502. Body: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "El alta no está disponible ahora mismo. Inténtalo más tarde.") {
+		t.Fatalf("mensaje honesto de 502 no encontrado en: %s", body)
+	}
+	if strings.Contains(body, "servicio de identidad no disponible") {
+		t.Fatalf("el cuerpo crudo del upstream se filtró al usuario: %s", body)
+	}
+}
+
 func TestDoSignup_OtherStatusFallsBackToGeneric(t *testing.T) {
 	t.Parallel()
-	// 502 (p.ej. ReplaceUserSystems o identity caídos): no está en la lista explícita de A-11, así
-	// que debe caer al mensaje genérico — nunca reflejar el texto crudo del upstream.
-	api := signupTestServer(t, http.StatusBadGateway, "error al configurar aplicaciones")
+	// 501: ningún caso real de la plataforma lo emite hoy, pero sirve para probar que un status fuera
+	// de la lista explícita de A-11 (409/503/502/400/429) cae al mensaje genérico — nunca reflejar el
+	// texto crudo del upstream.
+	api := signupTestServer(t, http.StatusNotImplemented, "detalle interno que no debe llegar al usuario")
 	defer api.Close()
 
 	router := NewRouter(authTestCfg(api.URL))
@@ -196,7 +221,7 @@ func TestDoSignup_OtherStatusFallsBackToGeneric(t *testing.T) {
 	if !strings.Contains(body, "No se pudo procesar la solicitud. Inténtalo más tarde.") {
 		t.Fatalf("mensaje genérico no encontrado en: %s", body)
 	}
-	if strings.Contains(body, "error al configurar aplicaciones") {
+	if strings.Contains(body, "detalle interno que no debe llegar al usuario") {
 		t.Fatalf("el cuerpo crudo del upstream se filtró al usuario: %s", body)
 	}
 }

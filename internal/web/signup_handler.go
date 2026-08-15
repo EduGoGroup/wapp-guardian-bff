@@ -47,6 +47,11 @@ func (h *Handler) DoSignup(c *gin.Context) {
 	h.renderSignup(c, http.StatusOK, "", constantSignupSuccess)
 }
 
+// signupUnavailableMessage es el mensaje "no es culpa tuya" que comparten 503 y 502 (ver
+// signupErrorResponse): mientras T0.2 (credencial M2M de wApp hacia identity) siga sin hacerse, el
+// alta va a fallar por indisponibilidad en TODO despliegue de hoy — no es el caso raro, es el común.
+const signupUnavailableMessage = "El alta no está disponible ahora mismo. Inténtalo más tarde."
+
 // signupErrorResponse traduce el error de POST /api/v1/signup a (status HTTP, mensaje honesto) para
 // el formulario (A-11 · Plan 056 T5): antes de este cambio, TODO error del signup —correo ya
 // registrado, alta no disponible, rate limit— caía al genérico "No se pudo procesar la solicitud" con
@@ -59,6 +64,11 @@ func (h *Handler) DoSignup(c *gin.Context) {
 // la plataforma ya expone con su propio 409 —ni tiempos distintos ni texto que distinga "existe" de
 // "existe pero está bloqueado"—; el enlace "Inicia sesión" ya está siempre visible bajo el formulario
 // (signup.html), así que no hace falta un CTA nuevo para ese caso.
+//
+// El 502 comparte el mensaje del 503 (mismo tono, nunca revela qué pieza interna falló —identity o
+// ReplaceUserSystems—): ambos son "el servicio no está disponible", no un error del usuario. El 500 SÍ
+// se queda en el genérico a propósito: es un fallo nuestro inesperado y no hay que prometerle al
+// usuario que "vuelva más tarde" cuando puede que no se arregle solo.
 func signupErrorResponse(err error) (status int, msg string) {
 	rej, ok := apiclient.RejectionOf(err)
 	if !ok {
@@ -69,7 +79,9 @@ func signupErrorResponse(err error) (status int, msg string) {
 	case http.StatusConflict:
 		return http.StatusConflict, "Ya existe una cuenta con ese correo: entra con tu clave de siempre."
 	case http.StatusServiceUnavailable:
-		return http.StatusServiceUnavailable, "El alta no está disponible ahora mismo. Inténtalo más tarde."
+		return http.StatusServiceUnavailable, signupUnavailableMessage
+	case http.StatusBadGateway:
+		return http.StatusBadGateway, signupUnavailableMessage
 	case http.StatusTooManyRequests:
 		return http.StatusTooManyRequests, "Demasiados intentos, espera un momento."
 	case http.StatusBadRequest:
