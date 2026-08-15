@@ -223,6 +223,7 @@ func (h *AuthHandler) renderLoginError(c *gin.Context, status int, message strin
 		"Title":                   "Entrar",
 		"Subtitle":                "Consola Cloud",
 		"EnableAlphaTestAccounts": h.cfg.EnableAlphaTestAccounts,
+		"AlphaTestPassword":       h.cfg.AlphaTestPassword,
 	}
 	if message != "" {
 		data["Error"] = message

@@ -88,6 +88,14 @@ type Config struct {
 	// Se activa mediante WAPP_ALPHA_TEST_ACCOUNTS=true o WAPP_ENABLE_ALPHA_LOGIN=true. Default: false (fail-closed).
 	EnableAlphaTestAccounts bool
 
+	// AlphaTestPassword es la clave que el selector de "Usuario de prueba (Alpha)" autocompleta en el
+	// `data-password` de cada opción (M-13, code review 056). Sale de WAPP_ALPHA_TEST_PASSWORD; vacía
+	// por default, así que el binario y el repo NUNCA llevan una credencial fija: sin la env var, el
+	// selector sigue autocompletando el correo pero el campo de contraseña queda vacío y el operador la
+	// teclea. Solo tiene efecto cuando EnableAlphaTestAccounts es true (ya gateado, sin servirse en
+	// producción).
+	AlphaTestPassword string
+
 	// IdentityJWKSURL es el endpoint JWKS de identity-api (identity-core) del que salen las claves
 	// públicas para verificar Identity Tokens. Es la PUERTA del modo dual (identity Plan 003, T1.2):
 	// vacío == modo dual apagado y el BFF arranca sin identity, exactamente como hoy.
@@ -152,6 +160,7 @@ func Load() Config {
 		UpstreamTimeout: time.Duration(l.GetInt("GUARDIAN_UPSTREAM_TIMEOUT_SECS", 20)) * time.Second,
 
 		EnableAlphaTestAccounts: l.GetBool("ALPHA_TEST_ACCOUNTS", l.GetBool("ENABLE_ALPHA_LOGIN", false)),
+		AlphaTestPassword:       l.GetString("ALPHA_TEST_PASSWORD", ""), // vacía == el operador la teclea.
 
 		IdentityJWKSURL: l.GetString("IDENTITY_JWKS_URL", ""), // vacío == modo dual apagado.
 		IdentityBaseURL: l.GetString("IDENTITY_URL", ""),      // vacío == delegación apagada (flujo legacy).
