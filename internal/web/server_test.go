@@ -131,3 +131,43 @@ func TestKillSwitchAlphaUserSelect(t *testing.T) {
 		}
 	})
 }
+
+// TestAlphaTestPasswordFromEnv verifica M-13 (code review 056): el data-password del selector Alpha
+// sale de cfg.AlphaTestPassword (WAPP_ALPHA_TEST_PASSWORD), NUNCA de un literal fijo en el fichero
+// versionado. Sin la env var, el campo sale vacío (el operador la teclea); con ella, sale su valor.
+func TestAlphaTestPasswordFromEnv(t *testing.T) {
+	t.Run("SinVariable_CampoVacio", func(t *testing.T) {
+		cfg := hardenedCfg()
+		cfg.EnableAlphaTestAccounts = true
+		cfg.AlphaTestPassword = ""
+		router := NewRouter(cfg)
+
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/login", nil)
+		router.ServeHTTP(rec, req)
+
+		body := rec.Body.String()
+		if strings.Contains(body, "1234567890AB") {
+			t.Errorf("credencial fija encontrada en el HTML: no debe salir del fichero versionado")
+		}
+		if !strings.Contains(body, `data-password=""`) {
+			t.Errorf("sin WAPP_ALPHA_TEST_PASSWORD, data-password debía quedar vacío. Body: %s", body)
+		}
+	})
+
+	t.Run("ConVariable_CampoRelleno", func(t *testing.T) {
+		cfg := hardenedCfg()
+		cfg.EnableAlphaTestAccounts = true
+		cfg.AlphaTestPassword = "clave-de-prueba-del-operador"
+		router := NewRouter(cfg)
+
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/login", nil)
+		router.ServeHTTP(rec, req)
+
+		body := rec.Body.String()
+		if !strings.Contains(body, `data-password="clave-de-prueba-del-operador"`) {
+			t.Errorf("con WAPP_ALPHA_TEST_PASSWORD puesta, data-password debía reflejarla. Body: %s", body)
+		}
+	})
+}
