@@ -2,8 +2,11 @@ package apiclient
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 )
 
 // IdentityContext es el contexto de identidad que la API devuelve en el login (tenant/usuario/roles).
@@ -110,7 +113,53 @@ func (c *AuthClient) Signup(ctx context.Context, email, password, firstName, las
 	}
 	defer drainClose(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return reasonedStatusError("signup", resp, http.StatusBadRequest, http.StatusTooManyRequests)
+		return signupStatusError(resp)
 	}
 	return nil
+}
+
+// signupStatusError traduce un no-2xx de POST /api/v1/signup a un *RejectionError con el MOTIVO
+// legible del cuerpo (A-11). A diferencia de reasonedStatusError (pensado para el envelope JSON
+// `{"error":"…"}` que usa el resto de la plataforma, y solo para los status que el llamante marca
+// como "con motivo"), este endpoint responde sus errores en TEXTO PLANO vía http.Error (ver
+// wapp-cloud-platform/internal/platformadmin/signup.go) para CUALQUIER status —400, 409, 429, 502,
+// 503—, y su contrato está en evolución en paralelo (C-03). Por eso se envuelve TODO no-2xx (no solo
+// 4xx, a diferencia de writeStatusError) y el cuerpo se decodifica tolerante en decodeSignupErrorBody:
+// el llamante (DoSignup) necesita tanto el status real como el motivo para elegir el mensaje amigable
+// (409 → ya existe, 503 → no disponible, 429 → rate limit), y sin esto un 503 llegaba como *APIError
+// sin mensaje y caía al genérico de "error interno" (A-11).
+func signupStatusError(resp *http.Response) error {
+	if resp.StatusCode == http.StatusUnauthorized {
+		return statusError("signup", resp.StatusCode)
+	}
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxRejectionBody+1))
+	return &RejectionError{Op: "signup", StatusCode: resp.StatusCode, Message: decodeSignupErrorBody(raw)}
+}
+
+// decodeSignupErrorBody extrae un mensaje legible del cuerpo de error de POST /api/v1/signup. Se
+// prueba, en orden: (1) el envelope estándar {"error":{"message":…}} por si el endpoint lo adopta,
+// (2) un objeto simple {"message":"…"}, (3) el cuerpo crudo como texto (recortado a maxRejectionBody)
+// — nunca se asume un shape concreto. Espejo exacto de decodePlatformError en el Edge
+// (edge/wapp-edge-agent/cmd/wapp-ctl/auth.go), para que las dos superficies del signup (BFF y Edge)
+// decodifiquen el mismo contrato igual.
+func decodeSignupErrorBody(raw []byte) string {
+	var envelope struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err == nil && envelope.Error.Message != "" {
+		return envelope.Error.Message
+	}
+	var flat struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(raw, &flat); err == nil && flat.Message != "" {
+		return flat.Message
+	}
+	msg := strings.TrimSpace(string(raw))
+	if len(msg) > maxRejectionBody {
+		msg = msg[:maxRejectionBody]
+	}
+	return msg
 }

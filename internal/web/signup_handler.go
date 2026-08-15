@@ -1,7 +1,6 @@
 package web
 
 import (
-	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -40,17 +39,48 @@ func (h *Handler) DoSignup(c *gin.Context) {
 
 	err := h.api.Signup(c.Request.Context(), email, password, firstName, lastName, "bff")
 	if err != nil {
-		var rej *apiclient.RejectionError
-		if errors.As(err, &rej) && rej.Message != "" {
-			h.renderSignup(c, http.StatusBadRequest, rej.Message, "")
-			return
-		}
-		slog.Warn("signup falló", "error", err)
-		h.renderSignup(c, http.StatusInternalServerError, "No se pudo procesar la solicitud. Inténtalo más tarde.", "")
+		status, msg := signupErrorResponse(err)
+		h.renderSignup(c, status, msg, "")
 		return
 	}
 
 	h.renderSignup(c, http.StatusOK, "", constantSignupSuccess)
+}
+
+// signupErrorResponse traduce el error de POST /api/v1/signup a (status HTTP, mensaje honesto) para
+// el formulario (A-11 · Plan 056 T5): antes de este cambio, TODO error del signup —correo ya
+// registrado, alta no disponible, rate limit— caía al genérico "No se pudo procesar la solicitud" con
+// un 500, porque el cliente HTTP solo sabía leer un cuerpo JSON y la plataforma responde texto plano
+// (ver apiclient.decodeSignupErrorBody). Espejo del equivalente del Edge
+// (wapp-edge-agent/cmd/wapp-ctl/auth.go: friendlySignupMessage): cada status no-2xx de la plataforma
+// tiene su propio mensaje honesto y accionable; el resto cae a uno genérico.
+//
+// El 409 NO añade ninguna pista nueva sobre si el correo existe en el ecosistema más allá de lo que
+// la plataforma ya expone con su propio 409 —ni tiempos distintos ni texto que distinga "existe" de
+// "existe pero está bloqueado"—; el enlace "Inicia sesión" ya está siempre visible bajo el formulario
+// (signup.html), así que no hace falta un CTA nuevo para ese caso.
+func signupErrorResponse(err error) (status int, msg string) {
+	rej, ok := apiclient.RejectionOf(err)
+	if !ok {
+		slog.Warn("signup falló", "error", err)
+		return http.StatusInternalServerError, "No se pudo procesar la solicitud. Inténtalo más tarde."
+	}
+	switch rej.StatusCode {
+	case http.StatusConflict:
+		return http.StatusConflict, "Ya existe una cuenta con ese correo: entra con tu clave de siempre."
+	case http.StatusServiceUnavailable:
+		return http.StatusServiceUnavailable, "El alta no está disponible ahora mismo. Inténtalo más tarde."
+	case http.StatusTooManyRequests:
+		return http.StatusTooManyRequests, "Demasiados intentos, espera un momento."
+	case http.StatusBadRequest:
+		if rej.Message != "" {
+			return http.StatusBadRequest, rej.Message
+		}
+		return http.StatusBadRequest, "Revisa los datos del formulario."
+	default:
+		slog.Warn("signup falló", "status", rej.StatusCode, "error", err)
+		return http.StatusInternalServerError, "No se pudo procesar la solicitud. Inténtalo más tarde."
+	}
 }
 
 func (h *Handler) renderSignup(c *gin.Context, status int, errMsg, successMsg string) {
