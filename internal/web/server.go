@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,6 +21,15 @@ import (
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 	"github.com/EduGoGroup/wapp-shared/ui"
 )
+
+// ginModeOnce asegura que gin.SetMode() se ejecute una única vez por proceso. gin.SetMode escribe
+// variables globales del PAQUETE gin (ginMode/modeName en mode.go) sin ningún mutex propio: en
+// producción newRouterWithLimiter se llama una sola vez y de forma síncrona antes de levantar el
+// http.Server (internal/bootstrap/server.go), así que ahí nunca hay dos goroutines compitiendo. Pero
+// los tests SÍ montan routers en paralelo (t.Parallel + NewRouter por test), y el valor que se fija
+// es siempre la misma constante (gin.ReleaseMode) sin depender de cfg, así que ejecutarlo una sola
+// vez es válido en ambos mundos y elimina la carrera de raíz.
+var ginModeOnce sync.Once
 
 //go:embed templates
 var templatesFS embed.FS
@@ -40,7 +50,7 @@ func NewRouter(cfg *config.Config) *gin.Engine {
 // newRouterWithLimiter es como NewRouter pero además devuelve el rate-limiter para poder cerrar su
 // goroutine de barrido (lo usa Run para la vida del proceso y los tests para no filtrar goroutines).
 func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
-	gin.SetMode(gin.ReleaseMode)
+	ginModeOnce.Do(func() { gin.SetMode(gin.ReleaseMode) })
 
 	router := gin.New()
 	// Proxies de confianza: por defecto (lista vacía) NO se confía en ninguno, de modo que ClientIP()
