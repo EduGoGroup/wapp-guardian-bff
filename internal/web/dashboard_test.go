@@ -336,3 +336,46 @@ func TestDashboardWithoutCookieRedirects(t *testing.T) {
 		t.Errorf("POST /send sin cookie debía redirigir a /login, got %d %q", rec.Code, rec.Header().Get("Location"))
 	}
 }
+
+// TestDashboardPintaLaSaludDelClasificador cubre la columna «Clasificador» (Plan 051 · Ola 4 · T4.3):
+// el operador tiene que poder responder «¿está clasificando?» y «¿se estorban el cajero y Ollama?»
+// SIN ENTRAR EN LA MÁQUINA, que es el criterio literal de la tarea.
+//
+// Los tres casos van juntos a propósito, porque el que importa sólo se ve por contraste: la sesión
+// SIN los campos tiene que pintar «desconocido», y la que los trae tiene que pintar su valor. Un test
+// que sólo mirase la fila poblada seguiría verde con la plantilla pintando "closed" por defecto.
+func TestDashboardPintaLaSaludDelClasificador(t *testing.T) {
+	body := `[{"session_id":"s-ok","edge_id":"e1","state":"online","role":"bot",` +
+		`"intent_circuit":"closed","worker_taskset":"disjunta"},` +
+		`{"session_id":"s-roto","edge_id":"e2","state":"online","role":"bot",` +
+		`"intent_circuit":"open","worker_taskset":"solapada"},` +
+		`{"session_id":"s-mudo","edge_id":"e3","state":"online","role":"bot"}]`
+	api := routedAPI(map[string]struct {
+		status int
+		body   string
+	}{
+		"GET /api/v1/sessions": {http.StatusOK, body},
+	})
+	defer api.Close()
+
+	router := NewRouter(authTestCfg(api.URL))
+	rec := getWithCookie(router, "/", validSessionCookie(t))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("dashboard debía renderizar 200, got %d", rec.Code)
+	}
+	out := rec.Body.String()
+
+	for _, want := range []string{"closed", "CPU disjunta", "open", "CPU solapada"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("la columna del clasificador debía contener %q", want)
+		}
+	}
+
+	// 🔴 EL CASO QUE DECIDE. La sesión s-mudo no manda ninguno de los dos campos, y eso NO significa
+	// «sano»: el Edge manda su cero a propósito cuando el parte del worker-cajero lleva más de 90 s sin
+	// refrescarse, o sea cuando el cajero puede estar MUERTO. La consola tiene que decir «desconocido»;
+	// pintar un valor por defecto ahí publicaría la salud de un clasificador apagado.
+	if !strings.Contains(out, "desconocido") || !strings.Contains(out, "CPU desconocida") {
+		t.Error("una sesión sin intent_circuit/worker_taskset debe pintarse «desconocido», no un valor sano")
+	}
+}

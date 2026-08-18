@@ -16,6 +16,23 @@ type Session struct {
 	SelfPn          string `json:"self_pn,omitempty"`
 	LastConnectedAt string `json:"last_connected_at,omitempty"`
 	LastSeenAt      string `json:"last_seen_at,omitempty"`
+
+	// Salud del clasificador de intenciones (Plan 051 · Ola 4 · T4.3). Son los dos únicos
+	// campos de salud que esta consola lee: sirven para responder «¿está clasificando?» y
+	// «¿se estorban el cajero y Ollama?» SIN ENTRAR EN LA MÁQUINA, que es el criterio de T4.3.
+	//
+	// 🔴 LOS DOS LLEGAN AUSENTES CUANDO EL EDGE NO LO SABE, y ausente NO es un valor por
+	// defecto: la API los marca `omitempty` precisamente porque el Edge manda su cero a
+	// propósito cuando el parte del worker-cajero lleva más de 90 s sin refrescarse (cajero
+	// muerto, o Edge que no es Linux). Pintar "" como `disjunta` o como `closed` publicaría
+	// una salud INVENTADA sobre un clasificador apagado — es el fallo exacto que la Ola 4
+	// existe para cerrar. En la vista, vacío se pinta «desconocido» y nunca otra cosa.
+
+	// IntentCircuit es el breaker del clasificador: "closed" | "open" | "half_open".
+	IntentCircuit string `json:"intent_circuit,omitempty"`
+	// WorkerTaskset es el veredicto del reparto de CPU entre el cajero y Ollama:
+	// "disjunta" | "solapada" | "cajero_sin_confinar".
+	WorkerTaskset string `json:"worker_taskset,omitempty"`
 }
 
 type setSessionRoleRequest struct {
