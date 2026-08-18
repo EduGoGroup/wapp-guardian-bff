@@ -60,14 +60,22 @@
                             {{/* Salud del clasificador (Plan 051 Ola 4 · T4.3). VACÍO = DESCONOCIDO, nunca
                                  un valor por defecto: el Edge manda el cero a propósito cuando el parte del
                                  cajero está rancio (>90 s), y pintar "closed"/"disjunta" ahí sería publicar
-                                 la salud de un clasificador que puede estar muerto. */}}
+                                 la salud de un clasificador que puede estar muerto.
+
+                                 T4.6 · el reparto de CPU es una FOTO DEL ARRANQUE, no una medida continua:
+                                 el Edge lo calcula una vez al arrancar el cajero y lo republica igual cada
+                                 30 s. Un cambio de afinidad en caliente NO se refleja, y la regla de rancidez
+                                 no puede cazarlo porque el parte sí se refresca (obsoleto, no rancio). Por eso
+                                 el aviso vive en el tooltip de los tres chips de CPU: es el único sitio donde
+                                 alguien lo va a leer justo cuando le importa. El breaker (IntentCircuit) SÍ es
+                                 continuo; el aviso no le aplica. */}}
                             {{ if eq .IntentCircuit "closed" }}<span class="chip chip--ok" title="El breaker del clasificador está cerrado: clasificando con normalidad.">closed</span>
                             {{ else if eq .IntentCircuit "open" }}<span class="chip chip--error" title="El breaker está ABIERTO: el clasificador no está clasificando (Ollama caído o fallos repetidos).">open</span>
                             {{ else if eq .IntentCircuit "half_open" }}<span class="chip chip--info" title="El breaker está probando si el clasificador se recuperó.">half_open</span>
                             {{ else }}<span class="chip chip--neutral" title="Este Edge no reporta el breaker: el worker-cajero puede estar parado, o su parte lleva más de 90 s sin refrescarse. NO significa que esté sano.">desconocido</span>{{ end }}
-                            {{ if eq .WorkerTaskset "disjunta" }}<span class="chip chip--ok" title="CPU: el cajero y Ollama corren en núcleos distintos.">CPU disjunta</span>
-                            {{ else if eq .WorkerTaskset "solapada" }}<span class="chip chip--error" title="CPU: el cajero y Ollama comparten núcleos y se estorban; el síntoma que se ve es latencia.">CPU solapada</span>
-                            {{ else if eq .WorkerTaskset "cajero_sin_confinar" }}<span class="chip chip--info" title="CPU: el cajero no tiene afinidad fijada (sin taskset).">CPU sin confinar</span>
+                            {{ if eq .WorkerTaskset "disjunta" }}<span class="chip chip--ok" title="CPU: el cajero y Ollama corren en núcleos distintos. Se calcula UNA SOLA VEZ, al arrancar el cajero, y NO se recalcula: si cambias la afinidad en caliente, reinicia el cajero para que este valor vuelva a ser cierto.">CPU disjunta</span>
+                            {{ else if eq .WorkerTaskset "solapada" }}<span class="chip chip--error" title="CPU: el cajero y Ollama comparten núcleos y se estorban; el síntoma que se ve es latencia. Se calcula UNA SOLA VEZ, al arrancar el cajero, y NO se recalcula: si cambias la afinidad en caliente, reinicia el cajero para que este valor vuelva a ser cierto.">CPU solapada</span>
+                            {{ else if eq .WorkerTaskset "cajero_sin_confinar" }}<span class="chip chip--info" title="CPU: el cajero no tiene afinidad fijada (sin taskset). Se calcula UNA SOLA VEZ, al arrancar el cajero, y NO se recalcula: si cambias la afinidad en caliente, reinicia el cajero para que este valor vuelva a ser cierto.">CPU sin confinar</span>
                             {{ else }}<span class="chip chip--neutral" title="Este Edge no reporta el reparto de CPU (no es Linux, o el parte del cajero está rancio).">CPU desconocida</span>{{ end }}
                         </td>
                         <td>
