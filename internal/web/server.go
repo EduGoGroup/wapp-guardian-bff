@@ -193,8 +193,12 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	// dashboard con el perfil ya cambiado.
 	//
 	// 🔴 La ruta vieja `/sessions/:id/role` NO se conserva aquí: es una pantalla SSR y el único cliente
-	// del formulario es esta misma consola, que se despliega con él. La deprecación con dos rutas vivas
-	// es de la API pública (T1.2), donde SÍ hay clientes que no se despliegan a la vez.
+	// del formulario es esta misma consola, que se despliega con él.
+	//
+	// 📌 Este comentario decía además que la deprecación con dos rutas vivas «es de la API pública,
+	// donde SÍ hay clientes que no se despliegan a la vez». Ese razonamiento era correcto y su premisa
+	// FALSA: al comprobarla contra los seis repos no apareció ni un consumidor de `/role`. La ruta
+	// pública se retiró con la 0064 por la misma razón que aquí.
 	protected.POST("/sessions/:id/profile", h.DoSetSessionProfile)
 
 	// Editor de menú/encuestas (T4): flujos (inmutables versionados) + triggers (crear/borrar). "Editar"

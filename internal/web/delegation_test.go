@@ -371,7 +371,7 @@ func TestDelegacionRefrescaAnte401YReintenta(t *testing.T) {
 			return
 		}
 		_, _ = io.WriteString(w,
-			`[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","role":"bot"}]`)
+			`[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","profile":"active"}]`)
 	})
 
 	router := NewRouter(delegatedCfg(platform.url(), identity.url()))
@@ -415,7 +415,7 @@ func TestDelegacion409DelCanjeDegradaSinEcharAlUsuario(t *testing.T) {
 		_, _ = io.WriteString(w, `{"error":"el usuario pertenece a más de un tenant"}`)
 	})
 	platform.onJSON("/api/v1/sessions",
-		`[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","role":"bot"}]`)
+		`[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","profile":"active"}]`)
 
 	router := NewRouter(delegatedCfg(platform.url(), identity.url()))
 	// Dentro del margen proactivo (vence en 1 min), pero AÚN VIGENTE: ahí está el matiz.

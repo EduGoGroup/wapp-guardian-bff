@@ -48,7 +48,7 @@ func TestRequestDeadlineDisabledWhenZero(t *testing.T) {
 		status int
 		body   string
 	}{
-		"GET /api/v1/sessions": {http.StatusOK, `[{"session_id":"s-1","edge_id":"e","state":"online","role":"bot"}]`},
+		"GET /api/v1/sessions": {http.StatusOK, `[{"session_id":"s-1","edge_id":"e","state":"online","profile":"active"}]`},
 	})
 	defer api.Close()
 

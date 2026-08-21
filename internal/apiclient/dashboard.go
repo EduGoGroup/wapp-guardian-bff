@@ -20,15 +20,6 @@ type Session struct {
 	// ADR-0018): son dominios sin relación. El Edge NO se renombra.
 	Profile string `json:"profile,omitempty"`
 
-	// Role es el vocabulario VIEJO (`bot`/`passive`, Plan 020) que la plataforma sigue emitiendo
-	// durante el ciclo de deprecación de T1.2. Se conserva SOLO como respaldo de lectura —ver
-	// EffectiveProfile— porque el BFF y la plataforma no se despliegan a la vez: un BFF nuevo
-	// contra una plataforma que todavía no emite `profile` dejaría el desplegable sin nada
-	// seleccionado. Cuando la deprecación cierre, este campo se va.
-	//
-	// Deprecated: usa Profile (o EffectiveProfile).
-	Role string `json:"role,omitempty"`
-
 	SelfPn          string `json:"self_pn,omitempty"`
 	LastConnectedAt string `json:"last_connected_at,omitempty"`
 	LastSeenAt      string `json:"last_seen_at,omitempty"`
@@ -51,34 +42,26 @@ type Session struct {
 	WorkerTaskset string `json:"worker_taskset,omitempty"`
 }
 
-// EffectiveProfile es el perfil que la vista debe pintar: el `profile` de la plataforma y, si aún no
-// lo emite, la traducción del `role` viejo (`bot` → `active`; `passive` → `passive`).
+// EffectiveProfile es el perfil que la vista debe pintar.
 //
-// Existe por el ciclo de deprecación de T1.2, no por gusto: durante él conviven una plataforma que
-// puede estar emitiendo solo `role` y un BFF ya migrado.
-//
-// Devuelve EXACTAMENTE uno de tres valores: "active", "passive" o "". Cualquier otra cosa que llegue
-// —un `profile` desconocido, un `role` que no sea bot|passive, los dos campos vacíos— cae a "", que
-// significa DESCONOCIDO y nunca un valor por defecto: no se inventa un perfil que la plataforma no
-// dijo, y mucho menos "active", que es el que hace hablar sola a la sesión.
+// Devuelve EXACTAMENTE uno de tres valores: "active", "passive" o "". Cualquier otra cosa que
+// llegue —un `profile` desconocido, el campo ausente— cae a "", que significa DESCONOCIDO y nunca
+// un valor por defecto: no se inventa un perfil que la plataforma no dijo, y mucho menos "active",
+// que es el que hace hablar sola a la sesión.
 //
 // 🔴 Quien consuma este "" tiene que pintarlo como desconocido A PROPÓSITO. Un <select> sin ninguna
 // opción `selected` NO sale vacío: el navegador enseña la primera. Por eso dashboard.html emite un
 // <option> «sin dato» selected+disabled cuando esto devuelve "".
 //
-// `Profile` gana sobre `Role` cuando los dos vienen y se contradicen. No es un desempate arbitrario:
-// es el mismo orden que la plataforma (fleet.go — «la LECTURA de negocio ya solo mira Profile»);
-// `role` es un alias deprecado que se sincroniza en escritura y puede quedarse rancio.
+// 📌 Hasta la 0064 esto tenía una segunda mitad: traducía el `role` viejo (`bot` → `active`) cuando
+// la plataforma no emitía `profile` todavía. Esa rama existía por el ciclo de deprecación de T1.2, y
+// se fue con él — la plataforma ya no emite `role` en ningún caso. Lo que NO se fue es la caída a
+// "": esa es la regla de la ola («ante la duda, PASIVA») y sigue siendo la única red entre un dato
+// ausente y un clic que activa una sesión sin querer.
 func (s Session) EffectiveProfile() string {
 	switch s.Profile {
 	case "active", "passive":
 		return s.Profile
-	}
-	switch s.Role {
-	case "bot":
-		return "active"
-	case "passive":
-		return "passive"
 	}
 	return ""
 }
@@ -135,8 +118,8 @@ func (c *DashboardClient) ListSessions(ctx context.Context, accessToken string) 
 // (ADR-0027, Plan 046 · T1.2). El valor que viaja por el cable es el identificador en inglés
 // —`active`/`passive`—; «activa»/«pasiva» es solo lo que ve el dueño en la consola.
 //
-// La ruta vieja `/role` sigue existiendo en la plataforma durante su ciclo de deprecación, pero este
-// BFF ya NO la llama: escribir por las dos sería escribir el mismo dato por dos sitios.
+// Es la ÚNICA ruta de escritura del perfil: la vieja `/role` se retiró de la plataforma con la 0064,
+// junto con la columna que le daba nombre.
 func (c *DashboardClient) SetSessionProfile(ctx context.Context, accessToken, sessionID, profile string) error {
 	req, err := c.t.newAuthedJSONRequest(ctx, http.MethodPost, "/api/v1/sessions/"+sessionID+"/profile",
 		setSessionProfileRequest{Profile: profile}, accessToken)

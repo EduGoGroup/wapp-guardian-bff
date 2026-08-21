@@ -88,9 +88,9 @@ llamador es un handler del dashboard/editor.
 
 | Método y ruta | Request | Response 2xx | Códigos de error relevantes | Cliente (`apiclient`) |
 |---|---|---|---|---|
-| `GET /api/v1/sessions` | — | `[]Session{session_id, edge_id, state, profile, role (deprecado), self_pn?, last_connected_at?, last_seen_at?}` | `401` | `ListSessions` (`dashboard.go`) |
+| `GET /api/v1/sessions` | — | `[]Session{session_id, edge_id, state, profile, self_pn?, last_connected_at?, last_seen_at?}` | `401` | `ListSessions` (`dashboard.go`) |
 | `POST /api/v1/sessions/{id}/profile` | `{profile}` con `profile ∈ {active, passive}` (`setSessionProfileRequest`) | `{session_id, profile}` (200; este BFF descarta el body y re-lista) | `400` perfil inválido · `401` · `404` sesión ajena/inexistente (opaco) · `500` | `SetSessionProfile` (`dashboard.go`) |
-| ~~`POST /api/v1/sessions/{id}/role`~~ | **DEPRECADA** (Plan 046 · T1.2). Sigue viva en la plataforma durante su ciclo de deprecación, pero **este BFF ya no la llama**: escribir por las dos sería escribir el mismo dato por dos sitios. | — | — | — |
+| ~~`POST /api/v1/sessions/{id}/role`~~ | 🔴 **RETIRADA** de la plataforma (migración `0064`), junto con el campo `role` de la respuesta de `GET /api/v1/sessions`. Su ciclo de deprecación se cerró sin esperar: al comprobarlo, **no había ningún consumidor** de esa ruta fuera de la propia plataforma. | — | — | — |
 | `POST /api/v1/messages` | `{session_id, to, text}` (`sendMessageRequest`) | `SendResult{acked_command_id, ok, error?}` (200 **incluso si `ok:false`**) | `400` datos inválidos · `401` · `404` sesión ajena · `502` Edge offline · `504` timeout · `500` | `SendMessage` (`dashboard.go:88`) |
 | `GET /api/v1/entitlements` | — | `Entitlements{plan, features[], cache_ttl_seconds}` | `401` · `403` token sin el scope `entitlements.read` | `GetEntitlements` (`entitlements.go:26`) |
 | `GET /api/v1/flows` | — | `[]FlowSummary{flow_id, version, created_at?}` | `401` | `ListFlows` (`editor.go:102`) |

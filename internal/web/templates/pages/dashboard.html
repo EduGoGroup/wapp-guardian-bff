@@ -100,12 +100,12 @@
                                  el texto que se ve va en castellano porque es el vocabulario del dueño.
                                  Que los dos no coincidan es deliberado, no un despiste de traducción.
 
-                                 `EffectiveProfile` —y no `.Profile` a secas— porque durante el ciclo de
-                                 deprecación de T1.2 la plataforma puede estar emitiendo todavía el `role`
-                                 viejo; sin el respaldo, el desplegable saldría sin nada seleccionado.
+                                 `EffectiveProfile` —y no `.Profile` a secas— porque normaliza: devuelve
+                                 active|passive o bien "" para CUALQUIER otra cosa, y nunca inventa un
+                                 valor por defecto.
 
                                  🔴 El `<option>` de «sin dato» NO es adorno. `EffectiveProfile` devuelve ""
-                                 cuando la plataforma no dijo ni `profile` ni un `role` traducible, y un
+                                 cuando la plataforma no dijo un `profile` utilizable, y un
                                  <select> SIN ninguna opción `selected` NO se pinta vacío: el navegador
                                  enseña la PRIMERA, que aquí sería «activa». Sin este placeholder, un perfil
                                  DESCONOCIDO se leería como «esta sesión conversa sola» y un clic en

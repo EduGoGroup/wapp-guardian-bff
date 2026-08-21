@@ -411,32 +411,6 @@ func TestSetProfileWithoutCookieRedirects(t *testing.T) {
 	}
 }
 
-// TestDashboardCaeAlRoleViejoMientrasDuraLaDeprecacion cubre EffectiveProfile por su motivo real: el BFF
-// y la plataforma NO se despliegan a la vez (el trade-off que T1.2 dejó escrito). Un BFF ya migrado
-// contra una plataforma que todavía solo emite `role` tiene que seguir preseleccionando bien.
-//
-// El caso que decide es `bot` → `activa`: es el único donde el nombre cambia. Con `passive` el test
-// pasaría aunque el respaldo no existiera, porque el identificador coincide en los dos vocabularios.
-func TestDashboardCaeAlRoleViejoMientrasDuraLaDeprecacion(t *testing.T) {
-	api := routedAPI(map[string]struct {
-		status int
-		body   string
-	}{
-		"GET /api/v1/sessions": {http.StatusOK,
-			`[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","role":"bot"}]`},
-	})
-	defer api.Close()
-
-	router := NewRouter(authTestCfg(api.URL))
-	rec := getWithCookie(router, "/", validSessionCookie(t))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("dashboard debía renderizar 200, got %d", rec.Code)
-	}
-	if !strings.Contains(rec.Body.String(), `<option value="active" selected>activa</option>`) {
-		t.Error("una plataforma que aún emite el role viejo debía pintarse como perfil «activa»")
-	}
-}
-
 // TestDashboardNoPreseleccionaActivaCuandoNoSabeElPerfil es el test que atrapa un fallo que NO es de
 // Go sino de HTML, y que por eso no lo ve ni el compilador ni ningún gate salvo este render.
 //
@@ -521,11 +495,11 @@ func TestDashboardWithoutCookieRedirects(t *testing.T) {
 // SIN los campos tiene que pintar «desconocido», y la que los trae tiene que pintar su valor. Un test
 // que sólo mirase la fila poblada seguiría verde con la plantilla pintando "closed" por defecto.
 func TestDashboardPintaLaSaludDelClasificador(t *testing.T) {
-	body := `[{"session_id":"s-ok","edge_id":"e1","state":"online","role":"bot",` +
+	body := `[{"session_id":"s-ok","edge_id":"e1","state":"online","profile":"active",` +
 		`"intent_circuit":"closed","worker_taskset":"disjunta"},` +
-		`{"session_id":"s-roto","edge_id":"e2","state":"online","role":"bot",` +
+		`{"session_id":"s-roto","edge_id":"e2","state":"online","profile":"active",` +
 		`"intent_circuit":"open","worker_taskset":"solapada"},` +
-		`{"session_id":"s-mudo","edge_id":"e3","state":"online","role":"bot"}]`
+		`{"session_id":"s-mudo","edge_id":"e3","state":"online","profile":"active"}]`
 	api := routedAPI(map[string]struct {
 		status int
 		body   string
@@ -572,11 +546,11 @@ func TestDashboardPintaLaSaludDelClasificador(t *testing.T) {
 func TestDashboardAvisaQueElRepartoDeCPUEsDelArranque(t *testing.T) {
 	const aviso = "al arrancar el cajero, y NO se recalcula"
 
-	body := `[{"session_id":"s-a","edge_id":"e1","state":"online","role":"bot",` +
+	body := `[{"session_id":"s-a","edge_id":"e1","state":"online","profile":"active",` +
 		`"intent_circuit":"closed","worker_taskset":"disjunta"},` +
-		`{"session_id":"s-b","edge_id":"e2","state":"online","role":"bot",` +
+		`{"session_id":"s-b","edge_id":"e2","state":"online","profile":"active",` +
 		`"intent_circuit":"closed","worker_taskset":"solapada"},` +
-		`{"session_id":"s-c","edge_id":"e3","state":"online","role":"bot",` +
+		`{"session_id":"s-c","edge_id":"e3","state":"online","profile":"active",` +
 		`"intent_circuit":"closed","worker_taskset":"cajero_sin_confinar"}]`
 	api := routedAPI(map[string]struct {
 		status int

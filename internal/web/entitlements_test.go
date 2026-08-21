@@ -121,7 +121,7 @@ func TestDashboardDegradesWhenEntitlementsFail(t *testing.T) {
 		body   string
 	}{
 		"GET /api/v1/sessions": {http.StatusOK,
-			`[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","role":"bot"}]`},
+			`[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","profile":"active"}]`},
 		"GET /api/v1/entitlements": {http.StatusInternalServerError, `{"error":"detalle interno que no debe verse"}`},
 	})
 	defer api.Close()
