@@ -188,9 +188,14 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	// re-renderiza el dashboard con el resultado.
 	protected.GET("/", h.ShowDashboard)
 	protected.POST("/send", h.DoSend)
-	// Rol de sesión bot|passive (Plan 020 · T1): select por fila de la tabla del dashboard. POST clásico
-	// SSR con CSRF; re-renderiza el dashboard con el rol ya cambiado.
-	protected.POST("/sessions/:id/role", h.DoSetSessionRole)
+	// PERFIL de sesión active|passive (ADR-0027, Plan 046 · T1.3; sustituye al rol bot|passive del Plan
+	// 020): select por fila de la tabla del dashboard. POST clásico SSR con CSRF; re-renderiza el
+	// dashboard con el perfil ya cambiado.
+	//
+	// 🔴 La ruta vieja `/sessions/:id/role` NO se conserva aquí: es una pantalla SSR y el único cliente
+	// del formulario es esta misma consola, que se despliega con él. La deprecación con dos rutas vivas
+	// es de la API pública (T1.2), donde SÍ hay clientes que no se despliegan a la vez.
+	protected.POST("/sessions/:id/profile", h.DoSetSessionProfile)
 
 	// Editor de menú/encuestas (T4): flujos (inmutables versionados) + triggers (crear/borrar). "Editar"
 	// un flujo = publicar versión N+1 (POST /flows); "editar" un trigger = borrar + crear.

@@ -97,24 +97,42 @@ func sendResultView(result *apiclient.SendResult, err error) *sendView {
 	return &sendView{Success: true, Message: "Mensaje aceptado por el Edge.", CommandID: result.AckedCommandID}
 }
 
-var validRoles = map[string]bool{"bot": true, "passive": true}
+// validProfiles son los PERFILES de negocio admitidos (ADR-0027 §Decisión 1). Los identificadores
+// viajan en inglés por el cable; el castellano —«activa»/«pasiva»— es solo lo que ve el dueño y sale
+// de profileLabel.
+//
+// 🔴 No tiene NADA que ver con `devices.role` del Edge (`primary`/`standby`, ADR-0018).
+var validProfiles = map[string]bool{"active": true, "passive": true}
 
-// DoSetSessionRole procesa el formulario de cambio de rol de una sesión.
-func (h *DashboardHandler) DoSetSessionRole(c *gin.Context) {
+// profileLabel traduce el identificador del cable al vocabulario del dueño. Es la ÚNICA puerta por
+// la que el castellano entra en los mensajes: si aquí llega algo fuera de validProfiles se devuelve
+// tal cual, pero eso no puede pasar —el handler valida antes de llamar.
+func profileLabel(profile string) string {
+	switch profile {
+	case "active":
+		return "activa"
+	case "passive":
+		return "pasiva"
+	}
+	return profile
+}
+
+// DoSetSessionProfile procesa el formulario de cambio de PERFIL de una sesión (ADR-0027).
+func (h *DashboardHandler) DoSetSessionProfile(c *gin.Context) {
 	sessionID := strings.TrimSpace(c.Param("id"))
-	role := strings.TrimSpace(c.PostForm("role"))
+	profile := strings.TrimSpace(c.PostForm("profile"))
 
-	if sessionID == "" || !validRoles[role] {
+	if sessionID == "" || !validProfiles[profile] {
 		h.renderDashboard(c, http.StatusBadRequest,
-			&sendView{Success: false, Message: "Elige un rol válido (bot o passive)."}, gin.H{})
+			&sendView{Success: false, Message: "Elige un perfil válido (activa o pasiva)."}, gin.H{})
 		return
 	}
 
 	err := h.auth.withAuthRetry(c, func(accessToken string) error {
-		return h.api.SetSessionRole(c.Request.Context(), accessToken, sessionID, role)
+		return h.api.SetSessionProfile(c.Request.Context(), accessToken, sessionID, profile)
 	})
 
-	view := setSessionRoleResultView(role, err)
+	view := setSessionProfileResultView(profile, err)
 	status := http.StatusOK
 	if !view.Success {
 		status = http.StatusBadRequest
@@ -122,21 +140,21 @@ func (h *DashboardHandler) DoSetSessionRole(c *gin.Context) {
 	h.renderDashboard(c, status, view, gin.H{})
 }
 
-func setSessionRoleResultView(role string, err error) *sendView {
+func setSessionProfileResultView(profile string, err error) *sendView {
 	if err == nil {
-		return &sendView{Success: true, Message: "Rol de la sesión cambiado a " + role + "."}
+		return &sendView{Success: true, Message: "Perfil de la sesión cambiado a " + profileLabel(profile) + "."}
 	}
 	if errors.Is(err, apiclient.ErrUnauthorized) {
 		return &sendView{Success: false, Message: sessionExpiredMessage}
 	}
 	switch apiclient.StatusCodeOf(err) {
 	case http.StatusBadRequest:
-		return &sendView{Success: false, Message: "La plataforma rechazó el rol de la sesión. Elige bot o passive."}
+		return &sendView{Success: false, Message: "La plataforma rechazó el perfil de la sesión. Elige activa o pasiva."}
 	case http.StatusNotFound:
 		return &sendView{Success: false, Message: "Esa sesión no es tuya o no existe. Elige una del listado."}
 	default:
-		slog.Warn("cambio de rol de sesión falló", "error", err)
-		return &sendView{Success: false, Message: "No se pudo cambiar el rol de la sesión. Inténtalo más tarde."}
+		slog.Warn("cambio de perfil de sesión falló", "error", err)
+		return &sendView{Success: false, Message: "No se pudo cambiar el perfil de la sesión. Inténtalo más tarde."}
 	}
 }
 

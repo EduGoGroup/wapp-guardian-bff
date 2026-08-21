@@ -20,7 +20,7 @@ ve el token). **No** empareja teléfonos ni custodia DEK.
 | Área | Qué hace | Endpoint `/api/v1` consumido |
 |---|---|---|
 | Login/sesión | Login server-side, JWT en cookie HttpOnly, refresh+reintento, logout | `auth/{login,refresh,logout}` (plataforma) o identity + `auth/exchange` si la delegación está encendida |
-| Sesiones | Lista los teléfonos/sesiones vinculados del tenant (self_pn/state/role) y cambia el **rol** `bot|passive` por sesión | `GET sessions`, `POST sessions/{id}/role` |
+| Sesiones | Lista los teléfonos/sesiones vinculados del tenant (self_pn/state/profile) y cambia el **perfil** `active|passive` por sesión — «activa»/«pasiva» de cara al dueño (ADR-0027) | `GET sessions`, `POST sessions/{id}/profile` |
 | Enviar mensaje | Elegir sesión + destino + texto y despachar | `POST messages` |
 | Editar menú/encuestas | Listar/ver flows y **publicar versión nueva** (inmutables); triggers listar/crear/borrar | `flows`, `flows/{id}`, `triggers` |
 | Plan y capacidades | Pinta el plan del tenant y un chip por feature efectiva, y **gatea qué secciones se emiten** (ver abajo) | `GET entitlements` |
@@ -128,6 +128,7 @@ go.mod                     — módulo: github.com/EduGoGroup/wapp-guardian-bff 
 
 ## Puntos abiertos relevantes
 
-- Multi-teléfono: la consola opera N sesiones por Edge (ADR-0008); hoy listado + cambio de rol (`bot|passive`); el resto de la operación de sesión (status/retiro) sigue fuera.
+- Multi-teléfono: la consola opera N sesiones por Edge (ADR-0008); hoy listado + cambio de **perfil** (`active|passive`, ADR-0027); el resto de la operación de sesión (status/retiro) sigue fuera.
+- El perfil `passive` **todavía no entrega la privacidad que promete el ADR-0027**: el filtrado de entrantes en el Edge es de la Ola 2 del Plan 046 y no existe. La consola lo dice con un aviso explícito en `dashboard.html`, y `TestDashboardNoPrometeLaPrivacidadQueAunNoEntrega` impide que alguien lo borre por limpieza.
 - Recuperación ante pérdida de DEK implica re-emparejar (sin backdoor) — fuera del BFF (local del Edge).
 - Alcance diferido (campañas, plantillas/contactos, editor visual, media) — futuros planes.

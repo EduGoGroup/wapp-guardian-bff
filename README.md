@@ -95,7 +95,7 @@ internal/
 ├── apiclient/                — cliente HTTP server-to-server contra /api/v1
 │   ├── transport.go          — request autenticada, ErrUnauthorized/APIError, StatusCodeOf
 │   ├── auth.go               — login/refresh/logout (AuthResult y sus DTO)
-│   ├── dashboard.go          — sessions + rol de sesión + messages
+│   ├── dashboard.go          — sessions + perfil de sesión (active|passive) + messages
 │   ├── editor.go             — flows (listar/ver/publicar) + triggers (listar/crear/borrar)
 │   ├── entitlements.go       — GET /api/v1/entitlements (plan + features efectivas)
 │   └── identity.go/exchange.go/delegated.go — identity-api y canje (delegación opcional)

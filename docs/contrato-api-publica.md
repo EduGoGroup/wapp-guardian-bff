@@ -88,8 +88,9 @@ llamador es un handler del dashboard/editor.
 
 | Método y ruta | Request | Response 2xx | Códigos de error relevantes | Cliente (`apiclient`) |
 |---|---|---|---|---|
-| `GET /api/v1/sessions` | — | `[]Session{session_id, edge_id, state, role, self_pn?, last_connected_at?, last_seen_at?}` | `401` | `ListSessions` (`dashboard.go:49`) |
-| `POST /api/v1/sessions/{id}/role` | `{role}` con `role ∈ {bot, passive}` (`setSessionRoleRequest`) | `{session_id, role}` (200; este BFF descarta el body y re-lista) | `400` rol inválido · `401` · `404` sesión ajena/inexistente (opaco) · `500` | `SetSessionRole` (`dashboard.go:70`) |
+| `GET /api/v1/sessions` | — | `[]Session{session_id, edge_id, state, profile, role (deprecado), self_pn?, last_connected_at?, last_seen_at?}` | `401` | `ListSessions` (`dashboard.go`) |
+| `POST /api/v1/sessions/{id}/profile` | `{profile}` con `profile ∈ {active, passive}` (`setSessionProfileRequest`) | `{session_id, profile}` (200; este BFF descarta el body y re-lista) | `400` perfil inválido · `401` · `404` sesión ajena/inexistente (opaco) · `500` | `SetSessionProfile` (`dashboard.go`) |
+| ~~`POST /api/v1/sessions/{id}/role`~~ | **DEPRECADA** (Plan 046 · T1.2). Sigue viva en la plataforma durante su ciclo de deprecación, pero **este BFF ya no la llama**: escribir por las dos sería escribir el mismo dato por dos sitios. | — | — | — |
 | `POST /api/v1/messages` | `{session_id, to, text}` (`sendMessageRequest`) | `SendResult{acked_command_id, ok, error?}` (200 **incluso si `ok:false`**) | `400` datos inválidos · `401` · `404` sesión ajena · `502` Edge offline · `504` timeout · `500` | `SendMessage` (`dashboard.go:88`) |
 | `GET /api/v1/entitlements` | — | `Entitlements{plan, features[], cache_ttl_seconds}` | `401` · `403` token sin el scope `entitlements.read` | `GetEntitlements` (`entitlements.go:26`) |
 | `GET /api/v1/flows` | — | `[]FlowSummary{flow_id, version, created_at?}` | `401` | `ListFlows` (`editor.go:102`) |
@@ -114,11 +115,19 @@ Notas de contrato:
   hay `PUT`/`DELETE`; "editar" = publicar con `POST /api/v1/flows` una definición nueva, que el
   servidor versiona como `version+1`.
 - **Triggers no tienen edición in-place**: no hay `PUT`. "Editar" = `DELETE` + `POST`.
-- **Rol de sesión** (`POST /api/v1/sessions/{id}/role`, scope `sessions.write`, Plan 020 · T1):
-  `bot` dispara triggers/auto-responde; `passive` solo escucha/transporta. El tenant sale del token
-  (INV-8) y el `session_id` del path; el body solo lleva `{role}`. Este BFF valida el rol
-  client-side antes de enviar (ver §4) y tras el 200 re-lista las sesiones (el rol nuevo se ve en
-  la tabla).
+- **Perfil de sesión** (`POST /api/v1/sessions/{id}/profile`, scope `sessions.write`, ADR-0027 ·
+  Plan 046 · T1.2): `active` dispara triggers/auto-responde; `passive` solo transporta salida. El
+  tenant sale del token (INV-8) y el `session_id` del path; el body solo lleva `{profile}`. Este BFF
+  valida el perfil client-side antes de enviar (ver §4) y tras el 200 re-lista las sesiones (el
+  perfil nuevo se ve en la tabla).
+  - **Los identificadores viajan en inglés** (`active`/`passive`); «activa»/«pasiva» es SOLO el
+    vocabulario del dueño en la vista (`profileLabel`, `dashboard_handler.go`). Que el `value` del
+    `<option>` y su texto no coincidan es deliberado.
+  - **Sustituye al rol `bot|passive`** del Plan 020. `Session.Role` sigue en el DTO como respaldo de
+    LECTURA mientras dure la deprecación —`Session.EffectiveProfile` traduce `bot`→`active`— porque
+    el BFF y la plataforma no se despliegan a la vez. No se escribe por la ruta vieja.
+  - 🔴 **Deslinde**: este `profile` NO es el `devices.role` del Edge (`primary`/`standby`, failover
+    multi-dispositivo, ADR-0018). Dominios sin relación; el Edge no se renombra.
 - **`kind` de trigger** ∈ `{keyword, fallback, escape, event_start, event_stop}` (Plan 043 · T2.1
   añade los dos últimos; el kind `llm` existe en la plataforma desde el Plan 029 pero este BFF
   todavía no lo ofrece — deuda pendiente, no confundir con "no soportado por la API").

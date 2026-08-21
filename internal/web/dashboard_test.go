@@ -65,8 +65,8 @@ func postFormWithCookie(router http.Handler, path string, form url.Values, cooki
 
 // TestDashboardRendersSessionTable: GET / con sesiones del fixture → la tabla las pinta (REQ-D1).
 func TestDashboardRendersSessionTable(t *testing.T) {
-	body := `[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","role":"bot","self_pn":"593999000111"},` +
-		`{"session_id":"s-2","edge_id":"edge-beta","state":"offline","role":"passive"}]`
+	body := `[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","profile":"active","self_pn":"593999000111"},` +
+		`{"session_id":"s-2","edge_id":"edge-beta","state":"offline","profile":"passive"}]`
 	api := routedAPI(map[string]struct {
 		status int
 		body   string
@@ -82,7 +82,7 @@ func TestDashboardRendersSessionTable(t *testing.T) {
 		t.Fatalf("dashboard debía renderizar 200, got %d", rec.Code)
 	}
 	out := rec.Body.String()
-	for _, want := range []string{"593999000111", "edge-alpha", "online", "bot", "edge-beta", "offline", "passive"} {
+	for _, want := range []string{"593999000111", "edge-alpha", "online", "edge-beta", "offline", "Perfil"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("la tabla debía contener %q", want)
 		}
@@ -210,42 +210,130 @@ func TestSendValidatesEmptyFields(t *testing.T) {
 	}
 }
 
-// TestSetRoleSuccess: POST /sessions/{id}/role con la API devolviendo 200 → snackbar de éxito y la tabla
-// re-listada ya pinta el rol nuevo (el fixture del GET responde el estado post-cambio).
-func TestSetRoleSuccess(t *testing.T) {
+// TestDashboardPintaElPerfilEnCastellano es el gate (b) de T1.3 (Plan 046 · ADR-0027).
+//
+// Lo que decide NO es que aparezca la palabra «pasiva» en algún sitio de la página —el párrafo de
+// apoyo la nombra, así que una comprobación así seguiría verde con el desplegable intacto en inglés—.
+// Lo que decide es que el TEXTO DEL <option> esté en castellano y el identificador en inglés siga
+// viajando en el `value`: `>pasiva<` presente y `>passive<` ausente. Esa pareja de aserciones es la
+// que distingue «se tradujo la vista» de «se renombró el dato», y solo la primera es lo que pide el
+// ADR-0027 (el vocabulario del dueño cambia; el identificador del cable, no).
+func TestDashboardPintaElPerfilEnCastellano(t *testing.T) {
+	body := `[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","profile":"passive"}]`
 	api := routedAPI(map[string]struct {
 		status int
 		body   string
 	}{
-		"POST /api/v1/sessions/s-1/role": {http.StatusOK, `{"session_id":"s-1","role":"passive"}`},
-		"GET /api/v1/sessions": {http.StatusOK,
-			`[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","role":"passive"}]`},
+		"GET /api/v1/sessions": {http.StatusOK, body},
 	})
 	defer api.Close()
 
 	router := NewRouter(authTestCfg(api.URL))
-	form := url.Values{"role": {"passive"}}
-	rec := postFormWithCookie(router, "/sessions/s-1/role", form, validSessionCookie(t))
-
+	rec := getWithCookie(router, "/", validSessionCookie(t))
 	if rec.Code != http.StatusOK {
-		t.Fatalf("cambio de rol OK debía renderizar 200, got %d", rec.Code)
+		t.Fatalf("dashboard debía renderizar 200, got %d", rec.Code)
 	}
 	out := rec.Body.String()
-	if !strings.Contains(out, "snackbar--success") {
-		t.Error("cambio de rol OK debía mostrar un snackbar de éxito")
+
+	// (b) El criterio literal de la tarea.
+	if !strings.Contains(out, ">pasiva<") {
+		t.Error("el <option> del perfil debía decir «pasiva» al dueño")
 	}
-	if !strings.Contains(out, "Rol de la sesión cambiado a passive") {
-		t.Error("el snackbar debía nombrar el rol nuevo")
+	if strings.Contains(out, ">passive<") {
+		t.Error("el <option> NO puede seguir enseñando el identificador «passive» como texto")
 	}
-	// El re-render re-lista: el <select> de la fila trae passive seleccionado.
-	if !strings.Contains(out, `<option value="passive" selected>`) {
-		t.Error("la tabla re-listada debía preseleccionar el rol nuevo")
+	if !strings.Contains(out, ">activa<") {
+		t.Error("el <option> del perfil debía ofrecer «activa» al dueño")
+	}
+
+	// La otra mitad: el identificador sí viaja por el cable. Si esto se cayera, la traducción se
+	// habría comido el dato en vez de la etiqueta.
+	if !strings.Contains(out, `value="passive"`) || !strings.Contains(out, `value="active"`) {
+		t.Error("los identificadores active/passive deben seguir viajando en el value del <option>")
+	}
+	if !strings.Contains(out, `action="/sessions/s-1/profile"`) {
+		t.Error("el formulario debía apuntar a la ruta nueva /profile")
+	}
+	if !strings.Contains(out, "<th>Perfil</th>") {
+		t.Error("la columna debía titularse «Perfil», no «Rol»")
+	}
+	// El perfil que trae la sesión sale preseleccionado.
+	if !strings.Contains(out, `<option value="passive" selected>pasiva</option>`) {
+		t.Error("el desplegable debía preseleccionar el perfil que la plataforma reportó")
 	}
 }
 
-// TestSetRoleRejectsInvalidRole: un rol fuera de {bot, passive} se rechaza client-side (400) SIN llamar a
-// la API (la ruta del POST no está mapeada en el fake: si se llamara, el 500 rompería el mensaje esperado).
-func TestSetRoleRejectsInvalidRole(t *testing.T) {
+// TestDashboardNoPrometeLaPrivacidadQueAunNoEntrega. El filtrado de entrantes en el Edge —la promesa
+// de fondo del perfil pasiva, ADR-0027 §Decisión 2— lo entrega la OLA 2 y hoy NO EXISTE: lo único que
+// «pasiva» apaga es el motor reactivo en la nube. Una consola que dijera «sus mensajes no salen del
+// equipo» estaría publicando una garantía de privacidad falsa, que es peor que no decir nada.
+//
+// Este test es el que impide que alguien «mejore» el texto quitándole el matiz. Se cae solo el día que
+// la Ola 2 esté en campo, que es justo el día en que hay que volver a este párrafo.
+func TestDashboardNoPrometeLaPrivacidadQueAunNoEntrega(t *testing.T) {
+	api := routedAPI(map[string]struct {
+		status int
+		body   string
+	}{
+		"GET /api/v1/sessions": {http.StatusOK,
+			`[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","profile":"passive"}]`},
+	})
+	defer api.Close()
+
+	router := NewRouter(authTestCfg(api.URL))
+	rec := getWithCookie(router, "/", validSessionCookie(t))
+	out := rec.Body.String()
+
+	if !strings.Contains(out, "todavía no está disponible") {
+		t.Error("mientras el filtrado del Edge no exista, la consola tiene que decirlo")
+	}
+	if !strings.Contains(out, "sigue llegando a la nube") {
+		t.Error("el aviso tiene que decir QUÉ pasa hoy con los entrantes de una pasiva, no solo que falta algo")
+	}
+}
+
+// TestSetProfileSuccess: POST /sessions/{id}/profile con la API devolviendo 200 → snackbar de éxito y la
+// tabla re-listada ya pinta el perfil nuevo (el fixture del GET responde el estado post-cambio).
+func TestSetProfileSuccess(t *testing.T) {
+	api := routedAPI(map[string]struct {
+		status int
+		body   string
+	}{
+		"POST /api/v1/sessions/s-1/profile": {http.StatusOK, `{"session_id":"s-1","profile":"passive"}`},
+		"GET /api/v1/sessions": {http.StatusOK,
+			`[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","profile":"passive"}]`},
+	})
+	defer api.Close()
+
+	router := NewRouter(authTestCfg(api.URL))
+	form := url.Values{"profile": {"passive"}}
+	rec := postFormWithCookie(router, "/sessions/s-1/profile", form, validSessionCookie(t))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("cambio de perfil OK debía renderizar 200, got %d", rec.Code)
+	}
+	out := rec.Body.String()
+	if !strings.Contains(out, "snackbar--success") {
+		t.Error("cambio de perfil OK debía mostrar un snackbar de éxito")
+	}
+	// El snackbar habla el idioma del dueño, no el del cable: «pasiva», nunca «passive».
+	if !strings.Contains(out, "Perfil de la sesión cambiado a pasiva") {
+		t.Error("el snackbar debía nombrar el perfil nuevo en castellano")
+	}
+	// El re-render re-lista: el <select> de la fila trae pasiva seleccionada.
+	if !strings.Contains(out, `<option value="passive" selected>pasiva</option>`) {
+		t.Error("la tabla re-listada debía preseleccionar el perfil nuevo")
+	}
+}
+
+// TestSetProfileRejectsInvalidProfile: un perfil fuera de {active, passive} se rechaza client-side (400)
+// SIN llamar a la API (la ruta del POST no está mapeada en el fake: si se llamara, el 500 rompería el
+// mensaje esperado).
+//
+// El caso elegido es "bot" a propósito: es el identificador VIEJO, y el que va a llegar si alguien
+// reenvía un formulario cacheado o un marcador antiguo. Tiene que rebotar como cualquier otro valor
+// inválido, no colarse por nostalgia.
+func TestSetProfileRejectsInvalidProfile(t *testing.T) {
 	api := routedAPI(map[string]struct {
 		status int
 		body   string
@@ -255,28 +343,30 @@ func TestSetRoleRejectsInvalidRole(t *testing.T) {
 	defer api.Close()
 
 	router := NewRouter(authTestCfg(api.URL))
-	form := url.Values{"role": {"admin"}}
-	rec := postFormWithCookie(router, "/sessions/s-1/role", form, validSessionCookie(t))
+	for _, invalido := range []string{"admin", "bot"} {
+		form := url.Values{"profile": {invalido}}
+		rec := postFormWithCookie(router, "/sessions/s-1/profile", form, validSessionCookie(t))
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("rol inválido debía responder 400, got %d", rec.Code)
-	}
-	if !strings.Contains(rec.Body.String(), "Elige un rol válido") {
-		t.Error("rol inválido debía pedir bot o passive")
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("el perfil %q debía responder 400, got %d", invalido, rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "Elige un perfil válido") {
+			t.Errorf("el perfil %q debía pedir activa o pasiva", invalido)
+		}
 	}
 }
 
-// TestSetRoleMapsUpstreamErrors: 400/404/500 del upstream se traducen a mensajes legibles, sin filtrar el
-// detalle crudo (mismo criterio REQ-D3 que /send).
-func TestSetRoleMapsUpstreamErrors(t *testing.T) {
+// TestSetProfileMapsUpstreamErrors: 400/404/500 del upstream se traducen a mensajes legibles, sin filtrar
+// el detalle crudo (mismo criterio REQ-D3 que /send).
+func TestSetProfileMapsUpstreamErrors(t *testing.T) {
 	cases := []struct {
 		name       string
 		status     int
 		wantSubstr string
 	}{
-		{"rechazo", http.StatusBadRequest, "La plataforma rechazó el rol"},
+		{"rechazo", http.StatusBadRequest, "La plataforma rechazó el perfil"},
 		{"ajena", http.StatusNotFound, "no es tuya o no existe"},
-		{"upstream", http.StatusInternalServerError, "No se pudo cambiar el rol"},
+		{"upstream", http.StatusInternalServerError, "No se pudo cambiar el perfil"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -284,14 +374,14 @@ func TestSetRoleMapsUpstreamErrors(t *testing.T) {
 				status int
 				body   string
 			}{
-				"POST /api/v1/sessions/s-1/role": {tc.status, `{"error":"detalle interno que no debe verse"}`},
-				"GET /api/v1/sessions":           {http.StatusOK, `[]`},
+				"POST /api/v1/sessions/s-1/profile": {tc.status, `{"error":"detalle interno que no debe verse"}`},
+				"GET /api/v1/sessions":              {http.StatusOK, `[]`},
 			})
 			defer api.Close()
 
 			router := NewRouter(authTestCfg(api.URL))
-			form := url.Values{"role": {"bot"}}
-			rec := postFormWithCookie(router, "/sessions/s-1/role", form, validSessionCookie(t))
+			form := url.Values{"profile": {"active"}}
+			rec := postFormWithCookie(router, "/sessions/s-1/profile", form, validSessionCookie(t))
 
 			if rec.Code != http.StatusBadRequest {
 				t.Errorf("%s debía responder 400, got %d", tc.name, rec.Code)
@@ -310,14 +400,100 @@ func TestSetRoleMapsUpstreamErrors(t *testing.T) {
 	}
 }
 
-// TestSetRoleWithoutCookieRedirects: POST /sessions/{id}/role sin cookie → redirect a /login (ruta
+// TestSetProfileWithoutCookieRedirects: POST /sessions/{id}/profile sin cookie → redirect a /login (ruta
 // protegida por el AuthMiddleware, como el resto del dashboard).
-func TestSetRoleWithoutCookieRedirects(t *testing.T) {
+func TestSetProfileWithoutCookieRedirects(t *testing.T) {
 	router := NewRouter(authTestCfg("http://api.invalid"))
-	rec := postFormWithCookie(router, "/sessions/s-1/role", url.Values{"role": {"bot"}}, nil)
+	rec := postFormWithCookie(router, "/sessions/s-1/profile", url.Values{"profile": {"active"}}, nil)
 	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/login" {
-		t.Errorf("POST /sessions/{id}/role sin cookie debía redirigir a /login, got %d %q",
+		t.Errorf("POST /sessions/{id}/profile sin cookie debía redirigir a /login, got %d %q",
 			rec.Code, rec.Header().Get("Location"))
+	}
+}
+
+// TestDashboardCaeAlRoleViejoMientrasDuraLaDeprecacion cubre EffectiveProfile por su motivo real: el BFF
+// y la plataforma NO se despliegan a la vez (el trade-off que T1.2 dejó escrito). Un BFF ya migrado
+// contra una plataforma que todavía solo emite `role` tiene que seguir preseleccionando bien.
+//
+// El caso que decide es `bot` → `activa`: es el único donde el nombre cambia. Con `passive` el test
+// pasaría aunque el respaldo no existiera, porque el identificador coincide en los dos vocabularios.
+func TestDashboardCaeAlRoleViejoMientrasDuraLaDeprecacion(t *testing.T) {
+	api := routedAPI(map[string]struct {
+		status int
+		body   string
+	}{
+		"GET /api/v1/sessions": {http.StatusOK,
+			`[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","role":"bot"}]`},
+	})
+	defer api.Close()
+
+	router := NewRouter(authTestCfg(api.URL))
+	rec := getWithCookie(router, "/", validSessionCookie(t))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("dashboard debía renderizar 200, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `<option value="active" selected>activa</option>`) {
+		t.Error("una plataforma que aún emite el role viejo debía pintarse como perfil «activa»")
+	}
+}
+
+// TestDashboardNoPreseleccionaActivaCuandoNoSabeElPerfil es el test que atrapa un fallo que NO es de
+// Go sino de HTML, y que por eso no lo ve ni el compilador ni ningún gate salvo este render.
+//
+// Cuando la plataforma no dice ni `profile` ni un `role` traducible, EffectiveProfile devuelve "".
+// La tentación es pensar que entonces el <select> «sale sin selección»: NO. Un <select> sin ninguna
+// opción `selected` enseña la PRIMERA, que aquí sería «activa». El dueño leería «esta sesión
+// conversa sola» sobre una sesión de la que no sabemos nada, y un clic en «Aplicar» la activaría.
+// De ahí el <option> «sin dato» selected+disabled: ante la duda no se activa nada.
+func TestDashboardNoPreseleccionaActivaCuandoNoSabeElPerfil(t *testing.T) {
+	api := routedAPI(map[string]struct {
+		status int
+		body   string
+	}{
+		// Ni profile ni role: el perfil es DESCONOCIDO.
+		"GET /api/v1/sessions": {http.StatusOK,
+			`[{"session_id":"s-1","edge_id":"edge-alpha","state":"online"}]`},
+	})
+	defer api.Close()
+
+	router := NewRouter(authTestCfg(api.URL))
+	rec := getWithCookie(router, "/", validSessionCookie(t))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("dashboard debía renderizar 200, got %d", rec.Code)
+	}
+	out := rec.Body.String()
+
+	if strings.Contains(out, `<option value="active" selected>`) {
+		t.Error("un perfil desconocido NO puede preseleccionar «activa»: activaría una sesión que nadie activó")
+	}
+	if strings.Contains(out, `<option value="passive" selected>`) {
+		t.Error("un perfil desconocido tampoco puede afirmar «pasiva»: la plataforma no lo dijo")
+	}
+	if !strings.Contains(out, `<option value="" selected disabled>— sin dato —</option>`) {
+		t.Error("sin dato, el desplegable tiene que decirlo en vez de dejar que el navegador elija la primera opción")
+	}
+}
+
+// TestSetProfileRechazaElPerfilVacio cierra la otra mitad del caso «sin dato»: el <option> placeholder
+// viaja con value="" si alguien fuerza el envío, y el handler tiene que rebotarlo como cualquier otro
+// perfil inválido. Si esto se cayera, el placeholder dejaría de ser seguro.
+func TestSetProfileRechazaElPerfilVacio(t *testing.T) {
+	api := routedAPI(map[string]struct {
+		status int
+		body   string
+	}{
+		"GET /api/v1/sessions": {http.StatusOK, `[]`},
+	})
+	defer api.Close()
+
+	router := NewRouter(authTestCfg(api.URL))
+	rec := postFormWithCookie(router, "/sessions/s-1/profile", url.Values{"profile": {""}}, validSessionCookie(t))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("un perfil vacío debía responder 400, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Elige un perfil válido") {
+		t.Error("un perfil vacío debía pedir activa o pasiva")
 	}
 }
 

@@ -26,8 +26,24 @@
 
     <div class="card">
         <h1 class="headline">Sesiones vinculadas</h1>
-        <p class="supporting">Teléfonos del tenant, su estado y su rol (bot responde; passive solo escucha).
+        <p class="supporting">Teléfonos del tenant, su estado y su <strong>perfil</strong>. Una sesión
+            <strong>activa</strong> conversa sola: contesta por su cuenta a quien le escribe. Una sesión
+            <strong>pasiva</strong> está pensada para <strong>solo enviar</strong> —nunca contesta sola—,
+            y su propósito es que lo que reciba se quede en el equipo del cliente y no viaje a la nube.
             El emparejamiento vive en el Edge.</p>
+
+        {{/* 🔴 NOTA PROVISIONAL — QUÍTALA CUANDO LA OLA 2 DEL PLAN 046 ESTÉ EN CAMPO, NO ANTES.
+             El párrafo de arriba dice «su propósito es» y no «sus entrantes se quedan en el equipo»
+             a propósito: el descarte en el Edge lo entrega la Ola 2 (ADR-0027 §Decisión 2) y HOY NO
+             EXISTE. Lo único que «pasiva» apaga hoy es el motor reactivo en la nube
+             (`reactiveBlocked`); el tráfico entrante sigue subiendo. Prometer aquí la privacidad en
+             presente sería publicar una garantía que el producto no cumple. */}}
+        <div class="snackbar snackbar--info" role="note">
+            <span>El perfil <strong>pasiva</strong> ya evita que la sesión conteste sola, pero el
+                <strong>descarte de los mensajes entrantes en el equipo todavía no está disponible</strong>:
+                por ahora lo que le escriban a esa sesión sigue llegando a la nube. Cuando el filtrado
+                esté activo, este aviso desaparecerá.</span>
+        </div>
 
         {{ if .SessionsError }}
         <div class="snackbar snackbar--error" role="alert">
@@ -43,7 +59,7 @@
                         <th>Edge</th>
                         <th>Estado</th>
                         <th>Clasificador</th>
-                        <th>Rol</th>
+                        <th>Perfil</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -79,12 +95,31 @@
                             {{ else }}<span class="chip chip--neutral" title="Este Edge no reporta el reparto de CPU (no es Linux, o el parte del cajero está rancio).">CPU desconocida</span>{{ end }}
                         </td>
                         <td>
-                            <form method="POST" action="/sessions/{{ .SessionID }}/role" class="row" autocomplete="off">
+                            {{/* PERFIL de sesión (ADR-0027). El `value` va en inglés porque es el
+                                 identificador que viaja por el cable a `POST /api/v1/sessions/{id}/profile`;
+                                 el texto que se ve va en castellano porque es el vocabulario del dueño.
+                                 Que los dos no coincidan es deliberado, no un despiste de traducción.
+
+                                 `EffectiveProfile` —y no `.Profile` a secas— porque durante el ciclo de
+                                 deprecación de T1.2 la plataforma puede estar emitiendo todavía el `role`
+                                 viejo; sin el respaldo, el desplegable saldría sin nada seleccionado.
+
+                                 🔴 El `<option>` de «sin dato» NO es adorno. `EffectiveProfile` devuelve ""
+                                 cuando la plataforma no dijo ni `profile` ni un `role` traducible, y un
+                                 <select> SIN ninguna opción `selected` NO se pinta vacío: el navegador
+                                 enseña la PRIMERA, que aquí sería «activa». Sin este placeholder, un perfil
+                                 DESCONOCIDO se leería como «esta sesión conversa sola» y un clic en
+                                 «Aplicar» la activaría de verdad. Va `disabled` para que no se pueda elegir
+                                 a mano, y su `value=""` rebota en validProfiles (400) si alguien lo postea:
+                                 ante la duda no se activa nada. */}}
+                            <form method="POST" action="/sessions/{{ .SessionID }}/profile" class="row" autocomplete="off">
                                 <input type="hidden" name="csrf_token" value="{{ $.CSRFToken }}">
-                                <label class="field__label" for="role-{{ .SessionID }}" hidden>Rol de {{ .SessionID }}</label>
-                                <select class="field__control" id="role-{{ .SessionID }}" name="role">
-                                    <option value="bot" {{ if eq .Role "bot" }}selected{{ end }}>bot</option>
-                                    <option value="passive" {{ if eq .Role "passive" }}selected{{ end }}>passive</option>
+                                <label class="field__label" for="profile-{{ .SessionID }}" hidden>Perfil de {{ .SessionID }}</label>
+                                {{ $perfil := .EffectiveProfile }}
+                                <select class="field__control" id="profile-{{ .SessionID }}" name="profile">
+                                    {{ if eq $perfil "" }}<option value="" selected disabled>— sin dato —</option>{{ end }}
+                                    <option value="active" {{ if eq $perfil "active" }}selected{{ end }}>activa</option>
+                                    <option value="passive" {{ if eq $perfil "passive" }}selected{{ end }}>pasiva</option>
                                 </select>
                                 <button type="submit" class="btn btn--outlined">Aplicar</button>
                             </form>

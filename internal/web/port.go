@@ -18,7 +18,9 @@ type Authenticator interface {
 // SessionManager define el contrato para administrar sesiones del tenant y envío de mensajes.
 type SessionManager interface {
 	ListSessions(ctx context.Context, accessToken string) ([]apiclient.Session, error)
-	SetSessionRole(ctx context.Context, accessToken, sessionID, role string) error
+	// SetSessionProfile escribe el PERFIL de negocio de la sesión (`active`/`passive`, ADR-0027).
+	// No confundir con `devices.role` del Edge (`primary`/`standby`, ADR-0018): dominios distintos.
+	SetSessionProfile(ctx context.Context, accessToken, sessionID, profile string) error
 	SendMessage(ctx context.Context, accessToken, sessionID, to, text string) (*apiclient.SendResult, error)
 }
 
