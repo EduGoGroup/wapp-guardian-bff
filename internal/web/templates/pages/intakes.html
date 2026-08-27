@@ -231,7 +231,17 @@
                             <td><a href="/intakes/{{ .ID }}">{{ .ID }}</a></td>
                             <td>{{ .ContactID }}</td>
                             <td>{{ .SessionID }}</td>
-                            <td><span class="chip chip--neutral">{{ statusLabel .Status }}</span></td>
+                            {{/* MARCA `overdue` (Plan 044 · T4.1/T4.2). Va PEGADA al estado y con su
+                                 propio texto, nunca EN LUGAR del estado: `overdue` NO es un estado,
+                                 es un aviso sobre una solicitud que sigue viva en «por aprobar» y
+                                 que lleva demasiado esperando. La plataforma lo publica ya calculado
+                                 y no cambia nada por su culpa: ni el estado, ni las transiciones.
+                                 Y NO es `expired`, que sí es un estado —terminal y legado— y se
+                                 pinta con su propio nombre («vencido (histórico)») por la vía normal
+                                 de statusLabel. Si esta marca dijera «vencido», el dueño leería que
+                                 la solicitud ya no sirve, que es exactamente lo contrario. */}}
+                            <td><span class="chip chip--neutral">{{ statusLabel .Status }}</span>{{ if .Overdue }}<span
+                                class="chip chip--error">⏳ sin responder hace más de {{ $.OverdueHours }} h</span>{{ end }}</td>
                             <td>{{ printf "%.2f" .Total }}</td>
                             <td>{{ .CreatedAt }}</td>
                         </tr>

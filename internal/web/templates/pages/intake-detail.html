@@ -25,8 +25,18 @@
             <span class="chip chip--neutral">contacto · {{ .Detail.ContactID }}</span>
             <span class="chip chip--neutral">sesión · {{ .Detail.SessionID }}</span>
             <span class="chip chip--ok">total · {{ printf "%.2f" .Detail.Total }}</span>
+            {{/* MARCA `overdue`: aviso, NO estado. Ver el comentario largo del listado. */}}
+            {{ if .Detail.Overdue }}<span class="chip chip--error">⏳ sin responder hace más de {{ .OverdueHours }} h</span>{{ end }}
         </div>
         <p class="body">Creada {{ .Detail.CreatedAt }} · actualizada {{ .Detail.UpdatedAt }} (UTC)</p>
+        {{ if .Detail.Overdue }}
+        {{/* Lo que la marca NO dice y hay que decir: es una cuenta sobre la fecha de la última
+             modificación y no cambia NADA. La solicitud sigue en su estado, sigue admitiendo lo
+             mismo que antes, y en cuanto se corrijan sus líneas el plazo vuelve a empezar. */}}
+        <p class="body">Sigue esperando respuesta desde hace más de {{ .OverdueHours }} horas. Es solo
+            un aviso: no cambia su estado —sigue en «{{ statusLabel .Detail.Status }}»— ni lo que se
+            puede hacer con ella, y corregir sus líneas reinicia la cuenta.</p>
+        {{ end }}
 
         {{/* La indicación del PEDIDO (`customer_note`, D-041.19) NO es la de la línea: «dejarlo en
              portería» es del envío entero, no de un artículo. Por eso va aquí, en la cabecera y
@@ -69,6 +79,247 @@
         <p class="body">Esta solicitud no tiene líneas.</p>
         {{ end }}
     </div>
+
+    {{/* EL BORRADOR QUE VE EL DUEÑO (Plan 044 · T4.2, design §7.5).
+         Sale del payload de la ÚLTIMA revisión `interpreted`, y NO de `Items` de la tarjeta de
+         arriba. La diferencia no es de gusto: `Items` son las líneas RESUELTAS —las que la
+         plataforma factura— con un `unit_price` que no sabe decir «todavía no hay precio», y la
+         línea `unmatched` (la que el catálogo no supo casar, o sea justo la que el dueño tiene que
+         atender) NI SIQUIERA ESTÁ ahí. Sin este bloque, esa línea no se ve en ninguna pantalla.
+         Por eso hay DOS formularios de líneas en esta página y no es un duplicado: el del 041 edita
+         lo facturable, éste edita lo interpretado. */}}
+    {{ with .Draft }}
+    <div class="card" id="section-intake-draft">
+        <h2 class="title">Interpretación · revisión {{ .RevisionNo }}</h2>
+        <p class="supporting">Esto es lo que se entendió del mensaje del cliente, con lo que el
+            catálogo no supo resolver incluido. {{ .AnalysisText }}.</p>
+
+        {{ if .Newer }}
+        {{/* La revisión `interpreted` se congela cuando el LLM interpreta y NO se reescribe cuando
+             el dueño corrige: con correcciones encima, este bloque enseña la lectura original. Se
+             dice en vez de dejar creer que es lo vigente. */}}
+        <div class="snackbar snackbar--info" role="note">
+            <span>Después de esta interpretación hay {{ .Newer }} revisiones más: este bloque no se
+                reescribe al corregir. Lo vigente son las líneas de la ficha de arriba.</span>
+        </div>
+        {{ end }}
+
+        {{ if .SourceText }}
+        <p class="order-note"><span class="order-note__label">Lo que escribió el cliente:</span> {{ .SourceText }}</p>
+        {{ end }}
+
+        {{ if .Defects }}
+        <div class="snackbar snackbar--error" role="alert">
+            <span>No se guardó nada. Corrige lo siguiente y vuelve a intentarlo.</span>
+        </div>
+        <ul class="body">
+            {{ range .Defects }}
+            <li>{{ if .Line }}Línea {{ .Line }} · {{ end }}{{ .Field }}: {{ .Message }}</li>
+            {{ end }}
+        </ul>
+        {{ end }}
+
+        {{ if .Editable }}
+        {{/* El formulario NO lleva su propio botón: lo manda «Corregir», que vive con las otras dos
+             acciones para que las tres se lean juntas y ninguna se confunda con el desplegable de
+             estado. El botón está fuera de este <form> y lo alcanza con el atributo `form` de
+             HTML5 —sin una línea de JS (ADR-0035)—, porque un formulario no puede anidarse dentro
+             de otro y esta consola no tiene quien mueva datos en el navegador. */}}
+        <form id="intake-draft-form" method="POST" action="/intakes/{{ $.IntakeID }}/correct" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ $.CSRFToken }}">
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Qué se entendió</th>
+                            <th>SKU</th>
+                            <th>Personalización</th>
+                            <th>Cantidad</th>
+                            <th>Precio unitario</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{ range .Lines }}
+                        <tr>
+                            <td>{{ .Number }}</td>
+                            <td>
+                                <input class="field__control" type="text" name="item_label"
+                                       value="{{ .Label }}" aria-label="Artículo de la línea {{ .Number }}">
+                                <span class="cell-note">{{ .KindLabel }}{{ if .Size }} · {{ .Size }}{{ end }}{{ if .Pack }} · {{ .Pack }}{{ end }}</span>
+                                {{ if .Evidence }}<span class="cell-note">Lo pidió así: «{{ .Evidence }}»</span>{{ end }}
+                                {{ if .Note }}<span class="cell-note">{{ .Note }}</span>{{ end }}
+                                {{/* La PROCEDENCIA del match: sin ella, mirar un presupuesto raro no
+                                     dice si lo decidió una igualdad de sku, una distancia de edición
+                                     o el modelo. Una línea sin match (`unmatched`) no la lleva. */}}
+                                {{ if .Match }}<span class="cell-note">casó por {{ .Match.Strategy }} · confianza {{ printf "%.2f" .Match.Confidence }}</span>{{ end }}
+                                {{ if .Variants }}
+                                <span class="cell-note">Presentaciones del catálogo: elige una y copia su SKU y su precio.</span>
+                                <ul class="body">
+                                    {{ range .Variants }}
+                                    <li>{{ .Label }} · <code>{{ .SKU }}</code> · {{ printf "%.2f" .Price }}</li>
+                                    {{ end }}
+                                </ul>
+                                {{ end }}
+                                {{ range .Media }}<span class="cell-note">{{ .Text }}</span>{{ end }}
+                            </td>
+                            <td><input class="field__control" type="text" name="item_sku"
+                                       value="{{ .SKU }}" aria-label="SKU de la línea {{ .Number }}"></td>
+                            <td><input class="field__control" type="text" name="item_customization"
+                                       value="{{ .Customization }}" aria-label="Personalización de la línea {{ .Number }}"></td>
+                            <td><input class="field__control" type="text" inputmode="numeric" name="item_qty"
+                                       value="{{ .Qty }}" aria-label="Cantidad de la línea {{ .Number }}"></td>
+                            {{/* SIN PRECIO NO SE IMPRIME NINGÚN NÚMERO. Un `printf "%.2f"`
+                                 incondicional convertiría el «todavía no hay precio» en un «0.00»,
+                                 que le diría al dueño que esa torta es gratis — y es exactamente lo
+                                 que el §7.5 prohíbe. El hueco se queda vacío, con «¿precio?» a la
+                                 vista, y se rellena aquí mismo: sin JS, el editable ES el campo del
+                                 formulario, y el «después» es el re-render del servidor. */}}
+                            <td>
+                                {{ if not .HasPrice }}<span class="cell-note">¿precio?{{ if .PendingNote }} — {{ .PendingNote }}{{ end }}</span>{{ end }}
+                                <input class="field__control" type="text" inputmode="decimal" name="item_price"
+                                       value="{{ .UnitPrice }}"{{ if not .HasPrice }} placeholder="¿precio?"{{ end }}
+                                       aria-label="Precio unitario de la línea {{ .Number }}">
+                            </td>
+                        </tr>
+                        {{ end }}
+                    </tbody>
+                </table>
+            </div>
+        </form>
+        {{ else }}
+        {{/* Ni formulario ni «Corregir»: desde este estado la corrección no entra, y ofrecerla sería
+             ofrecer un rechazo (misma regla que el desplegable de un terminal). El borrador se sigue
+             enseñando: leerlo no depende de poder tocarlo. */}}
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr><th>#</th><th>Qué se entendió</th><th>SKU</th><th>Cantidad</th><th>Precio unitario</th></tr>
+                </thead>
+                <tbody>
+                    {{ range .Lines }}
+                    <tr>
+                        <td>{{ .Number }}</td>
+                        <td>{{ .Label }}<span class="cell-note">{{ .KindLabel }}{{ if .Size }} · {{ .Size }}{{ end }}</span>
+                            {{ if .Customization }}<span class="cell-note">Personalización: {{ .Customization }}</span>{{ end }}
+                            {{ range .Media }}<span class="cell-note">{{ .Text }}</span>{{ end }}</td>
+                        <td>{{ .SKU }}</td>
+                        <td>{{ .Qty }}</td>
+                        <td>{{ if .HasPrice }}{{ .UnitPrice }}{{ else }}¿precio?{{ end }}</td>
+                    </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+        {{ end }}
+
+        {{/* La línea de envío va FUERA de la tabla: la pone wApp, no se edita desde aquí —la
+             plataforma rechaza su prefijo reservado— y dejarla dentro descuadraría el número de
+             fila con el índice del formulario. */}}
+        {{ range .Shipping }}
+        <p class="body">{{ .Label }} — {{ if .HasPrice }}{{ .UnitPrice }}{{ else }}{{ if .Note }}{{ .Note }}{{ else }}por confirmar{{ end }}{{ end }}
+            <span class="cell-note">La línea de envío la pone wApp: no se edita aquí, no se pierde al
+                guardar y sigue contando en el total.</span></p>
+        {{ end }}
+
+        <p class="body">Entrega: {{ if .DeliveryDate }}{{ .DeliveryDate }}{{ else }}sin fecha (no se
+            entendió ninguna sin ambigüedad; pregúntasela al cliente){{ end }}</p>
+
+        {{/* EL TOTAL PARCIAL Y SU CONTEO (§7.5). El número lo manda la plataforma —esta pantalla no
+             suma (INV-13)— y ya excluye lo que falta por poner a precio, porque las líneas sin
+             resolver no están en `items`. Lo que aquí se añade es decir que es PARCIAL y cuánto
+             falta: un número suelto se lee como el precio final del pedido. */}}
+        <p class="body"><strong>{{ .TotalText }}</strong></p>
+        {{ if .VariantPendingText }}<p class="body">{{ .VariantPendingText }}</p>{{ end }}
+        {{ if .ShippingPending }}
+        <p class="body">El envío está por confirmar zona: tampoco cuenta como línea pendiente de
+            precio, porque no depende de ti sino de dónde vive el cliente.</p>
+        {{ end }}
+
+        {{/* LOS ADJUNTOS DEL CLIENTE. Se NOMBRAN, no se enlazan (D-044.52 §1): la referencia del
+             adjunto es opaca —nunca una URL— y la API no publica hoy ninguna ruta por la que
+             descargarlo, así que un enlace llevaría a ninguna parte. */}}
+        {{ range .Media }}
+        <p class="body">{{ .Text }}</p>
+        {{ end }}
+        {{ if .HasAudio }}
+        <p class="supporting">El audio se escucha en la conversación de WhatsApp: esta consola lo
+            nombra para que no se te pase, pero no lo descarga.</p>
+        {{ end }}
+    </div>
+    {{ end }}
+
+    {{ if not .Draft }}
+    <div class="card" id="section-intake-no-draft">
+        <h2 class="title">Interpretación</h2>
+        <p class="body">Esta solicitud no tiene ninguna revisión interpretada guardada, así que no hay
+            borrador que enseñar: lo que hay son las líneas de la ficha de arriba.</p>
+    </div>
+    {{ end }}
+
+    {{/* LAS TRES ACCIONES DEL DUEÑO (Plan 044 · T4.2/T4.3/T4.4). Van en su propia tarjeta y ARRIBA
+         del desplegable de estado, con su propio rótulo, porque el criterio de la tarea es que no se
+         confundan con él: estas tres LE ESCRIBEN AL CLIENTE por WhatsApp y dejan revisión; el
+         desplegable de abajo solo mueve la etiqueta del ciclo de vida y no le habla a nadie. */}}
+    {{ with .Actions }}
+    <div class="card" id="section-intake-actions">
+        <h2 class="title">Responderle al cliente</h2>
+        <p class="supporting">Estas tres acciones escriben en la solicitud y le hablan al cliente por
+            WhatsApp. El desplegable «Cambiar el estado» de más abajo no le escribe a nadie: solo mueve
+            la etiqueta del ciclo de vida. No son lo mismo y no se sustituyen.</p>
+        <p class="supporting">Que una acción quede registrada no significa que el cliente ya la tenga
+            delante: el envío depende de la sesión de WhatsApp de este negocio.</p>
+
+        {{ if .HasDraft }}
+        <p class="body">
+            <button type="submit" form="intake-draft-form" class="btn btn--outlined">Corregir</button>
+            Guarda las líneas del borrador tal como las dejaste arriba, y la plataforma registra la
+            corrección.</p>
+        {{ else }}
+        <p class="body">No hay interpretación que corregir. Las líneas facturables se corrigen con el
+            formulario «Corregir las líneas» de más abajo.</p>
+        {{ end }}
+
+        <form method="POST" action="/intakes/{{ $.IntakeID }}/approve" class="stack" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ $.CSRFToken }}">
+            <label class="field__label" for="rendered_text">Respuesta que se le enviará al cliente</label>
+            {{/* El texto propuesto es una PROPUESTA: lo que la revisión guarda es byte a byte lo que
+                 se envió, y su autor es el dueño (D-044.19). Por eso se ofrece editable y no como un
+                 resumen de solo lectura con un botón al lado. */}}
+            <textarea class="field__control" id="rendered_text" name="rendered_text" rows="8">{{ .RenderedText }}</textarea>
+            {{ if .PendingPrice }}
+            <p class="body">Quedan líneas sin precio: la plataforma va a rechazar la aprobación hasta
+                que las pongas a precio en el borrador de arriba.</p>
+            {{ end }}
+            <p class="body"><button type="submit" class="btn btn--filled">Aprobar y responder</button></p>
+        </form>
+
+        <form method="POST" action="/intakes/{{ $.IntakeID }}/request-info" class="stack" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ $.CSRFToken }}">
+            <label class="field__label" for="question">Pregunta para el cliente</label>
+            <textarea class="field__control" id="question" name="question" rows="3">{{ .Question }}</textarea>
+            {{ if .QuestionsKnown }}
+            {{ if .Questions }}
+            <p class="supporting">Preparadas por el sistema. Edítala antes de mandarla: ninguna sale sola.</p>
+            <ul class="body">
+                {{ range .Questions }}
+                <li>{{ . }}</li>
+                {{ end }}
+            </ul>
+            {{ else }}
+            <p class="supporting">El sistema no preparó ninguna pregunta para esta solicitud.</p>
+            {{ end }}
+            {{ else }}
+            {{/* La clave AUSENTE y la lista VACÍA no son lo mismo y no se dicen igual: sin la feature
+                 `llm_intake` la plataforma borra la clave, y «no la has contratado» no es «no había
+                 nada que preguntar». */}}
+            <p class="supporting">El plan de este tenant no incluye las preguntas preparadas por el
+                sistema. Escribe la tuya.</p>
+            {{ end }}
+            <p class="body"><button type="submit" class="btn btn--outlined">Pedir más información</button></p>
+        </form>
+    </div>
+    {{ end }}
 
     <div class="card">
         <h2 class="title">Cambiar el estado</h2>

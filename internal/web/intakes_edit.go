@@ -394,8 +394,39 @@ func priceUnreadable(raw string) string {
 // catálogo no tenía (D-041.26): el «queso extra» anotado en la personalización y cobrado a 0. Cada
 // envío deja una revisión `corrected` en la plataforma; esta pantalla no la pinta todavía.
 func (h *IntakesHandler) DoEditIntakeItems(c *gin.Context) {
+	h.saveIntakeItems(c, false)
+}
+
+// DoCorrectIntakeItems es la acción CORREGIR del Plan 044 (T4.4): el mismo guardado, mandado con
+// `as_correction` para que la plataforma lo registre como corrección del dueño y deje la señal
+// few-shot (D-044.48 §1). No hay ninguna ruta `/correct` en la API y no debe inventarse una.
+//
+// Va por una ruta propia del BFF —y no por un botón más del formulario del 041— porque son dos
+// formularios distintos sobre dos representaciones distintas de las líneas: el del 041 edita
+// `items`, las líneas ya resueltas; éste edita el BORRADOR, que es el único que tiene la línea
+// `unmatched` — la que hay que poner a precio y que en `items` ni siquiera aparece.
+func (h *IntakesHandler) DoCorrectIntakeItems(c *gin.Context) {
+	h.saveIntakeItems(c, true)
+}
+
+// saveIntakeItems es el guardado que comparten los dos formularios de líneas. Lo único que cambia
+// entre ellos es a qué puerta de la API se llama y en qué formulario se repinta lo tecleado cuando
+// algo se rechaza; todo lo demás —leer las filas, quitar una, traducir los defectos— es idéntico, y
+// duplicarlo garantizaría que el siguiente arreglo entrara solo en una de las dos copias.
+func (h *IntakesHandler) saveIntakeItems(c *gin.Context, asCorrection bool) {
 	id := strings.TrimSpace(c.Param("id"))
 	entitlements := resolveEntitlements(c, h.auth, h.api)
+
+	// withRows deja lo tecleado y lo rechazado en el formulario del que vinieron, que es el único
+	// sitio donde el operador puede corregirlo.
+	withRows := func(r intakeDetailRender, rows []intakeEditRow, defects []intakeEditDefect) intakeDetailRender {
+		if asCorrection {
+			r.draftRows, r.draftDefects = rows, defects
+			return r
+		}
+		r.rows, r.defects = rows, defects
+		return r
+	}
 
 	// Sin la capacidad no se llama a la API, igual que en el listado y el detalle: la plataforma
 	// cortaría con 403 y el viaje solo serviría para llenar el log de rechazos previsibles. El
@@ -429,10 +460,10 @@ func (h *IntakesHandler) DoEditIntakeItems(c *gin.Context) {
 	if raw := strings.TrimSpace(c.PostForm(intakeEditFieldRemove)); raw != "" {
 		idx, err := strconv.Atoi(raw)
 		if err != nil || idx < 0 || idx >= len(rows) {
-			h.renderIntakeDetail(c, intakeDetailRender{
-				status: http.StatusBadRequest, id: id, entitlements: &entitlements, rows: rows,
+			h.renderIntakeDetail(c, withRows(intakeDetailRender{
+				status: http.StatusBadRequest, id: id, entitlements: &entitlements,
 				notice: &intakeNotice{Message: "No se pudo identificar la línea a quitar. Recarga la página e inténtalo de nuevo."},
-			})
+			}, rows, nil))
 			return
 		}
 		removeIdx = idx
@@ -440,17 +471,20 @@ func (h *IntakesHandler) DoEditIntakeItems(c *gin.Context) {
 
 	items, origin, defects := itemsFromRows(rows, removeIdx)
 	if len(defects) > 0 {
-		h.renderIntakeDetail(c, intakeDetailRender{
+		h.renderIntakeDetail(c, withRows(intakeDetailRender{
 			status: http.StatusBadRequest, id: id, entitlements: &entitlements,
-			rows: rows, defects: defects,
 			notice: &intakeNotice{Message: "No se guardó nada: revisa las líneas marcadas abajo."},
-		})
+		}, rows, defects))
 		return
 	}
 
 	var detail *apiclient.IntakeDetail
 	err := h.auth.withAuthRetry(c, func(accessToken string) error {
 		var rerr error
+		if asCorrection {
+			detail, rerr = h.api.CorrectIntakeItems(c.Request.Context(), accessToken, id, items)
+			return rerr
+		}
 		detail, rerr = h.api.ReplaceIntakeItems(c.Request.Context(), accessToken, id, items)
 		return rerr
 	})
@@ -461,10 +495,11 @@ func (h *IntakesHandler) DoEditIntakeItems(c *gin.Context) {
 			return
 		}
 		status, notice, remote, editableIn := mapEditItemsError(err, origin)
-		h.renderIntakeDetail(c, intakeDetailRender{
-			status: status, id: id, entitlements: &entitlements,
-			rows: rows, defects: remote, editableIn: editableIn, notice: notice,
-		})
+		r := withRows(intakeDetailRender{
+			status: status, id: id, entitlements: &entitlements, notice: notice,
+		}, rows, remote)
+		r.editableIn = editableIn
+		h.renderIntakeDetail(c, r)
 		return
 	}
 

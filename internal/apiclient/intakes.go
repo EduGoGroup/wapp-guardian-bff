@@ -30,6 +30,19 @@ import (
 // Como `customization`, la plataforma lo publica SIEMPRE, también vacío (sin
 // `omitempty`), así que la clave ausente —un servidor anterior a T4.1c— y la nota
 // vacía colapsan aquí en `""`. La pantalla trata las dos igual: no pinta nada.
+//
+// Overdue es la MARCA de que la solicitud lleva demasiado esperando al dueño (Plan 044 · T4.1): es
+// `true` solo cuando está en `pending_approval` y han pasado 24 h desde la última modificación. La
+// plataforma lo publica SIEMPRE, también en falso.
+//
+// 🔴 Es DERIVADO y no tiene ningún efecto: no cambia `Status`, no cambia `AllowedTransitions` y no
+// cierra nada. Corregir las líneas reinicia el plazo, así que una misma solicitud puede entrar y
+// salir de la marca varias veces.
+//
+// Y NO ES `expired`. `expired` es un ESTADO —terminal, legado, de la columna `status`— en el que ya
+// no entra nadie; esto es un aviso sobre una solicitud que sigue viva y sigue esperando. Una
+// pantalla que pinte `overdue` como si fuera un estado le está enseñando al dueño algo que el
+// sistema no dice.
 type Intake struct {
 	ID           string  `json:"id"`
 	ContactID    string  `json:"contact_id"`
@@ -37,6 +50,7 @@ type Intake struct {
 	Status       string  `json:"status"`
 	Total        float64 `json:"total"`
 	CustomerNote string  `json:"customer_note"`
+	Overdue      bool    `json:"overdue"`
 	CreatedAt    string  `json:"created_at"`
 	UpdatedAt    string  `json:"updated_at"`
 }
@@ -87,14 +101,21 @@ type IntakePage struct {
 //   - lista vacía (la plataforma manda `[]`): estado TERMINAL, no admite cambios. Es
 //     lo que devuelve `abandoned` (T4.6) y el resto de estados sin salida.
 //
-// El struct NO declara `revisions`, y eso ya no es porque la plataforma lo omita
-// —lo publica desde cloud `eb48245`, T4.1— sino porque esta consola no lo pinta: el
-// decodificador ignora lo que no conoce. Decláralo cuando haya una pantalla que lo
-// use, no antes.
+// `Revisions` es el histórico, y se declara AQUÍ Y AHORA porque ya hay una pantalla
+// que lo usa: el render del borrador (§7.5, Plan 044 · T4.2) sale del payload de la
+// última revisión `interpreted`, no de `Items`. La razón es dura y vale la pena
+// escribirla: `Items` son las líneas RESUELTAS —cinco claves planas y un `unit_price`
+// que no sabe decir «sin precio»— y la línea `unmatched`, que es exactamente la que el
+// dueño tiene que atender, NI SIQUIERA APARECE ahí. Sin las revisiones esta consola no
+// puede pintar lo que el §7.5 pide.
+//
+// `Items` NO se retira ni se sustituye: sigue siendo lo que la plataforma factura, lo
+// que alimenta el formulario del 041 y lo que sostiene `Total`.
 type IntakeDetail struct {
 	Intake
-	Items              []IntakeItem `json:"items"`
-	AllowedTransitions *[]string    `json:"allowed_transitions"`
+	Items              []IntakeItem     `json:"items"`
+	Revisions          []IntakeRevision `json:"revisions"`
+	AllowedTransitions *[]string        `json:"allowed_transitions"`
 }
 
 // IntakeFilter son los filtros y la paginación de GET /api/v1/intakes. Los ceros
@@ -105,14 +126,28 @@ type IntakeDetail struct {
 // suelta cubre el día ENTERO. Status admite las claves del ciclo de vida y el
 // `closed` legado; una clave desconocida la rechaza la API con 400, y esa
 // validación no se replica aquí.
+//
+// Sort es el orden de la página: `newest` (el default de la API, y lo que el Plan 041
+// sirve desde siempre) u `oldest`. Vacío ⇒ no se manda y decide la API. Un valor que
+// no sea uno de esos dos lo rechaza la plataforma con 400, y esa validación tampoco se
+// replica aquí.
 type IntakeFilter struct {
 	From     string
 	To       string
 	Status   string
 	Session  string
+	Sort     string
 	Page     int
 	PageSize int
 }
+
+// Órdenes que acepta el listado. `IntakeSortOldest` es el que pide la bandeja del dueño (D-044.47
+// §2): lo que lleva más tiempo esperando es lo que hay que atender primero, y con el default de la
+// API —lo más reciente arriba— eso queda justo al final de la última página.
+const (
+	IntakeSortNewest = "newest"
+	IntakeSortOldest = "oldest"
+)
 
 // query serializa el filtro a la query string de la API. Lo vacío no se manda: un
 // `status=` vacío y no mandar `status` significan lo mismo, y omitirlo deja la URL
@@ -120,7 +155,7 @@ type IntakeFilter struct {
 func (f IntakeFilter) query() string {
 	q := url.Values{}
 	for key, value := range map[string]string{
-		"from": f.From, "to": f.To, "status": f.Status, "session": f.Session,
+		"from": f.From, "to": f.To, "status": f.Status, "session": f.Session, "sort": f.Sort,
 	} {
 		if value != "" {
 			q.Set(key, value)
@@ -211,8 +246,15 @@ func NotEditableOf(err error) (*NotEditableError, bool) {
 
 // replaceIntakeItemsRequest es el cuerpo de PUT /api/v1/intakes/{id}/items: el
 // conjunto COMPLETO de líneas de cliente que debe quedar.
+//
+// `as_correction` es el campo del 044 (D-044.48 §1) y lleva `omitempty` a propósito:
+// SIN él el cuerpo sale byte a byte como el del Plan 041, que es la condición de la
+// cero-regresión. No existe ninguna ruta `/correct`: corregir es este mismo PUT con el
+// campo puesto, y dos puertas dejando la misma revisión `corrected` era exactamente el
+// duplicado que este plan ya pagó una vez.
 type replaceIntakeItemsRequest struct {
-	Items []IntakeItem `json:"items"`
+	Items        []IntakeItem `json:"items"`
+	AsCorrection bool         `json:"as_correction,omitempty"`
 }
 
 // MaxIntakeDiscardBatch es cuántas solicitudes acepta UN POST /api/v1/intakes/discard
@@ -412,6 +454,25 @@ type setIntakeStatusRequest struct {
 // para el resto de 400 con motivo (cuerpo ilegible, demasiadas líneas) y *APIError
 // para 403/404/409/5xx, que StatusCodeOf distingue.
 func (c *IntakesClient) ReplaceIntakeItems(ctx context.Context, accessToken, id string, items []IntakeItem) (*IntakeDetail, error) {
+	return c.putIntakeItems(ctx, accessToken, id, items, false)
+}
+
+// CorrectIntakeItems es el MISMO PUT con `as_correction` puesto: la corrección del dueño del Plan
+// 044 (D-044.48 §1). Deja la misma revisión `corrected` que la edición del 041 y además marca la
+// señal few-shot con la que la Ola 5 aprenderá la voz de la dueña.
+//
+// Va como método aparte y NO como un parámetro más de ReplaceIntakeItems para no tocar la firma que
+// consume el formulario del 041: ese camino tiene que seguir mandando el cuerpo de siempre, y un
+// booleano extra en la firma es una invitación permanente a pasarlo mal desde el sitio equivocado.
+// Lo que comparten —la ruta, la lista, los rechazos— vive en putIntakeItems y no está duplicado.
+//
+// ⚠️ Hoy la señal few-shot NO TIENE CONSUMIDOR: se produce y se guarda, nada más.
+func (c *IntakesClient) CorrectIntakeItems(ctx context.Context, accessToken, id string, items []IntakeItem) (*IntakeDetail, error) {
+	return c.putIntakeItems(ctx, accessToken, id, items, true)
+}
+
+// putIntakeItems es el viaje compartido por la edición del 041 y la corrección del 044.
+func (c *IntakesClient) putIntakeItems(ctx context.Context, accessToken, id string, items []IntakeItem, asCorrection bool) (*IntakeDetail, error) {
 	// La lista vacía viaja como `[]`, NUNCA como `null`: quitar todas las líneas es una
 	// edición legítima, y la plataforma distingue las dos a propósito —`null` es «no
 	// mandaste la clave» y lo contesta con un 400—. Un `[]IntakeItem` nil serializaría
@@ -422,7 +483,7 @@ func (c *IntakesClient) ReplaceIntakeItems(ctx context.Context, accessToken, id 
 
 	req, err := c.t.newAuthedJSONRequest(ctx, http.MethodPut,
 		"/api/v1/intakes/"+url.PathEscape(id)+"/items",
-		replaceIntakeItemsRequest{Items: items}, accessToken)
+		replaceIntakeItemsRequest{Items: items, AsCorrection: asCorrection}, accessToken)
 	if err != nil {
 		return nil, err
 	}

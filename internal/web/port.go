@@ -55,11 +55,23 @@ type DashboardAPI interface {
 // `DiscardIntakes` es la única operación de esta interfaz que trabaja sobre VARIAS solicitudes de
 // una vez, y su resultado se lee por ítem: un lote mixto —unos descartados y otros no— es el caso
 // normal, así que devolver `nil` de error no autoriza a decir «listo».
+//
+// Las TRES acciones del 044 —`CorrectIntakeItems`, `ApproveIntake` y `RequestIntakeInfo`— son de
+// otra naturaleza que el resto y por eso el contrato las nombra aparte: las dos últimas LE HABLAN AL
+// CLIENTE por WhatsApp, y las tres dejan revisión. El desplegable de estado (`SetIntakeStatus`) no
+// hace ninguna de las dos cosas, y confundirlos en la pantalla sería ofrecer «responderle al
+// cliente» donde solo se mueve una etiqueta.
+//
+// `CorrectIntakeItems` es el MISMO PUT que `ReplaceIntakeItems` con el campo `as_correction`: no hay
+// ninguna ruta `/correct` y no debe inventarse una.
 type IntakeManager interface {
 	ListIntakes(ctx context.Context, accessToken string, f apiclient.IntakeFilter) (*apiclient.IntakePage, error)
 	GetIntake(ctx context.Context, accessToken, id string) (*apiclient.IntakeDetail, error)
 	SetIntakeStatus(ctx context.Context, accessToken, id, status string) (*apiclient.Intake, error)
 	ReplaceIntakeItems(ctx context.Context, accessToken, id string, items []apiclient.IntakeItem) (*apiclient.IntakeDetail, error)
+	CorrectIntakeItems(ctx context.Context, accessToken, id string, items []apiclient.IntakeItem) (*apiclient.IntakeDetail, error)
+	ApproveIntake(ctx context.Context, accessToken, id, renderedText string) (*apiclient.IntakeDetail, error)
+	RequestIntakeInfo(ctx context.Context, accessToken, id, question string) (*apiclient.IntakeDetail, error)
 	DiscardIntakes(ctx context.Context, accessToken string, intakeIDs []string) (*apiclient.IntakeDiscardResult, error)
 }
 
