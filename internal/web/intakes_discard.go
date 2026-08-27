@@ -17,6 +17,16 @@ import (
 const (
 	intakeDiscardFieldID     = "intake_id"
 	intakeDiscardFieldAction = "action"
+	// intakeDiscardFieldVisibleID lleva, en un oculto por fila, los ids de la PÁGINA que se está
+	// mirando (Plan 044 · T4.8). Es la materia prima de «seleccionar todo lo visible», y viaja por
+	// el formulario en vez de recalcularse en el servidor a propósito: lo que el dueño va a
+	// descartar es lo que TENÍA DELANTE, no lo que la bandeja devolvería si se volviera a leer un
+	// segundo después. Mismo criterio que el re-envío del lote en el paso de confirmar.
+	intakeDiscardFieldVisibleID = "visible_intake_id"
+	// intakeDiscardFieldSelectVisible es la casilla MAESTRA de la cabecera de la tabla. Marcada
+	// significa «toda esta página», nunca «todo lo que cumpla el filtro»: son 20 solicitudes o son
+	// 4.000, y esto no tiene vuelta atrás (D-041.22).
+	intakeDiscardFieldSelectVisible = "select_visible"
 	// intakeDiscardConfirm es el valor del botón que ESCRIBE. Cualquier otro valor —incluido el
 	// ausente— es el paso de mirar: el descarte no puede caerse del lado de escribir por un campo
 	// que llegó vacío.
@@ -218,8 +228,22 @@ func (h *IntakesHandler) DoDiscardIntakes(c *gin.Context) {
 // El colapso ocurre ANTES de medir el lote, y esa es la diferencia con la plataforma —que mide el
 // cuerpo tal como llega—: lo que se mide aquí es lo que se va a mandar, así que las dos cuentas dan
 // lo mismo y no hay forma de que el BFF acepte un lote que el otro lado rechace por tamaño.
+//
+// 🔴 CON LA MAESTRA MARCADA la selección son los ids de la PÁGINA (T4.8), y de ahí sale el límite
+// de esta pantalla: la lista llega del formulario, o sea de las filas que se PINTARON, y el
+// servidor no tiene forma de ampliarla ni aunque quisiera. «Todo lo visible» no puede convertirse
+// en «todo lo que cumple el filtro» por un descuido, porque el conjunto ancho no está aquí.
+//
+// La maestra GANA sobre las casillas sueltas en vez de sumarse a ellas, y es lo mismo: los ocultos
+// de la página son un superconjunto de lo que se pueda haber marcado a mano en ella. Desmarcar una
+// fila y dejar la maestra puesta selecciona la página entera — que es lo que la maestra dice, y lo
+// que la pantalla de confirmación enseña antes de escribir nada.
 func selectedIntakeIDs(c *gin.Context) []string {
-	raw := c.PostFormArray(intakeDiscardFieldID)
+	campo := intakeDiscardFieldID
+	if strings.TrimSpace(c.PostForm(intakeDiscardFieldSelectVisible)) != "" {
+		campo = intakeDiscardFieldVisibleID
+	}
+	raw := c.PostFormArray(campo)
 	seen := make(map[string]struct{}, len(raw))
 	ids := make([]string, 0, len(raw))
 	for _, value := range raw {
