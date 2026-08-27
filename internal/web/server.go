@@ -235,6 +235,25 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	protected.POST("/intakes/:id/status", h.DoSetIntakeStatus)
 	protected.POST("/intakes/:id/items", h.DoEditIntakeItems)
 
+	// LAS TRES ACCIONES DEL DUEÑO (Plan 044 · T4.2, T4.3, T4.4). Van por rutas propias y no por un
+	// campo más del cambio de estado porque no son lo mismo y la pantalla tiene que poder decirlo:
+	// éstas LE HABLAN AL CLIENTE por WhatsApp y dejan revisión; el desplegable de `/status` solo
+	// mueve la etiqueta del ciclo de vida.
+	//
+	// `/correct` es ruta DEL BFF, no de la API: allá corregir es el mismo `PUT …/items` con el campo
+	// `as_correction` (D-044.48 §1), y quien lo traduce es el apiclient. Aquí existe porque son dos
+	// formularios distintos —el del 041 edita `items`, éste edita el borrador— y cada formulario
+	// necesita su acción para que un rechazo repinte en el sitio donde se tecleó.
+	protected.POST("/intakes/:id/correct", h.DoCorrectIntakeItems)
+	protected.POST("/intakes/:id/approve", h.DoApproveIntake)
+	protected.POST("/intakes/:id/request-info", h.DoRequestIntakeInfo)
+
+	// REGENERAR LA INTERPRETACIÓN (Plan 044 · T4.7). Va por ruta propia y NO como un botón más de las
+	// tres de arriba porque no es de la misma familia: las otras le hablan al cliente por WhatsApp y
+	// esta no le habla a nadie —vuelve a interpretar el texto que el cliente ya mandó—. Y sobre todo,
+	// es la única que no devuelve nada que pintar: abre un trabajo y la revisión llega después.
+	protected.POST("/intakes/:id/reanalyze", h.DoReanalyzeIntake)
+
 	// Import de catálogo (Plan 041 · T3.5), gateado por la feature `catalog_import` en la plantilla y
 	// por RequireFeature en la plataforma. El POST atiende los dos pasos —comprobar y aplicar— y cuál
 	// se pide lo dice el botón: el que escribe solo existe después de haber enseñado el diff.

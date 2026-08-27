@@ -31,12 +31,23 @@
              abajo — que es lo único que convierte esta decisión en una decisión informada. */}}
         {{/* El conteo exacto va en la advertencia y NO se parte en varias líneas: el texto se compara
              tal cual en los tests, y un salto aquí lo convertiría en «descartar 2\n solicitudes». */}}
+        {{/* REDACCIÓN FIJADA POR D-044.47 §3 (Plan 044 · T4.8), y no es un ajuste de copy: los dos
+             textos que había en liza se CONTRADECÍAN. El vigente hasta hoy —«Esto NO se puede
+             deshacer y no hay papelera»— sugería borrado, y el que pedía el 044 —«quedarán como
+             abandonados, no se borra nada»— se callaba la irreversibilidad. Las dos cosas son
+             ciertas a la vez y el mensaje dice las dos: se marcan como `abandoned`, no se borra
+             nada, y aun así no hay vuelta atrás.
+             La concordancia en singular es de esta plantilla y no de la decisión, que redacta el
+             caso de N: «1 solicitudes» haría dudar de si la consola sabe lo que va a borrar, y hay
+             un test del Plan 041 que lo prohíbe. */}}
         <div class="snackbar snackbar--error" role="alert">
-            <span>Vas a descartar {{ len .Selected }} {{ if eq (len .Selected) 1 }}solicitud{{ else }}solicitudes{{ end }}. Esto NO se puede deshacer y no hay papelera.</span>
+            <span>Vas a descartar {{ len .Selected }} {{ if eq (len .Selected) 1 }}solicitud. Quedará marcada como <strong>abandonada</strong>{{ else }}solicitudes. Quedarán marcadas como <strong>abandonadas</strong>{{ end }} —no se borra nada— pero <strong>esto no se puede deshacer</strong>.</span>
         </div>
-        <p class="supporting">Quedarán como «abandonado» y saldrán de lo que tienes pendiente. No se
-            borra nada de lo que pidió el cliente —sus líneas y su historial siguen ahí y se pueden
-            consultar— y al cliente NO se le avisa.</p>
+        {{/* Lo que la advertencia NO cabe diciendo, y que el dueño necesita igual. No repite el
+             «no se borra nada» de arriba: decir dos veces lo mismo en la misma tarjeta enseña a no
+             leerla. */}}
+        <p class="supporting">Salen de lo que tienes pendiente, pero lo que pidió el cliente sigue
+            guardado —sus líneas y su historial se pueden consultar— y al cliente NO se le avisa.</p>
 
         <div class="table-wrap">
             <table class="table">
@@ -176,7 +187,22 @@
                 <table class="table">
                     <thead>
                         <tr>
-                            <th>Descartar</th>
+                            {{/* CASILLA MAESTRA «seleccionar todo lo VISIBLE» (Plan 044 · T4.8,
+                                 D-041.18). Marca los ids de ESTA PÁGINA, jamás «todo lo que cumpla
+                                 el filtro»: la diferencia entre descartar las 20 que el dueño está
+                                 mirando y las 4.000 que hay detrás, sobre una acción sin vuelta
+                                 atrás.
+                                 Y no lo garantiza una promesa del handler: los ids viajan en los
+                                 ocultos `visible_intake_id` que emite el `range` de abajo, o sea
+                                 EXACTAMENTE las filas que se pintaron. No hay ningún conjunto más
+                                 ancho al alcance de este formulario.
+                                 Sin JS (ADR-0035): esta casilla no marca las de abajo en el
+                                 navegador —no hay quien lo haga—, le dice al servidor «toda la
+                                 página», y el paso de revisar enseña una por una qué se va a matar
+                                 antes de escribir nada. */}}
+                            <th><input type="checkbox" name="select_visible" value="1"
+                                       aria-label="Marcar para descartar las {{ len .Intakes }} solicitudes de esta página">
+                                Descartar</th>
                             <th>Solicitud</th>
                             <th>Contacto</th>
                             <th>Sesión</th>
@@ -194,12 +220,28 @@
                                  exigiría un tercer espejo del ciclo de vida — y un espejo desfasado
                                  dejaría al dueño sin poder limpiar justo lo que vino a limpiar. Lo
                                  que sí llega es la respuesta POR ÍTEM, que dice de cada una qué pasó. */}}
+                            {{/* El oculto acompaña a la casilla y NO la sustituye: la casilla es lo
+                                 que el dueño marca a mano, y el oculto es lo que hace de esta fila
+                                 parte de «todo lo visible». Un `hidden` viaja SIEMPRE, así que la
+                                 lista de la página llega entera aunque no se marque ninguna — y por
+                                 eso el handler la lee solo cuando la maestra viene marcada. */}}
                             <td><input type="checkbox" name="intake_id" value="{{ .ID }}"
-                                       aria-label="Marcar para descartar la solicitud {{ .ID }}"></td>
+                                       aria-label="Marcar para descartar la solicitud {{ .ID }}"><input
+                                       type="hidden" name="visible_intake_id" value="{{ .ID }}"></td>
                             <td><a href="/intakes/{{ .ID }}">{{ .ID }}</a></td>
                             <td>{{ .ContactID }}</td>
                             <td>{{ .SessionID }}</td>
-                            <td><span class="chip chip--neutral">{{ statusLabel .Status }}</span></td>
+                            {{/* MARCA `overdue` (Plan 044 · T4.1/T4.2). Va PEGADA al estado y con su
+                                 propio texto, nunca EN LUGAR del estado: `overdue` NO es un estado,
+                                 es un aviso sobre una solicitud que sigue viva en «por aprobar» y
+                                 que lleva demasiado esperando. La plataforma lo publica ya calculado
+                                 y no cambia nada por su culpa: ni el estado, ni las transiciones.
+                                 Y NO es `expired`, que sí es un estado —terminal y legado— y se
+                                 pinta con su propio nombre («vencido (histórico)») por la vía normal
+                                 de statusLabel. Si esta marca dijera «vencido», el dueño leería que
+                                 la solicitud ya no sirve, que es exactamente lo contrario. */}}
+                            <td><span class="chip chip--neutral">{{ statusLabel .Status }}</span>{{ if .Overdue }}<span
+                                class="chip chip--error">⏳ sin responder hace más de {{ $.OverdueHours }} h</span>{{ end }}</td>
                             <td>{{ printf "%.2f" .Total }}</td>
                             <td>{{ .CreatedAt }}</td>
                         </tr>

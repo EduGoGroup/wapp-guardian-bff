@@ -77,6 +77,22 @@ type intakeDetailView struct {
 	FromRejection bool
 	// Edit es el formulario de corrección manual de las líneas (Plan 041 · T4.10).
 	Edit *intakeEditForm
+	// Draft es el borrador del §7.5 (Plan 044 · T4.2), que sale de la última revisión `interpreted`
+	// y NO de `Items`. Nil cuando la solicitud no tiene ninguna: entonces la pantalla enseña lo del
+	// 041 y dice que no hay interpretación, en vez de fingir un borrador vacío.
+	Draft *intakeDraftView
+	// Actions son las tres acciones del dueño (aprobar, corregir, pedir más información). Nil
+	// cuando el estado no las admite.
+	Actions *intakeActionsView
+	// Compare es la comparación ORIGINAL ↔ INTERPRETADO del §7.6 (Plan 044 · T4.7): el texto del
+	// cliente al lado de lo que se entendió, la navegación por las interpretaciones y el botón de
+	// regenerar. Nil cuando no hay ninguna revisión `interpreted`, igual que Draft.
+	//
+	// Se pinta sobre la revisión SELECCIONADA por la query, que no tiene por qué ser la última;
+	// `Draft` sigue saliendo siempre de la última, porque es lo que se corrige.
+	Compare *intakeCompareView
+	// OverdueHours es el plazo tras el que la plataforma marca `overdue`, para poder redactarlo.
+	OverdueHours int
 }
 
 // intakeDetailRender son las variables con las que se pinta el detalle. Va como struct y no como
@@ -106,6 +122,22 @@ type intakeDetailRender struct {
 	defects []intakeEditDefect
 	// editableIn son los estados desde los que la plataforma dice que sí se edita (salen del 422).
 	editableIn []string
+	// draftRows y draftDefects son lo tecleado y lo rechazado en el formulario del BORRADOR (§7.5),
+	// que va aparte de `rows`/`defects` —los del formulario del 041— a propósito: son dos
+	// formularios distintos sobre la misma página, y volcar lo tecleado en uno dentro del otro
+	// pondría los precios del dueño en filas que no son las suyas.
+	draftRows    []intakeEditRow
+	draftDefects []intakeEditDefect
+	// approveText y question son lo que el dueño escribió en las acciones. Al repintar tras un
+	// rechazo su trabajo no se tira.
+	approveText string
+	question    string
+	// reanalyzeText es el material EXTRA que el dueño pegó para regenerar, por lo mismo.
+	reanalyzeText string
+	// revision es la interpretación que se está mirando en la comparación del §7.6 (0 ⇒ la última).
+	// Viaja por la QUERY y no por una tabla nueva: sin JavaScript (ADR-0035), saltar de una revisión
+	// a otra es un enlace a esta misma página y el «después» lo pinta el servidor.
+	revision int
 }
 
 // IntakesHandler sirve la bandeja de solicitudes: listado con filtros, detalle y cambio de estado.
@@ -166,6 +198,7 @@ func (h *IntakesHandler) renderIntakesList(c *gin.Context, r intakesListRender) 
 		"Notice":                r.notice,
 		"Discard":               r.discard,
 		"DiscardURL":            discardURL(r.filter),
+		"OverdueHours":          intakeOverdueHours,
 		entitlementsDataKey:     entitlements,
 		intakesNavDataKey:       entitlements.Has(intakesFeature),
 		catalogImportNavDataKey: entitlements.Has(catalogImportFeature),
@@ -223,13 +256,33 @@ func (h *IntakesHandler) renderIntakesList(c *gin.Context, r intakesListRender) 
 func (h *IntakesHandler) ShowIntakeDetail(c *gin.Context) {
 	h.renderIntakeDetail(c, intakeDetailRender{
 		status: http.StatusOK, id: strings.TrimSpace(c.Param("id")),
+		revision: intakeRevisionFromQuery(c),
 	})
+}
+
+// intakeRevisionFromQuery lee qué interpretación se está mirando. Un valor ilegible o negativo vale
+// lo mismo que no mandar nada —se mira la última—, y NO se rechaza la página: un enlace tecleado a
+// mano no puede dejar al dueño sin su solicitud. Que el número no exista lo dice la comparación.
+func intakeRevisionFromQuery(c *gin.Context) int {
+	revision, err := strconv.Atoi(strings.TrimSpace(c.Query("revision")))
+	if err != nil || revision < 1 {
+		return 0
+	}
+	return revision
 }
 
 // renderIntakeDetail pinta el detalle: el que le den ya cargado o, si no, el que relee de la API.
 // `allowedFromRejection` son los destinos que devolvió un 422 previo: se usan SOLO si el detalle no
 // los trae.
 func (h *IntakesHandler) renderIntakeDetail(c *gin.Context, r intakeDetailRender) {
+	// 🔴 EL LITERAL DEL CLIENTE NO SE CACHEA EN CLARO. Esta es la única página del BFF que pinta el
+	// texto que una persona escribió por WhatsApp (§7.6), y llega ya descifrado del cloud —el BFF no
+	// tiene KEK—: sin esta cabecera, un proxy intermedio o el disco del navegador se quedarían con una
+	// copia en claro que nadie volvería a mirar. Va INCONDICIONAL y al principio, no colgando de la
+	// rama que pinta el literal: una cabecera que depende de por dónde salga la función es una
+	// cabecera que un día no sale.
+	c.Header("Cache-Control", "no-store")
+
 	var entitlements entitlementsView
 	if r.entitlements != nil {
 		entitlements = *r.entitlements
@@ -283,6 +336,10 @@ func (h *IntakesHandler) renderIntakeDetail(c *gin.Context, r intakeDetailRender
 
 	view := transitionsOf(detail, r.allowedFromRejection)
 	view.Edit = editFormOf(detail, view.Transitions, r)
+	view.Draft = draftViewOf(detail, r.draftRows, r.draftDefects)
+	view.Actions = actionsViewOf(detail, view.Draft, r)
+	view.Compare = compareViewOf(detail, entitlements, r)
+	view.OverdueHours = intakeOverdueHours
 	data["View"] = view
 	render(h.cfg, c, r.status, "intake-detail.html", data)
 }
@@ -462,10 +519,16 @@ func intakeFilterFromQuery(c *gin.Context) apiclient.IntakeFilter {
 		size = maxIntakesPageSize
 	}
 	return apiclient.IntakeFilter{
-		From:     strings.TrimSpace(c.Query("from")),
-		To:       strings.TrimSpace(c.Query("to")),
-		Status:   strings.TrimSpace(c.Query("status")),
-		Session:  strings.TrimSpace(c.Query("session")),
+		From:    strings.TrimSpace(c.Query("from")),
+		To:      strings.TrimSpace(c.Query("to")),
+		Status:  strings.TrimSpace(c.Query("status")),
+		Session: strings.TrimSpace(c.Query("session")),
+		// El orden NO es un filtro que el operador elija: esta bandeja pide SIEMPRE lo más antiguo
+		// primero (D-044.47 §2). Lo que lleva más tiempo esperando es lo que hay que atender, y con
+		// el default de la API —lo más reciente arriba— eso queda al final de la última página, que
+		// es donde nadie mira. Se manda explícito en vez de confiar en el default por lo mismo que
+		// el `page_size`: la petición dice lo que quiere, y la traza lo enseña.
+		Sort:     apiclient.IntakeSortOldest,
 		Page:     page,
 		PageSize: size,
 	}

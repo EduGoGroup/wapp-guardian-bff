@@ -24,6 +24,10 @@ type fakeAPIPort struct {
 	getIntake       func(ctx context.Context, accessToken, id string) (*apiclient.IntakeDetail, error)
 	setIntakeStatus func(ctx context.Context, accessToken, id, status string) (*apiclient.Intake, error)
 	replaceItems    func(ctx context.Context, accessToken, id string, items []apiclient.IntakeItem) (*apiclient.IntakeDetail, error)
+	correctItems    func(ctx context.Context, accessToken, id string, items []apiclient.IntakeItem) (*apiclient.IntakeDetail, error)
+	approveIntake   func(ctx context.Context, accessToken, id, renderedText string) (*apiclient.IntakeDetail, error)
+	requestInfo     func(ctx context.Context, accessToken, id, question string) (*apiclient.IntakeDetail, error)
+	reanalyze       func(ctx context.Context, accessToken, id, text string) (*apiclient.IntakeReanalysis, error)
 	discardIntakes  func(ctx context.Context, accessToken string, intakeIDs []string) (*apiclient.IntakeDiscardResult, error)
 
 	getTenantVariables     func(ctx context.Context, accessToken string) (*apiclient.TenantVariables, error)
@@ -112,6 +116,30 @@ func (f *fakeAPIPort) ReplaceIntakeItems(ctx context.Context, at, id string, ite
 		return f.replaceItems(ctx, at, id, items)
 	}
 	return &apiclient.IntakeDetail{}, nil
+}
+func (f *fakeAPIPort) CorrectIntakeItems(ctx context.Context, at, id string, items []apiclient.IntakeItem) (*apiclient.IntakeDetail, error) {
+	if f.correctItems != nil {
+		return f.correctItems(ctx, at, id, items)
+	}
+	return &apiclient.IntakeDetail{}, nil
+}
+func (f *fakeAPIPort) ApproveIntake(ctx context.Context, at, id, renderedText string) (*apiclient.IntakeDetail, error) {
+	if f.approveIntake != nil {
+		return f.approveIntake(ctx, at, id, renderedText)
+	}
+	return &apiclient.IntakeDetail{}, nil
+}
+func (f *fakeAPIPort) RequestIntakeInfo(ctx context.Context, at, id, question string) (*apiclient.IntakeDetail, error) {
+	if f.requestInfo != nil {
+		return f.requestInfo(ctx, at, id, question)
+	}
+	return &apiclient.IntakeDetail{}, nil
+}
+func (f *fakeAPIPort) ReanalyzeIntake(ctx context.Context, at, id, text string) (*apiclient.IntakeReanalysis, error) {
+	if f.reanalyze != nil {
+		return f.reanalyze(ctx, at, id, text)
+	}
+	return &apiclient.IntakeReanalysis{}, nil
 }
 func (f *fakeAPIPort) DiscardIntakes(ctx context.Context, at string, ids []string) (*apiclient.IntakeDiscardResult, error) {
 	if f.discardIntakes != nil {

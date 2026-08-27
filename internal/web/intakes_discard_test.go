@@ -55,6 +55,23 @@ func discardAPI(t *testing.T, list string, discard http.HandlerFunc) *httptest.S
 	})
 }
 
+// El texto de la confirmación, FIJADO POR D-044.47 §3 (Plan 044 · T4.8). Va como constante y no
+// suelto en cada test por lo que ese punto de la decisión dice con todas las letras: es una decisión
+// de producto y no un ajuste de copy, así que si alguien la cambia tiene que venir aquí, verla
+// escrita entera y decidir a sabiendas — no ir tocando `Contains` sueltos hasta que la suite calle.
+//
+// La redacción dice las DOS cosas que los textos en liza se contradecían: se marcan como
+// `abandoned` —no se borra nada— y aun así no hay vuelta atrás. El singular es concordancia de la
+// plantilla; la decisión redacta el caso de N.
+const (
+	avisoDescartePlural   = "Vas a descartar 2 solicitudes. Quedarán marcadas como <strong>abandonadas</strong> —no se borra nada— pero <strong>esto no se puede deshacer</strong>."
+	avisoDescarteSingular = "Vas a descartar 1 solicitud. Quedará marcada como <strong>abandonada</strong> —no se borra nada— pero <strong>esto no se puede deshacer</strong>."
+	// avisoDescarteRetirado es el literal que este texto SUSTITUYE (D-041.22). Se comprueba que ya
+	// no está: sugería borrado —«no hay papelera»— y convivir con el nuevo dejaría la tarjeta
+	// diciendo dos cosas distintas sobre lo mismo.
+	avisoDescarteRetirado = "no hay papelera"
+)
+
 // discardForm arma el formulario con los ids marcados y, si `action` no está vacío, el botón pulsado.
 func discardForm(action string, ids ...string) url.Values {
 	form := url.Values{}
@@ -120,8 +137,8 @@ func TestDiscardReviewShowsTheBatchWithoutWriting(t *testing.T) {
 	if !strings.Contains(out, `id="section-intakes-discard-confirm"`) {
 		t.Fatal("debía pintarse la tarjeta de confirmación")
 	}
-	if !strings.Contains(out, "NO se puede deshacer y no hay papelera") {
-		t.Error("la confirmación debía advertir de que el descarte es irreversible")
+	if !strings.Contains(out, avisoDescartePlural) {
+		t.Errorf("la confirmación debía llevar el texto de D-044.47 §3, palabra por palabra:\n%s", avisoDescartePlural)
 	}
 	if !strings.Contains(out, "al cliente NO se le avisa") {
 		t.Error("la confirmación debía decir que el cliente no recibe ningún aviso")
@@ -209,11 +226,37 @@ func TestDiscardConfirmationCuentaUnaSolaEnSingular(t *testing.T) {
 		discardForm("review", "in-open"), validSessionCookie(t))
 	out := rec.Body.String()
 
-	if !strings.Contains(out, "Vas a descartar 1 solicitud.") {
-		t.Error("con una sola solicitud el modal debía contarla en singular")
+	if !strings.Contains(out, avisoDescarteSingular) {
+		t.Errorf("con una sola solicitud el modal debía concordar entero, no solo el conteo:\n%s", avisoDescarteSingular)
 	}
 	if strings.Contains(out, "Vas a descartar 1 solicitudes") {
 		t.Error("el plural mal concordado hace dudar de si la consola sabe lo que va a borrar")
+	}
+	// La concordancia va hasta el final de la frase: «1 solicitud … Quedarán marcadas como
+	// abandonadas» sería el mismo defecto una oración más allá, donde se deja de mirar.
+	if strings.Contains(out, "Quedarán marcadas como <strong>abandonadas</strong>") {
+		t.Error("con una sola solicitud el resto de la frase también tiene que ir en singular")
+	}
+}
+
+// TestDiscardConfirmationYaNoDiceQueSeBorra es la otra mitad de D-044.47 §3: el literal que este
+// texto SUSTITUYE tiene que haberse ido.
+//
+// No basta con que el nuevo esté. El viejo —«Esto NO se puede deshacer y no hay papelera»— decía
+// algo FALSO: no se borra nada, las solicitudes quedan en `abandoned`, con sus líneas y su
+// historial. Dejarlo convivir con el nuevo pondría en la misma tarjeta las dos versiones de lo que
+// pasa, y la que asusta es la que se lee.
+func TestDiscardConfirmationYaNoDiceQueSeBorra(t *testing.T) {
+	api := discardAPI(t, discardListBody, nil)
+	defer api.Close()
+
+	rec := postFormWithCookie(NewRouter(authTestCfg(api.URL)), "/intakes/discard",
+		discardForm("review", "in-open", "in-old"), validSessionCookie(t))
+	out := rec.Body.String()
+
+	if strings.Contains(out, avisoDescarteRetirado) {
+		t.Errorf("el literal retirado (%q) sigue en la pantalla: sugiere borrado y contradice al nuevo",
+			avisoDescarteRetirado)
 	}
 }
 
@@ -541,4 +584,172 @@ func TestIntakeDiscardReasonKeepsUnknownKeys(t *testing.T) {
 			t.Errorf("la razón %q debía traducirse a la voz del dueño", known)
 		}
 	}
+}
+
+// ============ «seleccionar todo lo visible» (Plan 044 · T4.8, D-041.18) ============
+
+// Las dos páginas del fixture de la maestra. Los ids llevan el número de página en el nombre para
+// que un fallo diga a simple vista de dónde salió la fila que no debía estar.
+const (
+	páginaUnoA = "in-p1-a"
+	páginaUnoB = "in-p1-b"
+	páginaDosA = "in-p2-a"
+	páginaDosB = "in-p2-b"
+)
+
+// bandejaPaginada sirve DOS páginas distintas de la misma bandeja, elegidas por el `page` de la
+// query. Es el fixture que hace verificable el «lo visible»: con una sola página, un filtro que
+// seleccionara «todo lo que cumple el filtro» daría exactamente el mismo resultado que el correcto y
+// el test pasaría sin mirar nada.
+func bandejaPaginada(t *testing.T) *httptest.Server {
+	t.Helper()
+	página := func(a, b string, n int) string {
+		return `{"intakes":[
+		 {"id":"` + a + `","contact_id":"ct-1","session_id":"s-1","status":"open","total":10,
+		  "created_at":"2026-08-05T10:00:00Z","updated_at":"2026-08-05T10:00:00Z"},
+		 {"id":"` + b + `","contact_id":"ct-2","session_id":"s-1","status":"open","total":20,
+		  "created_at":"2026-08-04T10:00:00Z","updated_at":"2026-08-04T10:00:00Z"}],
+		 "page":` + strconv.Itoa(n) + `,"page_size":2,"total":4}`
+	}
+	return intakesAPI([]string{"cart_basic"}, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/intakes":
+			if r.URL.Query().Get("page") == "2" {
+				_, _ = io.WriteString(w, página(páginaDosA, páginaDosB, 2))
+				return
+			}
+			_, _ = io.WriteString(w, página(páginaUnoA, páginaUnoB, 1))
+		default:
+			t.Errorf("ruta no esperada: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	})
+}
+
+// visibleOculto es el oculto que la plantilla emite por fila VISIBLE: la materia prima de la
+// maestra, y el único conjunto que este formulario tiene al alcance.
+func visibleOculto(id string) string {
+	return `name="visible_intake_id" value="` + id + `"`
+}
+
+// TestIntakesListOfreceLaCasillaMaestra (T4.8): la cabecera de la tabla ofrece «marcar toda la
+// página», y lo que viaja con ella son los ids de las filas PINTADAS — ni uno más.
+func TestIntakesListOfreceLaCasillaMaestra(t *testing.T) {
+	api := bandejaPaginada(t)
+	defer api.Close()
+
+	rec := getWithCookie(NewRouter(authTestCfg(api.URL)), "/intakes?page=2", validSessionCookie(t))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("el listado debía renderizar 200, got %d", rec.Code)
+	}
+	out := rec.Body.String()
+
+	if !strings.Contains(out, `<input type="checkbox" name="select_visible" value="1"`) {
+		t.Fatal("la cabecera de la tabla debía ofrecer la casilla maestra")
+	}
+	for _, id := range []string{páginaDosA, páginaDosB} {
+		if !strings.Contains(out, visibleOculto(id)) {
+			t.Errorf("falta el oculto de %q: sin él esa fila no entra en «todo lo visible»", id)
+		}
+	}
+	// 🔴 EL CRITERIO: lo de la OTRA página no está en el formulario. No «no se selecciona»: no
+	// está — el conjunto ancho no existe aquí, así que la maestra no puede alcanzarlo ni por un
+	// descuido del handler.
+	for _, id := range []string{páginaUnoA, páginaUnoB} {
+		if strings.Contains(out, id) {
+			t.Errorf("%q es de la página 1 y aparece en el formulario de la página 2", id)
+		}
+	}
+	// Sigue sin haber JS: la maestra la resuelve el servidor (ADR-0035).
+	for _, forbidden := range []string{"<script", "onclick", "onchange"} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("la maestra no puede traer %q: esta consola no emite JS", forbidden)
+		}
+	}
+}
+
+// TestDiscardMaestraSeleccionaSoloLaPáginaVISIBLE es el criterio de T4.8 escrito como conducta:
+// marcar la maestra en la página 2 lleva a confirmar las DOS de la página 2, y ninguna de la 1.
+//
+// 💥 MUTACIÓN EJECUTADA, y COMPILA: hacer que la rama de la maestra, en vez de leer los ocultos del
+// formulario, releyera la bandeja con `PageSize: apiclient.MaxIntakeDiscardBatch, Page: 1` — o sea
+// «todo lo que cumple el filtro», que es la implementación que este criterio prohíbe. Con ella el
+// lote pasa a ser el de la página 1 y este test se pone rojo por las dos mitades: falta lo de la
+// página 2 y sobra lo de la 1.
+func TestDiscardMaestraSeleccionaSoloLaPáginaVISIBLE(t *testing.T) {
+	api := bandejaPaginada(t)
+	defer api.Close()
+
+	rec := postFormWithCookie(NewRouter(authTestCfg(api.URL)), "/intakes/discard?page=2",
+		formConMaestra(páginaDosA, páginaDosB), validSessionCookie(t))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("revisar el lote debía renderizar 200, got %d; body=%s", rec.Code, rec.Body.String())
+	}
+	out := rec.Body.String()
+
+	if !strings.Contains(out, `id="section-intakes-discard-confirm"`) {
+		t.Fatal("la maestra debía llevar a la pantalla de confirmación")
+	}
+	if !strings.Contains(out, avisoDescartePlural) {
+		t.Error("la confirmación de la maestra es la MISMA que la de las casillas sueltas: 2 solicitudes")
+	}
+	for _, id := range []string{páginaDosA, páginaDosB} {
+		if !strings.Contains(out, loteOculto(id)) {
+			t.Errorf("falta %q en el lote a confirmar: la maestra tiene que marcar TODA la página", id)
+		}
+	}
+	for _, id := range []string{páginaUnoA, páginaUnoB} {
+		if strings.Contains(out, loteOculto(id)) {
+			t.Errorf("%q es de OTRA página y se coló en el lote: la maestra selecciona lo visible, no lo que cumple el filtro", id)
+		}
+	}
+}
+
+// TestDiscardSinLaMaestraLosOcultosNoSeleccionanNada es la otra mitad, y sin ella la primera no
+// significa nada: los ocultos `visible_intake_id` viajan SIEMPRE (un `hidden` no se desmarca), así
+// que un handler que los leyera sin mirar la maestra convertiría cada «revisar» en «revisar toda la
+// página» — incluido el de quien marcó UNA sola fila.
+func TestDiscardSinLaMaestraLosOcultosNoSeleccionanNada(t *testing.T) {
+	api := bandejaPaginada(t)
+	defer api.Close()
+
+	form := url.Values{}
+	form.Set(intakeDiscardFieldAction, "review")
+	form.Add(intakeDiscardFieldID, páginaDosA) // el operador marcó UNA
+	form.Add(intakeDiscardFieldVisibleID, páginaDosA)
+	form.Add(intakeDiscardFieldVisibleID, páginaDosB) // …pero la página trae las dos
+
+	rec := postFormWithCookie(NewRouter(authTestCfg(api.URL)), "/intakes/discard?page=2",
+		form, validSessionCookie(t))
+	out := rec.Body.String()
+
+	if !strings.Contains(out, loteOculto(páginaDosA)) {
+		t.Errorf("falta la que el operador SÍ marcó (%q)", páginaDosA)
+	}
+	if strings.Contains(out, loteOculto(páginaDosB)) {
+		t.Errorf("%q no estaba marcada y entró en el lote: sin la maestra los ocultos no seleccionan", páginaDosB)
+	}
+	if !strings.Contains(out, avisoDescarteSingular) {
+		t.Error("con una sola marcada la confirmación tenía que contar 1, no la página entera")
+	}
+}
+
+// formConMaestra arma el envío del navegador desde una página con la maestra marcada: la casilla,
+// los ocultos de las filas visibles y el botón de revisar. Las casillas sueltas NO van — una maestra
+// marcada es justo el caso en el que el operador no marcó ninguna a mano.
+func formConMaestra(visibles ...string) url.Values {
+	form := url.Values{}
+	form.Set(intakeDiscardFieldSelectVisible, "1")
+	for _, id := range visibles {
+		form.Add(intakeDiscardFieldVisibleID, id)
+	}
+	form.Set(intakeDiscardFieldAction, "review")
+	return form
+}
+
+// loteOculto es el oculto con el que la tarjeta de confirmación re-envía CADA solicitud del lote. Es
+// el sitio exacto donde se lee qué se va a descartar: el listado de abajo pinta los mismos ids, pero
+// en otro campo.
+func loteOculto(id string) string {
+	return `<input type="hidden" name="intake_id" value="` + id + `">`
 }
