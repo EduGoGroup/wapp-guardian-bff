@@ -108,9 +108,12 @@ type intakeDraftView struct {
 	ShippingPending bool
 
 	DeliveryDate string
-	SourceText   string
-	Analysis     apiclient.IntakeAnalysis
-	Media        []intakeDraftMedia
+	// 🔴 NO HAY `SourceText` AQUÍ, y no es un olvido: el literal del cliente lo pinta el bloque de
+	// comparación (§7.6, T4.7) y solo él. Copiarlo también a esta vista daría DOS copias en memoria y
+	// dos sitios en el HTML de un texto que una persona escribió por WhatsApp, y cada copia es un
+	// sitio más del que se puede escapar.
+	Analysis apiclient.IntakeAnalysis
+	Media    []intakeDraftMedia
 
 	// Questions son las preguntas preparadas y QuestionsKnown si la plataforma llegó a publicar la
 	// clave: ausente ⇒ el plan del tenant no incluye `llm_intake`, que no es lo mismo que «el LLM
@@ -157,14 +160,14 @@ func (v *intakeDraftView) VariantPendingText() string {
 }
 
 // AnalysisText redacta quién interpretó. `Provider` sale CADENA VACÍA en la interpretación normal
-// —solo lo rellenan las revisiones nacidas de un re-análisis—, y eso se dice como «no consta» en vez
-// de pintar un proveedor llamado «».
+// —solo lo rellenan las revisiones nacidas de un re-análisis—, y eso se dice como «no registrada» en
+// vez de pintar un proveedor llamado «».
+//
+// 🔑 La redacción sale de `intakeViaText` y no de un literal propio: el bloque de comparación (§7.6)
+// dice lo mismo de este mismo dato unos centímetros más arriba, y dos frases distintas para el mismo
+// hecho en la misma página harían dudar de si hablan de lo mismo.
 func (v *intakeDraftView) AnalysisText() string {
-	via := v.Analysis.Provider
-	if strings.TrimSpace(via) == "" {
-		via = "una vía que no consta"
-	}
-	text := "Interpretado por " + via
+	text := "Interpretado por " + intakeViaText(v.Analysis.Provider)
 	if v.Analysis.Model != "" {
 		text += " · modelo " + v.Analysis.Model
 	}
@@ -213,7 +216,6 @@ func draftViewOf(detail *apiclient.IntakeDetail, rows []intakeEditRow, defects [
 		Newer:          detail.RevisionsAfter(rev.RevisionNo),
 		PartialTotal:   detail.Total,
 		DeliveryDate:   payload.DeliveryDate,
-		SourceText:     payload.SourceText,
 		Analysis:       payload.Analysis,
 		Media:          draftMediaOf(payload.MediaRefs),
 		Questions:      payload.Questions(),

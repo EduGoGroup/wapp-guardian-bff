@@ -80,6 +80,118 @@
         {{ end }}
     </div>
 
+    {{/* ORIGINAL DEL CLIENTE junto a LO QUE ENTENDIÓ (Plan 044 · T4.7, design §7.6).
+         Va ARRIBA del borrador y en DOS COLUMNAS porque el criterio de la tarea es que la
+         discrepancia se lea sin abrir nada más: con el texto del cliente encima y la interpretación
+         debajo, el dueño tiene que acordarse de lo que acaba de leer para notar que pidió una
+         hamburguesa y se entendieron tres.
+
+         El literal LLEGA YA DESCIFRADO de la plataforma —el BFF no tiene KEK y no descifra nada—, y
+         esta página responde `Cache-Control: no-store` para que esa copia en claro no se quede en
+         ningún disco por el camino. */}}
+    {{ with .Compare }}
+    <div class="card" id="section-intake-compare">
+        <h2 class="title">{{ .HeaderText }}</h2>
+        {{/* `created_by` es un ROL —`system`, `owner`, `crm`—, NUNCA una persona: la plataforma no
+             publica quién tecleó y esta consola no puede inventarlo (cero PII). */}}
+        <p class="supporting">Guardada {{ .CreatedAt }} (UTC) · {{ .RoleText }}.
+            Es un rol, no una persona: la plataforma no publica quién tecleó.</p>
+
+        {{ if .MissingRevision }}
+        <div class="snackbar snackbar--error" role="alert">
+            <span>Esta solicitud no tiene ninguna revisión {{ .MissingRevision }}, así que estás
+                viendo la última interpretación.</span>
+        </div>
+        {{ end }}
+
+        <div class="row compare">
+            <div class="compare__col" id="section-intake-original">
+                <p class="eyebrow">ORIGINAL DEL CLIENTE</p>
+                {{ if .Source.Present }}
+                <p class="order-note">{{ .Source.Text }}</p>
+                {{ else }}
+                {{/* SIN LITERAL, LA COLUMNA DICE POR QUÉ. Y las dos razones se dicen distinto: `purged`
+                     es una pérdida —existió y venció por retención— y `never_stored` nunca fue una
+                     promesa. Se deducen de DOS claves de la revisión (`source_text` y
+                     `literal_pruned_at`), sin gastar el 422 de `/reanalyze`, que es escritura. */}}
+                <p class="body">{{ .Source.ReasonText }}</p>
+                {{ end }}
+            </div>
+            <div class="compare__col" id="section-intake-understood">
+                <p class="eyebrow">LO QUE ENTENDIÓ</p>
+                <ul class="body">
+                    {{ range .Lines }}
+                    <li>{{ .Qty }}× {{ .Label }}{{ if .Size }} ({{ .Size }}){{ end }}{{ if .Customization }} · {{ .Customization }}{{ end }}
+                        — {{ if .HasPrice }}{{ .UnitPrice }}{{ else }}¿precio?{{ end }}</li>
+                    {{ end }}
+                </ul>
+                <p class="body"><strong>⚠️ {{ .UnitsText }}</strong></p>
+            </div>
+        </div>
+
+        {{/* NAVEGACIÓN ENTRE INTERPRETACIONES, SIN UNA LÍNEA DE JS (ADR-0035): cada revisión es un
+             enlace a esta misma página con `?revision=N`, y el «después» lo pinta el servidor. No hay
+             tabla nueva — el histórico ya viaja en el detalle. Cada entrada enseña SU vía, que es
+             justo lo que se compara. */}}
+        {{ if .HasHistory }}
+        <div id="section-intake-revisions">
+            <p class="supporting">Interpretaciones de esta solicitud. Saltar de una a otra solo cambia
+                lo que se lee aquí arriba: el borrador que se corrige más abajo es siempre el último.</p>
+            <p class="row">
+                {{ range .Revisions }}
+                {{ if .Current }}
+                <span class="chip chip--info">revisión {{ .RevisionNo }} · {{ .ViaText }} — la que ves</span>
+                {{ else }}
+                <a class="btn btn--text" href="{{ .URL }}">revisión {{ .RevisionNo }} · {{ .ViaText }}</a>
+                {{ end }}
+                {{ end }}
+            </p>
+        </div>
+        {{ end }}
+
+        {{/* LA VÍA ES UN INDICADOR DE SOLO LECTURA, NO UN CONMUTADOR (D-044.51). Un selector aquí
+             dejaría que una llamada suelta se saltara la configuración del tenant y mandara el texto
+             de un cliente a un tercero de pago; cambiarla es un acto de configuración con su
+             consentimiento. Por eso el formulario de abajo NO manda ninguna vía: omitirla equivale a
+             afirmar la configurada y no puede desincronizarse. */}}
+        {{/* ⚠️ Este párrafo NO escribe «LLM local» en ninguna parte, y no es casualidad: hay un test
+             que exige que esa cadena no exista en la página. Es lo que la revisión 1 —el caso común,
+             sin `provider`— no puede afirmar, y un rótulo suelto en otro sitio dejaría al dueño
+             leyéndolo como si lo afirmara. */}}
+        <p class="supporting">La vía con la que se interpreta —la del equipo del cliente o la de la
+            API externa— la fija la configuración del tenant y no se conmuta desde esta pantalla. Se
+            cambia en los ajustes de LLM del tenant (<code>PUT /api/v1/tenant-llm</code>), que esta
+            consola todavía no tiene como página: no se enlaza a una pantalla que no existe.</p>
+
+        {{ with .Regenerate }}
+        <form method="POST" action="/intakes/{{ $.IntakeID }}/reanalyze" class="stack"
+              id="section-intake-regenerate" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ $.CSRFToken }}">
+            <label class="field__label" for="reanalyze_text">Material extra para la regeneración (opcional)</label>
+            <textarea class="field__control" id="reanalyze_text" name="reanalyze_text" rows="3"
+                      maxlength="{{ .MaxRunes }}"{{ if not .Enabled }} disabled{{ end }}>{{ .Text }}</textarea>
+            <p class="supporting">Suma al texto original, no lo sustituye: sirve para pegar lo que el
+                cliente dijo por otro canal. Máximo {{ .MaxRunes }} caracteres.</p>
+            {{/* EL BOTÓN NUNCA SE ESCONDE: los cuatro estados de borde lo dejan DESHABILITADO con la
+                 razón delante. Escondido, el dueño no sabría ni que existe ni por qué no lo tiene. */}}
+            <p class="body">
+                <button type="submit" class="btn btn--filled"{{ if not .Enabled }} disabled{{ end }}>Regenerar</button>
+                Vuelve a interpretar el texto original del cliente. No le escribe a nadie: el cliente
+                no se entera.</p>
+            {{ if .Reason }}
+            <p class="body">Ahora mismo no se puede regenerar. {{ .Reason }}</p>
+            {{ end }}
+            {{ if .Paywall }}
+            <p class="supporting">Es cosa del plan contratado, no de esta solicitud: se resuelve
+                ampliando el plan del tenant.</p>
+            {{ end }}
+            <p class="supporting">Regenerar NO devuelve la interpretación al momento: la plataforma
+                abre un trabajo y la revisión nueva aparece cuando termina, al recargar la página.</p>
+        </form>
+        {{ end }}
+    </div>
+    {{ end }}
+
     {{/* EL BORRADOR QUE VE EL DUEÑO (Plan 044 · T4.2, design §7.5).
          Sale del payload de la ÚLTIMA revisión `interpreted`, y NO de `Items` de la tarjeta de
          arriba. La diferencia no es de gusto: `Items` son las líneas RESUELTAS —las que la
@@ -104,9 +216,11 @@
         </div>
         {{ end }}
 
-        {{ if .SourceText }}
-        <p class="order-note"><span class="order-note__label">Lo que escribió el cliente:</span> {{ .SourceText }}</p>
-        {{ end }}
+        {{/* EL LITERAL DEL CLIENTE NO SE REPITE AQUÍ: vive en el bloque de comparación de arriba, al
+             lado de lo que se entendió (§7.6, T4.7), que es donde sirve para algo. Pintarlo dos
+             veces en la misma página duplicaría sin motivo un texto que una persona escribió por
+             WhatsApp — y cuantas menos copias tenga ese dato, menos sitios hay de los que se pueda
+             escapar. */}}
 
         {{ if .Defects }}
         <div class="snackbar snackbar--error" role="alert">

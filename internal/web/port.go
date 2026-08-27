@@ -64,6 +64,11 @@ type DashboardAPI interface {
 //
 // `CorrectIntakeItems` es el MISMO PUT que `ReplaceIntakeItems` con el campo `as_correction`: no hay
 // ninguna ruta `/correct` y no debe inventarse una.
+//
+// 🔴 `ReanalyzeIntake` es la ÚNICA que no devuelve un detalle, y no es una asimetría por descuido: la
+// plataforma abre un trabajo que corre por detrás y contesta con el número que la revisión TENDRÁ.
+// Cuando responde, esa revisión NO EXISTE todavía, así que no hay detalle nuevo que devolver — y una
+// firma que lo devolviera obligaría a inventarlo.
 type IntakeManager interface {
 	ListIntakes(ctx context.Context, accessToken string, f apiclient.IntakeFilter) (*apiclient.IntakePage, error)
 	GetIntake(ctx context.Context, accessToken, id string) (*apiclient.IntakeDetail, error)
@@ -72,6 +77,7 @@ type IntakeManager interface {
 	CorrectIntakeItems(ctx context.Context, accessToken, id string, items []apiclient.IntakeItem) (*apiclient.IntakeDetail, error)
 	ApproveIntake(ctx context.Context, accessToken, id, renderedText string) (*apiclient.IntakeDetail, error)
 	RequestIntakeInfo(ctx context.Context, accessToken, id, question string) (*apiclient.IntakeDetail, error)
+	ReanalyzeIntake(ctx context.Context, accessToken, id, text string) (*apiclient.IntakeReanalysis, error)
 	DiscardIntakes(ctx context.Context, accessToken string, intakeIDs []string) (*apiclient.IntakeDiscardResult, error)
 }
 

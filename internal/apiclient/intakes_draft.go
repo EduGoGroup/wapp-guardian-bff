@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 )
 
 // Clases de revisión que publica el detalle (`intake_revisions.kind`). Van como constantes porque
@@ -45,6 +46,42 @@ type IntakeRevision struct {
 	RenderedText string          `json:"rendered_text"`
 	CreatedBy    string          `json:"created_by"`
 	CreatedAt    string          `json:"created_at"`
+	// LiteralPrunedAt es el instante en que la poda por retención vació el literal del cliente
+	// (D-044.52 §3, publicado por el cloud de forma aditiva). Va como PUNTERO y no como string
+	// porque la pregunta que decide la pantalla es de PRESENCIA DE CLAVE, no de valor:
+	//
+	//   - `payload.source_text` presente          ⇒ hay literal;
+	//   - ausente y esta clave AUSENTE            ⇒ nunca lo hubo (`never_stored`);
+	//   - ausente y esta clave PRESENTE           ⇒ se podó (`purged`), y aquí está cuándo.
+	//
+	// Con un `string` pelado la clave ausente y un `""` explícito colapsarían en el mismo cero, y
+	// las dos ramas de arriba dirían lo mismo. Es hermano de `created_at` y vive FUERA de `payload`.
+	//
+	// ⚠️ Hoy `purged` NO lo produce nadie: el Plan 046 no construyó la poda y la retención es
+	// indefinida (ADR-0043). La rama existe por CONTRATO y en campo solo se ve `never_stored`.
+	LiteralPrunedAt *string `json:"literal_pruned_at,omitempty"`
+}
+
+// Roles que la plataforma publica en `created_by` de una revisión.
+//
+// 🔴 Son ROLES, no personas, y la pantalla tiene que pintarlos como tales: la plataforma no publica
+// quién tecleó y esta consola no puede inventarlo (INV-04/ADR-0010, cero PII).
+const (
+	RevisionByOwner  = "owner"
+	RevisionBySystem = "system"
+	RevisionByCRM    = "crm"
+)
+
+// LiteralPruned responde si la revisión declara que el literal se PODÓ. Es la pregunta por presencia
+// de clave, en un solo sitio, para que nadie la reescriba comparando contra la cadena vacía.
+func (r *IntakeRevision) LiteralPruned() bool { return r != nil && r.LiteralPrunedAt != nil }
+
+// PrunedAt es el instante de la poda (vacío si no la hubo). Solo se llama detrás de LiteralPruned.
+func (r *IntakeRevision) PrunedAt() string {
+	if r == nil || r.LiteralPrunedAt == nil {
+		return ""
+	}
+	return *r.LiteralPrunedAt
 }
 
 // Clases de adjunto de una `IntakeMediaRef` (`anclaje.Kind*` de la plataforma). Los tres primeros
@@ -229,6 +266,25 @@ func (d *IntakeDetail) LastRevisionOf(kind string) *IntakeRevision {
 		}
 	}
 	return found
+}
+
+// RevisionsOf devuelve TODAS las revisiones de una clase, de la más antigua a la más nueva.
+//
+// Ordena por `revision_no` y no por la posición en el slice por lo mismo que LastRevisionOf: el
+// orden con el que la API devuelve el histórico no es contrato, y navegar por posición pondría al
+// dueño saltando entre interpretaciones en un orden que no es el de los hechos.
+//
+// Devuelve punteros a los elementos del detalle —no copias— porque el llamante necesita la revisión
+// ENTERA, incluida `LiteralPrunedAt`, que vive fuera del payload.
+func (d *IntakeDetail) RevisionsOf(kind string) []*IntakeRevision {
+	var out []*IntakeRevision
+	for i := range d.Revisions {
+		if d.Revisions[i].Kind == kind {
+			out = append(out, &d.Revisions[i])
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].RevisionNo < out[j].RevisionNo })
+	return out
 }
 
 // RevisionsAfter cuenta las revisiones POSTERIORES a un número. Es lo que permite avisar de que el

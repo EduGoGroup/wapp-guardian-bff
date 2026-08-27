@@ -256,6 +256,18 @@ textarea.field__control{ height:auto; min-height:120px; padding:var(--md-space-3
 }
 .order-note__label{ font-weight:600; }
 
+/* ===== Comparación en DOS COLUMNAS (Plan 044 · T4.7, design §7.6) =====
+   El original del cliente va AL LADO de lo interpretado, no debajo, y esa es la tarea entera: con
+   una columna encima de la otra el dueño tiene que acordarse de lo que acaba de leer para notar que
+   pidió una hamburguesa y se entendieron tres. Cada columna crece desde 18rem, así que en una
+   pantalla estrecha caen una debajo de otra sin necesidad de una media query propia. El `min-width:0`
+   deja que un texto largo de WhatsApp se parta en vez de estirar la fila. */
+.compare{ align-items:stretch; }
+.compare__col{
+  flex:1 1 18rem; min-width:0;
+  display:flex; flex-direction:column; gap:var(--md-space-2);
+}
+
 /* ===== Chip / badge de estado ===== */
 .chip{
   display:inline-flex; align-items:center; gap:var(--md-space-1);

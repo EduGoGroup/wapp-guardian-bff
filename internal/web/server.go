@@ -248,6 +248,12 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	protected.POST("/intakes/:id/approve", h.DoApproveIntake)
 	protected.POST("/intakes/:id/request-info", h.DoRequestIntakeInfo)
 
+	// REGENERAR LA INTERPRETACIÓN (Plan 044 · T4.7). Va por ruta propia y NO como un botón más de las
+	// tres de arriba porque no es de la misma familia: las otras le hablan al cliente por WhatsApp y
+	// esta no le habla a nadie —vuelve a interpretar el texto que el cliente ya mandó—. Y sobre todo,
+	// es la única que no devuelve nada que pintar: abre un trabajo y la revisión llega después.
+	protected.POST("/intakes/:id/reanalyze", h.DoReanalyzeIntake)
+
 	// Import de catálogo (Plan 041 · T3.5), gateado por la feature `catalog_import` en la plantilla y
 	// por RequireFeature en la plataforma. El POST atiende los dos pasos —comprobar y aplicar— y cuál
 	// se pide lo dice el botón: el que escribe solo existe después de haber enseñado el diff.
