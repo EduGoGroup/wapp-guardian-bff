@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	sharedweb "github.com/EduGoGroup/wapp-shared/web"
 )
 
 // routedAPI levanta una API pública fake que responde según método+ruta. Cada entrada del mapa es
@@ -32,9 +34,9 @@ func routedAPI(routes map[string]struct {
 func validSessionCookie(t *testing.T) *http.Cookie {
 	t.Helper()
 	access := makeToken(t, time.Now().Add(time.Hour))
-	value, err := encodeSession(sessionData{AccessToken: access, RefreshToken: "r-ok"})
+	value, err := sharedweb.EncodeSession(sharedweb.SessionData{AccessToken: access, RefreshToken: "r-ok"})
 	if err != nil {
-		t.Fatalf("encodeSession: %v", err)
+		t.Fatalf("sharedweb.EncodeSession: %v", err)
 	}
 	return &http.Cookie{Name: sessionCookieName, Value: value}
 }
@@ -51,7 +53,7 @@ func getWithCookie(router http.Handler, path string, cookie *http.Cookie) *httpt
 
 func postFormWithCookie(router http.Handler, path string, form url.Values, cookie *http.Cookie) *httptest.ResponseRecorder {
 	csrf := mintCSRF(router)
-	form.Set(csrfFieldName, csrf.Value)
+	form.Set(sharedweb.CSRFFieldName, csrf.Value)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

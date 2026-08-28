@@ -2,39 +2,53 @@ package apiclient
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
-	sharedjwt "github.com/EduGoGroup/wapp-shared/auth/jwt"
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/EduGoGroup/wapp-shared/iam"
 )
+
+// SystemBFF es la clave de ESTA aplicación en el catálogo de identity (`iam.systems`).
+//
+// El System Gate de identity autoriza aplicaciones, no ecosistemas: la clave es namespaced
+// `<ecosistema>.<app>` y "wapp" a secas no es un valor válido. Es un identificador de contrato, no
+// configuración de infraestructura —identity conoce esta aplicación con el mismo nombre en todos sus
+// ambientes—, así que vive en el binario y lo que sale a env vars es la URL del emisor.
+//
+// En el módulo `iam` el `system` dejó de ser una constante para ser un CAMPO del cliente: el mismo
+// código sirve al BFF y a la consola de operadores sin una rama por su valor. La constante que
+// decide cuál es el de esta aplicación se queda aquí, que es de quien es.
+const SystemBFF = "wapp.bff"
 
 // DelegatedAuthenticator autentica al operador delegando en identity y canjeando el resultado por un
 // Context Token de wApp, en un solo movimiento server-side.
 //
-// Las dos credenciales tienen papeles distintos y la delegación los respeta: el Identity Token dice
-// QUIÉN ERES y lo emite identity; el Context Token dice QUÉ PUEDES HACER EN WAPP y lo emite la
-// plataforma. El BFF necesita el segundo para operar, así que el primero **muere aquí**: no vuelve
-// al llamador, no entra en la cookie y no se registra. Lo que no se guarda no se filtra.
+// El mecanismo entero —los dos saltos, el trato al Identity Token, los errores con nombre— vive en
+// `wapp-shared/iam`. Aquí queda lo que es del BFF y no del plano de identidad: adaptar la firma de
+// `Logout` al puerto Authenticator (que recibe también el access token, y que identity ignora), el
+// `Signup`, que es de la plataforma y no de identity, y la traducción de errores de [bffError].
 //
-// De ahí sale la regla que sostiene el resto del BFF: la cookie custodia SIEMPRE el Context Token,
-// así que el tenant se sigue leyendo de sus claims como hasta hoy. Un Identity Token no tiene claims
-// de negocio —no puede tenerlos— y si llegara a la cookie el tenant desaparecería sin más aviso.
+// La regla que sostiene el resto del BFF sigue en pie y la garantiza el módulo: la cookie custodia
+// SIEMPRE el Context Token, así que el tenant se lee de sus claims. El Identity Token no vuelve del
+// módulo, no entra en la cookie y no se registra.
 type DelegatedAuthenticator struct {
-	identity *IdentityClient
-	exchange *ExchangeClient
+	identity *iam.Client
+	platform *Transport
 }
 
-// NewDelegatedAuthenticator compone el emisor de identidad con el canje de la plataforma.
-func NewDelegatedAuthenticator(identity *IdentityClient, exchange *ExchangeClient) *DelegatedAuthenticator {
-	return &DelegatedAuthenticator{identity: identity, exchange: exchange}
+// NewDelegatedAuthenticator compone el cliente del plano de identidad con el Transport de la
+// plataforma, que es a donde va el signup (identity no lo atiende).
+func NewDelegatedAuthenticator(identity *iam.Client, platform *Transport) *DelegatedAuthenticator {
+	return &DelegatedAuthenticator{identity: identity, platform: platform}
 }
 
 // Login autentica en identity y canjea al instante: dos saltos server-to-server, una sola sesión.
 func (a *DelegatedAuthenticator) Login(ctx context.Context, email, password string) (*AuthResult, error) {
-	tokens, err := a.identity.Login(ctx, email, password)
+	res, err := a.identity.Login(ctx, email, password)
 	if err != nil {
-		return nil, err
+		return nil, bffError(err)
 	}
-	return a.session(ctx, tokens)
+	return res, nil
 }
 
 // Refresh rota el refresh en identity y vuelve a canjear. Es la cascada de REQ-A3 vista desde
@@ -42,11 +56,11 @@ func (a *DelegatedAuthenticator) Login(ctx context.Context, email, password stri
 // Context Token, y withAuthRetry la dispara ante un 401 de la plataforma. Las dos entran por aquí,
 // y en las dos el navegador no ve ningún token: solo recibe la cookie renovada.
 func (a *DelegatedAuthenticator) Refresh(ctx context.Context, refreshToken string) (*AuthResult, error) {
-	tokens, err := a.identity.Refresh(ctx, refreshToken)
+	res, err := a.identity.Refresh(ctx, refreshToken)
 	if err != nil {
-		return nil, err
+		return nil, bffError(err)
 	}
-	return a.session(ctx, tokens)
+	return res, nil
 }
 
 // Logout revoca en identity SOLO la sesión de esta aplicación: la del Edge es otra sesión en identity
@@ -54,44 +68,40 @@ func (a *DelegatedAuthenticator) Refresh(ctx context.Context, refreshToken strin
 // es una operación aparte que este flujo no invoca nunca.
 //
 // El primer parámetro es el Context Token que el BFF custodia y aquí se ignora deliberadamente:
-// identity no lo emitió y no sabría qué hacer con él. La sesión se identifica por el refresh.
+// identity no lo emitió y no sabría qué hacer con él. La sesión se identifica por el refresh. La
+// firma la impone el puerto Authenticator, que la comparte con el login directo contra la
+// plataforma, donde el access token SÍ viaja.
 func (a *DelegatedAuthenticator) Logout(ctx context.Context, _, refreshToken string) error {
-	return a.identity.Logout(ctx, refreshToken)
+	return bffError(a.identity.Logout(ctx, refreshToken))
 }
 
 // Signup delega la solicitud de registro público en la plataforma pública (:8103).
-func (a *DelegatedAuthenticator) Signup(ctx context.Context, email, password, firstName, lastName, origin string) error {
-	authClient := NewAuthClient(a.exchange.t)
-	return authClient.Signup(ctx, email, password, firstName, lastName, origin)
-}
-
-// session canjea el Identity Token y arma la sesión que el BFF custodia: Context Token como access,
-// refresh de identity, y el vencimiento que la plataforma acotó con el del Identity Token.
-func (a *DelegatedAuthenticator) session(ctx context.Context, tokens *IdentityTokens) (*AuthResult, error) {
-	exchanged, err := a.exchange.Exchange(ctx, tokens.IdentityToken)
-	if err != nil {
-		return nil, err
-	}
-	return &AuthResult{
-		AccessToken:  exchanged.ContextToken,
-		RefreshToken: tokens.RefreshToken,
-		TokenType:    "Bearer",
-		ExpiresAt:    exchanged.ExpiresAt,
-		Context:      contextOf(exchanged.ContextToken),
-	}, nil
-}
-
-// contextOf lee tenant, usuario y roles del CONTEXT Token, que es de donde salen siempre.
 //
-// Sin verificar la firma, igual que el resto del BFF: el token acaba de llegar por un canal
-// server-to-server y quien lo valida de verdad es la plataforma en cada llamada. Aquí solo alimenta
-// la traza, así que un token ilegible devuelve un contexto vacío en vez de tumbar el login.
-func contextOf(contextToken string) IdentityContext {
-	var claims sharedjwt.Claims
-	if _, _, err := jwt.NewParser().ParseUnverified(contextToken, &claims); err != nil {
-		return IdentityContext{}
+// No pasa por el módulo `iam` y no es un olvido: el alta de una cuenta de wApp la resuelve la
+// plataforma, no identity, así que no es una operación del plano de identidad.
+func (a *DelegatedAuthenticator) Signup(ctx context.Context, email, password, firstName, lastName, origin string) error {
+	return NewAuthClient(a.platform).Signup(ctx, email, password, firstName, lastName, origin)
+}
+
+// bffError añade al 401 del plano de identidad el sentinela que el resto del BFF interroga.
+//
+// Hace falta porque el puerto Authenticator tiene DOS implementaciones —ésta y el login directo
+// contra la plataforma— y el AuthMiddleware pregunta lo mismo a las dos: «¿fue un 401?». El login
+// directo responde con ErrUnauthorized de este paquete y el módulo con el suyo, que es otro valor;
+// sin esta traducción un refresh caducado por identity dejaría de limpiar la cookie y el usuario se
+// quedaría dando vueltas con una sesión muerta.
+//
+// Se envuelven los DOS con `%w: %w` en vez de sustituir uno por otro: así el mismo error sigue
+// respondiendo a `errors.Is(err, iam.ErrUnauthorized)` y a `iam.StatusCodeOf(err) == 401`, que es lo
+// que distingue un 409 del canje de un 401 de credencial.
+//
+// El resto de errores con nombre del módulo (ErrForbidden del System Gate, ErrDualModeOff del canje)
+// viajan tal cual: no tienen gemelo en este paquete y quien los interroga lo hace por el del módulo.
+func bffError(err error) error {
+	if err == nil || !errors.Is(err, iam.ErrUnauthorized) {
+		return err
 	}
-	return IdentityContext{TenantID: claims.TenantID, UserID: claims.UserID, Roles: claims.Roles}
+	return fmt.Errorf("%w: %w", ErrUnauthorized, err)
 }
 
 // DelegatedClient es el cliente del BFF con la delegación encendida: la autenticación viaja a
@@ -110,16 +120,30 @@ type DelegatedClient struct {
 
 // NewDelegated construye el cliente de la delegación: identity para las credenciales, plataforma
 // para el canje y para el negocio.
-func NewDelegated(platformBaseURL, identityBaseURL string) *DelegatedClient {
+//
+// Devuelve error porque `iam.NewClient` valida las opciones ANTES de la primera llamada: una URL sin
+// esquema fallaba antes dentro del primer login, con un mensaje que parecía un problema del usuario.
+// El plazo que se le pasa es el mismo que tenía el Transport de identity (defaultTimeout), para que
+// la migración no mueva ningún reloj.
+func NewDelegated(platformBaseURL, identityBaseURL string) (*DelegatedClient, error) {
+	identity, err := iam.NewClient(iam.Options{
+		System:          SystemBFF,
+		IdentityBaseURL: identityBaseURL,
+		PlatformBaseURL: platformBaseURL,
+		Timeout:         defaultTimeout,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("apiclient: delegación de identidad: %w", err)
+	}
 	t := NewTransport(platformBaseURL)
 	return &DelegatedClient{
 		Transport:              t,
-		DelegatedAuthenticator: NewDelegatedAuthenticator(NewIdentityClient(identityBaseURL, SystemBFF), NewExchangeClient(t)),
+		DelegatedAuthenticator: NewDelegatedAuthenticator(identity, t),
 		DashboardClient:        NewDashboardClient(t),
 		EditorClient:           NewEditorClient(t),
 		IntakesClient:          NewIntakesClient(t),
 		TenantVariablesClient:  NewTenantVariablesClient(t),
 		CatalogImportClient:    NewCatalogImportClient(t),
 		IntegrationsClient:     NewIntegrationsClient(t),
-	}
+	}, nil
 }

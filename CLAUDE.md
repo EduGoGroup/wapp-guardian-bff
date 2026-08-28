@@ -40,9 +40,10 @@ El BFF tiene **dos destinos posibles para la autenticación**, y cuál se usa lo
 **La regla que no se negocia: la cookie custodia SIEMPRE el Context Token.** El Identity Token dice
 quién eres y no tiene claims de negocio (no puede tenerlas); el Context Token dice qué puedes hacer en
 wApp y es de donde sale el `tenant_id`. Por eso el Identity Token no se persiste —muere dentro de
-`apiclient.DelegatedAuthenticator`— y `parseAccessClaims` (`internal/web/session.go`) sigue leyendo el
-tenant sin cambio alguno. Si alguna vez el token de identity acabara en la cookie, el tenant
-desaparecería sin más aviso: hay un test que lo vigila.
+`wapp-shared/iam`, que es quien hace los dos saltos; `apiclient.DelegatedAuthenticator` solo lo adapta
+al puerto— y `parseAccessClaims` (`internal/web/session.go`) sigue leyendo el tenant sin cambio
+alguno. Si alguna vez el token de identity acabara en la cookie, el tenant desaparecería sin más
+aviso: hay un test que lo vigila.
 
 Los dos clientes —`apiclient.Client` y `apiclient.DelegatedClient`— cumplen el mismo puerto `APIPort`,
 así que la cascada de refresco (proactiva a 2 min del vencimiento, pasiva ante 401) es la misma de
@@ -99,8 +100,10 @@ de autorización, y esconder un botón nunca sustituye a ese corte.
   en el BFF por **parse-unverified + `exp`** (la API es el gate real, no se comparte el secreto JWT).
 - CSS compilado embebido (sin CDNs externas), con **design system Material Design 3** propio (tokens en
   `internal/web/static/css/app.css`).
-- **Deps:** `gin` + `github.com/EduGoGroup/wapp-shared/{logger,config}` (repo de wApp en la org EduGoGroup;
-  **no** es `edugo-shared`) + `golang.org/x/time/rate`. **Cero import `edugo-*`** (ADR-0004).
+- **Deps:** `gin` + `github.com/EduGoGroup/wapp-shared/{logger,config,auth,ui,web,iam}` (repo de wApp en la
+  org EduGoGroup; **no** es `edugo-shared`). **Cero import `edugo-*`** (ADR-0004). El CSP/CSRF/rate-limit
+  ya no son código de este repo: viven en `wapp-shared/web`, que los reconcilió con los de la consola de
+  operadores (Plan 047 · Ola 0.5).
 
 ## Qué se elimina o cambia respecto a edugo-messaging-web
 
@@ -115,12 +118,16 @@ cmd/guardian-bff/main.go   — punto de entrada (config + logger + web.Run en :8
 internal/config/           — Config desde env (WAPP_GUARDIAN_*, WAPP_PUBLIC_API_BASE)
 internal/apiclient/        — clientes HTTP (Bearer server-side): transport (request autenticada,
                              ErrUnauthorized/APIError), auth, dashboard (sesiones/rol/mensajes),
-                             editor (flows+triggers), entitlements + identity-api y canje
-                             (identity, exchange, delegated)
-internal/web/              — server (Gin, middlewares), auth_handler (login/AuthMiddleware/refresh),
-                             session (cookie+claims), dashboard_handler, editor_handler, entitlements
-                             (vista de features + gate), security (CSP+nonce), csrf, ratelimit,
-                             deadline; templates/ + static/css/app.css (//go:embed)
+                             editor (flows+triggers), entitlements + delegated (el adaptador del
+                             plano de identidad al puerto Authenticator; el cliente de identity y el
+                             canje son github.com/EduGoGroup/wapp-shared/iam)
+internal/web/              — server (Gin, cableado de middlewares), policy (nombres de cookie,
+                             entropía y opciones del módulo), auth_handler (login/AuthMiddleware/
+                             refresh), session (claims del JWT), dashboard_handler, editor_handler,
+                             entitlements (vista de features + gate); templates/ +
+                             static/css/app.css (//go:embed). El middleware transversal —CSP+nonce,
+                             CSRF, rate-limit, deadline, body-limit, single-flight, render— es
+                             github.com/EduGoGroup/wapp-shared/web (+ /gin), no vive aquí
 docs/contrato-api-publica.md — el contrato consumido (referencia para clientes Android/iOS)
 go.mod                     — módulo: github.com/EduGoGroup/wapp-guardian-bff (coincide con el
                              remoto; no se publica con tags, pero el path ya es resoluble)

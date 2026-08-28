@@ -8,6 +8,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/EduGoGroup/wapp-shared/iam"
+	sharedweb "github.com/EduGoGroup/wapp-shared/web"
+	webgin "github.com/EduGoGroup/wapp-shared/web/gin"
+
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 )
@@ -16,13 +20,13 @@ import (
 type AuthHandler struct {
 	cfg     *config.Config
 	api     Authenticator
-	refresh *refreshGroup
+	refresh *sharedweb.RefreshGroup[*apiclient.AuthResult]
 }
 
 // NewAuthHandler construye un AuthHandler dependiente de Authenticator.
-func NewAuthHandler(cfg *config.Config, api Authenticator, refresh *refreshGroup) *AuthHandler {
+func NewAuthHandler(cfg *config.Config, api Authenticator, refresh *sharedweb.RefreshGroup[*apiclient.AuthResult]) *AuthHandler {
 	if refresh == nil {
-		refresh = newRefreshGroup()
+		refresh = sharedweb.NewRefreshGroup[*apiclient.AuthResult]()
 	}
 	return &AuthHandler{
 		cfg:     cfg,
@@ -55,7 +59,7 @@ func (h *AuthHandler) DoLogin(c *gin.Context) {
 		// escribió bien su contraseña reintentaría hasta agotar sus intentos y acabaría bloqueado por
 		// una avería de configuración que no es suya. Se distingue arriba porque abajo ya no se puede:
 		// la respuesta de credenciales es deliberadamente ciega para no filtrar detalle (REQ-C3).
-		if errors.Is(err, apiclient.ErrDualModeOff) {
+		if errors.Is(err, iam.ErrDualModeOff) {
 			slog.Error("login imposible: la plataforma no tiene el canje cableado", "error", err)
 			h.renderLoginError(c, http.StatusServiceUnavailable,
 				"El servicio de identidad no está disponible en este momento. Inténtalo de nuevo en unos minutos.")
@@ -78,8 +82,8 @@ func (h *AuthHandler) DoLogin(c *gin.Context) {
 
 // DoLogout cierra la sesión.
 func (h *AuthHandler) DoLogout(c *gin.Context) {
-	if raw, err := c.Cookie(sessionCookieName); err == nil && raw != "" {
-		if sess, derr := decodeSession(raw); derr == nil && sess.AccessToken != "" {
+	if raw := webgin.SessionCookieValue(c, sessionCookieOptions(h.cfg)); raw != "" {
+		if sess, derr := sharedweb.DecodeSession(raw); derr == nil && sess.AccessToken != "" {
 			if lerr := h.api.Logout(c.Request.Context(), sess.AccessToken, sess.RefreshToken); lerr != nil {
 				slog.Warn("logout en la API falló (se ignora, se cierra localmente)", "error", lerr)
 			}
@@ -92,12 +96,12 @@ func (h *AuthHandler) DoLogout(c *gin.Context) {
 // AuthMiddleware protege las rutas operativas.
 func (h *AuthHandler) AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		raw, err := c.Cookie(sessionCookieName)
-		if err != nil || raw == "" {
+		raw := webgin.SessionCookieValue(c, sessionCookieOptions(h.cfg))
+		if raw == "" {
 			h.redirectToLogin(c)
 			return
 		}
-		sess, err := decodeSession(raw)
+		sess, err := sharedweb.DecodeSession(raw)
 		if err != nil || sess.AccessToken == "" {
 			clearSessionCookie(h.cfg, c)
 			h.redirectToLogin(c)
@@ -114,7 +118,7 @@ func (h *AuthHandler) AuthMiddleware() gin.HandlerFunc {
 		refreshToken := sess.RefreshToken
 
 		switch {
-		case refreshDue(claims) && refreshToken != "":
+		case sharedweb.RefreshDue(accessExp(claims), sharedweb.DefaultRefreshMargin) && refreshToken != "":
 			res, rerr := h.refreshViaFlight(c, refreshToken)
 			switch {
 			case rerr == nil:
@@ -128,23 +132,23 @@ func (h *AuthHandler) AuthMiddleware() gin.HandlerFunc {
 				h.redirectToLogin(c)
 				return
 			default:
-				if !sessionValid(claims) {
+				if !sharedweb.SessionValid(accessExp(claims)) {
 					clearSessionCookie(h.cfg, c)
 					h.redirectToLogin(c)
 					return
 				}
 				slog.Warn("refresh proactivo falló; se continúa con el access aún vigente", "error", rerr)
 			}
-		case !sessionValid(claims):
+		case !sharedweb.SessionValid(accessExp(claims)):
 			clearSessionCookie(h.cfg, c)
 			h.redirectToLogin(c)
 			return
 		}
 
-		c.Set(ctxAccessToken, accessToken)
-		c.Set(ctxRefreshToken, refreshToken)
-		c.Set(ctxUserID, claims.UserID)
-		c.Set(ctxTenantID, claims.TenantID)
+		c.Set(webgin.ContextAccessToken, accessToken)
+		c.Set(webgin.ContextRefreshToken, refreshToken)
+		c.Set(webgin.ContextUserID, claims.UserID)
+		c.Set(webgin.ContextTenantID, claims.TenantID)
 
 		// Usuario en estado "en espera" (sin tenant asignado, Plan 056 · T3.5 / D-056.12)
 		if claims.TenantID == "" {
@@ -171,7 +175,7 @@ func (h *AuthHandler) redirectToLogin(c *gin.Context) {
 
 // refreshSession renueva la sesión con el refresh token del contexto.
 func (h *AuthHandler) refreshSession(c *gin.Context) (string, error) {
-	rt, _ := c.Get(ctxRefreshToken)
+	rt, _ := c.Get(webgin.ContextRefreshToken)
 	refreshToken, _ := rt.(string)
 	if refreshToken == "" {
 		return "", apiclient.ErrUnauthorized
@@ -185,7 +189,7 @@ func (h *AuthHandler) refreshSession(c *gin.Context) (string, error) {
 
 // refreshViaFlight ejecuta el refresh serializado por sesión.
 func (h *AuthHandler) refreshViaFlight(c *gin.Context, refreshToken string) (*apiclient.AuthResult, error) {
-	res, err := h.refresh.do(refreshToken, func() (*apiclient.AuthResult, error) {
+	res, err := h.refresh.Do(refreshToken, func() (*apiclient.AuthResult, error) {
 		return h.api.Refresh(c.Request.Context(), refreshToken)
 	})
 	if err != nil {
@@ -194,15 +198,15 @@ func (h *AuthHandler) refreshViaFlight(c *gin.Context, refreshToken string) (*ap
 	if err := h.startSession(c, res); err != nil {
 		return nil, err
 	}
-	c.Set(ctxAccessToken, res.AccessToken)
-	c.Set(ctxRefreshToken, res.RefreshToken)
+	c.Set(webgin.ContextAccessToken, res.AccessToken)
+	c.Set(webgin.ContextRefreshToken, res.RefreshToken)
 	slog.Info("sesión refrescada", "user_id", res.Context.UserID)
 	return res, nil
 }
 
 // withAuthRetry ejecuta una llamada de negocio con el access token y reintenta ante 401.
 func (h *AuthHandler) withAuthRetry(c *gin.Context, fn func(accessToken string) error) error {
-	token, _ := c.Get(ctxAccessToken)
+	token, _ := c.Get(webgin.ContextAccessToken)
 	accessToken, _ := token.(string)
 
 	err := fn(accessToken)
@@ -233,7 +237,7 @@ func (h *AuthHandler) renderLoginError(c *gin.Context, status int, message strin
 
 // startSession custodia el par de tokens en la cookie HttpOnly.
 func (h *AuthHandler) startSession(c *gin.Context, res *apiclient.AuthResult) error {
-	value, err := encodeSession(sessionData{
+	value, err := sharedweb.EncodeSession(sharedweb.SessionData{
 		AccessToken:  res.AccessToken,
 		RefreshToken: res.RefreshToken,
 		ExpiresAt:    res.ExpiresAt,
@@ -241,20 +245,20 @@ func (h *AuthHandler) startSession(c *gin.Context, res *apiclient.AuthResult) er
 	if err != nil {
 		return err
 	}
-	setSessionCookie(h.cfg, c, value, sessionMaxAge(res.ExpiresAt))
+	setSessionCookie(h.cfg, c, value, sharedweb.SessionMaxAge(res.ExpiresAt))
 	return nil
 }
 
 // hasValidSession dice si la petición trae una cookie con un access token no expirado.
 func (h *AuthHandler) hasValidSession(c *gin.Context) bool {
-	raw, err := c.Cookie(sessionCookieName)
-	if err != nil || raw == "" {
+	raw := webgin.SessionCookieValue(c, sessionCookieOptions(h.cfg))
+	if raw == "" {
 		return false
 	}
-	sess, err := decodeSession(raw)
+	sess, err := sharedweb.DecodeSession(raw)
 	if err != nil || sess.AccessToken == "" {
 		return false
 	}
 	claims, err := parseAccessClaims(sess.AccessToken)
-	return err == nil && sessionValid(claims)
+	return err == nil && sharedweb.SessionValid(accessExp(claims))
 }

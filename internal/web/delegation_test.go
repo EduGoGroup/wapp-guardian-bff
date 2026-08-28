@@ -16,6 +16,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
+	sharedweb "github.com/EduGoGroup/wapp-shared/web"
+
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 )
 
@@ -145,7 +147,7 @@ func exchangeBody(contextToken string, exp time.Time) string {
 // sessionFromCookie decodifica la cookie de sesión y devuelve también su JSON en claro, que es lo que
 // permite afirmar qué NO hay dentro: la comparación contra el valor crudo de la cookie no serviría,
 // porque va en base64 y cualquier token estaría igual de "ausente".
-func sessionFromCookie(t *testing.T, rec *httptest.ResponseRecorder) (sessionData, string) {
+func sessionFromCookie(t *testing.T, rec *httptest.ResponseRecorder) (sharedweb.SessionData, string) {
 	t.Helper()
 	var value string
 	for _, sc := range rec.Result().Cookies() {
@@ -160,7 +162,7 @@ func sessionFromCookie(t *testing.T, rec *httptest.ResponseRecorder) (sessionDat
 	if err != nil {
 		t.Fatalf("la cookie de sesión no es base64-URL: %v", err)
 	}
-	var sess sessionData
+	var sess sharedweb.SessionData
 	if err := json.Unmarshal(raw, &sess); err != nil {
 		t.Fatalf("la cookie de sesión no es JSON: %v", err)
 	}
@@ -182,9 +184,9 @@ func sessionCookieMaxAge(t *testing.T, rec *httptest.ResponseRecorder) int {
 // cookieWith arma la cookie de sesión con un par (access, refresh) dado.
 func cookieWith(t *testing.T, access, refresh string) *http.Cookie {
 	t.Helper()
-	value, err := encodeSession(sessionData{AccessToken: access, RefreshToken: refresh})
+	value, err := sharedweb.EncodeSession(sharedweb.SessionData{AccessToken: access, RefreshToken: refresh})
 	if err != nil {
-		t.Fatalf("encodeSession: %v", err)
+		t.Fatalf("sharedweb.EncodeSession: %v", err)
 	}
 	return &http.Cookie{Name: sessionCookieName, Value: value}
 }
@@ -345,6 +347,41 @@ func TestDelegacionRefrescaProactivamenteYReCanjea(t *testing.T) {
 	}
 	if strings.Contains(rawJSON, identityToken) {
 		t.Error("el Identity Token del refresh tampoco debe persistirse")
+	}
+}
+
+// TestDelegacionRefresh401DeIdentityEchaAlUsuario: el refresh que identity rechaza con 401 —lo revocó,
+// o el opaco ya rotó— SÍ echa al usuario: se limpia la cookie y se vuelve al login.
+//
+// Es el criterio que custodia la traducción de errores del `apiclient` (bffError). El puerto
+// Authenticator tiene dos implementaciones y el AuthMiddleware le hace a las dos la misma pregunta
+// —«¿fue un 401?»— con el sentinela de este repo; el módulo `iam` responde con el suyo, que es otro
+// valor. Sin traducir, este 401 caería en la rama de «el refresh falló pero el access aún vale» y el
+// usuario seguiría navegando con una sesión que identity ya no reconoce, hasta que el token venciera.
+func TestDelegacionRefresh401DeIdentityEchaAlUsuario(t *testing.T) {
+	identity := newUpstreamStub(t)
+	identity.on("/api/v1/auth/refresh", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"error":"invalid_refresh_token"}`)
+	})
+	platform := newUpstreamStub(t)
+	platform.onJSON("/api/v1/sessions", `[]`) // solo se llamaría si NO se echa al usuario.
+
+	router := NewRouter(delegatedCfg(platform.url(), identity.url()))
+	// Dentro del margen proactivo: el refresh lo dispara el reloj, no un 401 del negocio.
+	porVencer := makeToken(t, time.Now().Add(time.Minute))
+	rec := getWithCookie(router, "/", cookieWith(t, porVencer, "rt-muerto"))
+
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/login" {
+		t.Fatalf("un refresh 401 de identity debía redirigir 303 a /login, got %d %q",
+			rec.Code, rec.Header().Get("Location"))
+	}
+	raw := sessionSetCookie(rec)
+	if raw == "" || !strings.Contains(raw, "Max-Age=0") {
+		t.Errorf("debía limpiarse la cookie de sesión (Max-Age=0), got %q", raw)
+	}
+	if got := platform.hitsOf("/api/v1/sessions"); got != 0 {
+		t.Errorf("no debía llegarse al negocio con una sesión ya muerta, got %d llamadas", got)
 	}
 }
 

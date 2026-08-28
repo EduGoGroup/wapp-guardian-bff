@@ -1,55 +1,20 @@
 package web
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"time"
 
 	sharedjwt "github.com/EduGoGroup/wapp-shared/auth/jwt"
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// Claves del gin.Context donde el AuthMiddleware siembra los tokens/identidad.
-const (
-	ctxAccessToken  = "access_token"
-	ctxRefreshToken = "refresh_token"
-	ctxUserID       = "user_id"
-	ctxTenantID     = "tenant_id"
-)
-
-// sessionData es lo MÍNIMO que el BFF custodia server-side para operar y refrescar.
-type sessionData struct {
-	AccessToken  string `json:"a"`
-	RefreshToken string `json:"r"`
-	ExpiresAt    string `json:"e,omitempty"`
-}
-
-// encodeSession serializa la sesión a un valor de cookie seguro en base64-URL.
-func encodeSession(s sessionData) (string, error) {
-	raw, err := json.Marshal(s)
-	if err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(raw), nil
-}
-
-// decodeSession revierte encodeSession.
-func decodeSession(value string) (sessionData, error) {
-	var s sessionData
-	raw, err := base64.RawURLEncoding.DecodeString(value)
-	if err != nil {
-		return s, err
-	}
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return s, err
-	}
-	return s, nil
-}
-
 // unverifiedParser parsea claims SIN verificar la firma.
 var unverifiedParser = jwt.NewParser()
 
 // parseAccessClaims extrae los claims del access token sin verificar firma.
+//
+// Se queda EN EL BFF y no sube a `wapp-shared/web`: ese módulo es de nivel 0 y no importa ninguna
+// librería de JWT a propósito. Sus dos decisiones sobre la sesión —¿sigue valiendo?, ¿toca
+// refrescar?— reciben el `exp` ya extraído, y quien lo extrae es esto.
 func parseAccessClaims(accessToken string) (*sharedjwt.Claims, error) {
 	var claims sharedjwt.Claims
 	if _, _, err := unverifiedParser.ParseUnverified(accessToken, &claims); err != nil {
@@ -58,23 +23,12 @@ func parseAccessClaims(accessToken string) (*sharedjwt.Claims, error) {
 	return &claims, nil
 }
 
-// sessionValid es la validación mínima del BFF: exp presente y en el futuro.
-func sessionValid(claims *sharedjwt.Claims) bool {
-	exp := claims.ExpiresAt
-	if exp == nil {
-		return false
+// accessExp es el puente entre los claims del JWT y las dos funciones del módulo: devuelve el `exp`
+// como *time.Time, o nil si el token no lo traía (que sharedweb.SessionValid trata como inválido y
+// sharedweb.RefreshDue como «refresca ya»).
+func accessExp(claims *sharedjwt.Claims) *time.Time {
+	if claims == nil || claims.ExpiresAt == nil {
+		return nil
 	}
-	return exp.After(time.Now())
-}
-
-// refreshMargin es el colchón del refresh PROACTIVO.
-const refreshMargin = 2 * time.Minute
-
-// refreshDue indica si conviene refrescar la sesión.
-func refreshDue(claims *sharedjwt.Claims) bool {
-	exp := claims.ExpiresAt
-	if exp == nil {
-		return true
-	}
-	return time.Until(exp.Time) < refreshMargin
+	return &claims.ExpiresAt.Time
 }

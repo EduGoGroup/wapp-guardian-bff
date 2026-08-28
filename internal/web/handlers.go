@@ -6,6 +6,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	sharedweb "github.com/EduGoGroup/wapp-shared/web"
+
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 )
@@ -14,7 +16,7 @@ import (
 type Handler struct {
 	cfg     *config.Config
 	api     APIPort
-	refresh *refreshGroup
+	refresh *sharedweb.RefreshGroup[*apiclient.AuthResult]
 
 	*AuthHandler
 	*DashboardHandler
@@ -45,14 +47,22 @@ func newAPIClient(cfg *config.Config) APIPort {
 	if identityURL == "" {
 		return apiclient.New(cfg.PublicAPIBaseURL)
 	}
+	client, err := apiclient.NewDelegated(cfg.PublicAPIBaseURL, identityURL)
+	if err != nil {
+		// Fail-closed en el arranque, como la allowlist de proxies y las plantillas: unas URLs con
+		// las que no se puede hablar con el plano de identidad convertirían cada login en un fallo
+		// que parece del usuario. El módulo las valida aquí en vez de dentro de la primera llamada.
+		slog.Error("delegación de identidad mal configurada", "identity", identityURL, "error", err)
+		panic(err)
+	}
 	slog.Info("delegación de identidad activada: el login del BFF viaja a identity",
 		"identity", identityURL, "system", apiclient.SystemBFF, "canje", cfg.PublicAPIBaseURL)
-	return apiclient.NewDelegated(cfg.PublicAPIBaseURL, identityURL)
+	return client
 }
 
 // NewHandlerWithAPI construye el Handler inyectando un APIPort.
 func NewHandlerWithAPI(cfg *config.Config, api APIPort) *Handler {
-	refresh := newRefreshGroup()
+	refresh := sharedweb.NewRefreshGroup[*apiclient.AuthResult]()
 	ah := NewAuthHandler(cfg, api, refresh)
 	dh := NewDashboardHandler(cfg, api, ah)
 	eh := NewEditorHandler(cfg, api, ah)

@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 
+	sharedweb "github.com/EduGoGroup/wapp-shared/web"
+
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 )
 
@@ -195,7 +197,7 @@ func postMultipartWithCookie(router http.Handler, path string, fields map[string
 	csrf := mintCSRF(router)
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
-	_ = mw.WriteField(csrfFieldName, csrf.Value)
+	_ = mw.WriteField(sharedweb.CSRFFieldName, csrf.Value)
 	for k, v := range fields {
 		_ = mw.WriteField(k, v)
 	}

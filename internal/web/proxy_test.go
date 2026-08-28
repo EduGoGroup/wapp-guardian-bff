@@ -8,34 +8,6 @@ import (
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 )
 
-// TestParseTrustedProxies verifica el parseo del CSV: vacío -> nil (no se confía en ningún proxy);
-// recorta espacios y descarta entradas vacías.
-func TestParseTrustedProxies(t *testing.T) {
-	cases := []struct {
-		name string
-		in   string
-		want []string
-	}{
-		{"vacío", "", nil},
-		{"solo espacios y comas", " , ,", nil},
-		{"una IP", "10.0.0.1", []string{"10.0.0.1"}},
-		{"CIDR + IP con espacios", " 10.0.0.0/8 , 192.168.1.1 ", []string{"10.0.0.0/8", "192.168.1.1"}},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := parseTrustedProxies(tc.in)
-			if len(got) != len(tc.want) {
-				t.Fatalf("parseTrustedProxies(%q) = %v, want %v", tc.in, got, tc.want)
-			}
-			for i := range got {
-				if got[i] != tc.want[i] {
-					t.Fatalf("parseTrustedProxies(%q)[%d] = %q, want %q", tc.in, i, got[i], tc.want[i])
-				}
-			}
-		})
-	}
-}
-
 // TestRateLimitIgnoresForwardedForByDefault es la prueba del blindaje H1/T1: con TrustedProxies vacío
 // (default), ClientIP() ignora X-Forwarded-For, así que un atacante que rota el header desde la misma
 // conexión sigue compartiendo la clave de rate-limit y termina en 429. Sin SetTrustedProxies(nil) Gin
