@@ -6,6 +6,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	sharedweb "github.com/EduGoGroup/wapp-shared/web"
+
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 )
@@ -14,10 +16,10 @@ import (
 type Handler struct {
 	cfg     *config.Config
 	api     APIPort
-	refresh *refreshGroup
+	refresh *sharedweb.RefreshGroup[*apiclient.AuthResult]
 
 	*AuthHandler
-	*DashboardHandler
+	*HomeHandler
 	*EditorHandler
 	*IntakesHandler
 	*TenantVariablesHandler
@@ -41,20 +43,33 @@ func NewHandler(cfg *config.Config) *Handler {
 // Que la transición se gobierne por env es lo que permite encender, apagar y comparar los dos flujos
 // en el mismo binario, sin desplegar nada distinto.
 func newAPIClient(cfg *config.Config) APIPort {
+	// El plazo del cliente de inferencia va por los DOS caminos, delegado o no: quién autentica no
+	// cambia cuánto tarda el modelo en redactar, y una rama que lo pusiera solo en uno dejaría la
+	// sugerencia rota en el otro sin que ningún test de autenticación lo notara.
+	opts := []apiclient.Option{apiclient.WithInferenceTimeout(cfg.QuoteSuggestionTimeout)}
+
 	identityURL := strings.TrimSpace(cfg.IdentityBaseURL)
 	if identityURL == "" {
-		return apiclient.New(cfg.PublicAPIBaseURL)
+		return apiclient.New(cfg.PublicAPIBaseURL, opts...)
+	}
+	client, err := apiclient.NewDelegated(cfg.PublicAPIBaseURL, identityURL, opts...)
+	if err != nil {
+		// Fail-closed en el arranque, como la allowlist de proxies y las plantillas: unas URLs con
+		// las que no se puede hablar con el plano de identidad convertirían cada login en un fallo
+		// que parece del usuario. El módulo las valida aquí en vez de dentro de la primera llamada.
+		slog.Error("delegación de identidad mal configurada", "identity", identityURL, "error", err)
+		panic(err)
 	}
 	slog.Info("delegación de identidad activada: el login del BFF viaja a identity",
 		"identity", identityURL, "system", apiclient.SystemBFF, "canje", cfg.PublicAPIBaseURL)
-	return apiclient.NewDelegated(cfg.PublicAPIBaseURL, identityURL)
+	return client
 }
 
 // NewHandlerWithAPI construye el Handler inyectando un APIPort.
 func NewHandlerWithAPI(cfg *config.Config, api APIPort) *Handler {
-	refresh := newRefreshGroup()
+	refresh := sharedweb.NewRefreshGroup[*apiclient.AuthResult]()
 	ah := NewAuthHandler(cfg, api, refresh)
-	dh := NewDashboardHandler(cfg, api, ah)
+	hh := NewHomeHandler(cfg, api, ah)
 	eh := NewEditorHandler(cfg, api, ah)
 	ih := NewIntakesHandler(cfg, api, ah)
 	vh := NewTenantVariablesHandler(cfg, api, ah)
@@ -65,7 +80,7 @@ func NewHandlerWithAPI(cfg *config.Config, api APIPort) *Handler {
 		api:                    api,
 		refresh:                refresh,
 		AuthHandler:            ah,
-		DashboardHandler:       dh,
+		HomeHandler:            hh,
 		EditorHandler:          eh,
 		IntakesHandler:         ih,
 		TenantVariablesHandler: vh,

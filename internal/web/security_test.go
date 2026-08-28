@@ -65,6 +65,13 @@ func TestSecurityHeadersPresent(t *testing.T) {
 	if !strings.Contains(csp, "style-src 'self' 'nonce-") {
 		t.Errorf("style-src debe ser 'self' + nonce (sin CDNs), got %q", csp)
 	}
+	// `base-uri 'none'` es la política que el BFF HEREDÓ al pasar a `wapp-shared/web`: aquí era
+	// `'self'` y ganó la de la consola de operadores, más estricta (con `'self'` un <base> inyectado
+	// puede reapuntar todas las URLs relativas de la página). Se fija aquí para que una regresión al
+	// valor antiguo no pase inadvertida por no haber nadie que la mirase — que es lo que ocurría.
+	if !strings.Contains(csp, "base-uri 'none'") {
+		t.Errorf("la CSP debe llevar base-uri 'none' (no 'self'), got %q", csp)
+	}
 }
 
 // TestHSTSOmittedWhenDisabled verifica que en local (sin TLS) NO se emite HSTS.
@@ -143,6 +150,31 @@ func TestCORSRejectsUnlistedOrigin(t *testing.T) {
 
 	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
 		t.Errorf("un origen no permitido no debe recibir Access-Control-Allow-Origin, got %q", got)
+	}
+}
+
+// TestCORSPreflightDeUnOrigenNoPermitidoSeCortaCon403 fija el otro cambio heredado del módulo: el
+// preflight de un origen que NO está en la allowlist se rechaza con 403 en vez de con el 204 de
+// cortesía que este BFF devolvía. La respuesta tiene que DECIR que ese origen no está invitado, no
+// dejar que lo deduzca por la ausencia de cabeceras. Un preflight de un origen permitido sigue en 204.
+func TestCORSPreflightDeUnOrigenNoPermitidoSeCortaCon403(t *testing.T) {
+	cfg := hardenedCfg()
+	cfg.AllowedOrigins = "https://consola.wapp.test"
+	router := NewRouter(cfg)
+
+	preflight := func(origin string) int {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodOptions, "/login", nil)
+		req.Header.Set("Origin", origin)
+		router.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	if got := preflight("https://evil.example.com"); got != http.StatusForbidden {
+		t.Errorf("el preflight de un origen no permitido debía dar 403, got %d", got)
+	}
+	if got := preflight("https://consola.wapp.test"); got != http.StatusNoContent {
+		t.Errorf("el preflight de un origen permitido debía dar 204, got %d", got)
 	}
 }
 

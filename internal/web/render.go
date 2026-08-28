@@ -3,79 +3,32 @@ package web
 import (
 	"bytes"
 	"encoding/json"
-	"net/http"
-	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
+
+	webgin "github.com/EduGoGroup/wapp-shared/web/gin"
 
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 )
 
-const sessionCookieName = "wapp_guardian_session"
-const defaultSessionMaxAge = 3600
+// pageRenderer pinta sobre el layout maestro base.html, sembrando en cada página el nonce, el token
+// CSRF y el estado de sesión. Es del módulo: que esas tres claves las ponga el renderizador y no
+// cada handler es justo el punto —repetirlas a mano es lo que un día se olvida en una pantalla nueva.
+var pageRenderer = webgin.NewRenderer("base.html")
 
-// render layout maestro base.html.
+// render pinta contentTemplate dentro del layout maestro.
 func render(cfg *config.Config, c *gin.Context, status int, contentTemplate string, data gin.H) {
-	if data == nil {
-		data = gin.H{}
-	}
-	data["CurrentPath"] = c.Request.URL.Path
-	_, authenticated := c.Get(ctxAccessToken)
-	data["IsAuthenticated"] = authenticated
-	data["ContentTemplate"] = contentTemplate
-	data["Nonce"] = nonceFromCtx(c)
-	data["CSRFToken"] = csrfTokenFromCtx(c)
-	c.HTML(status, "base.html", data)
+	pageRenderer.HTML(c, status, contentTemplate, data)
 }
 
-// setSessionCookie escribe la cookie de sesión HttpOnly.
+// setSessionCookie escribe la cookie de sesión HttpOnly con la política de ESTE BFF.
 func setSessionCookie(cfg *config.Config, c *gin.Context, value string, maxAgeSeconds int) {
-	c.SetSameSite(sameSiteMode(cfg.CookieSameSite, cfg.CookieSecure))
-	c.SetCookie(sessionCookieName, value, maxAgeSeconds, "/", "", cfg.CookieSecure, true)
+	webgin.SetSessionCookie(c, sessionCookieOptions(cfg), value, maxAgeSeconds)
 }
 
 // clearSessionCookie borra la cookie de sesión.
 func clearSessionCookie(cfg *config.Config, c *gin.Context) {
-	setSessionCookie(cfg, c, "", -1)
-}
-
-// sameSiteMode traduce el string de config al modo de http.
-func sameSiteMode(mode string, secure bool) http.SameSite {
-	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "strict":
-		return http.SameSiteStrictMode
-	case "none":
-		if secure {
-			return http.SameSiteNoneMode
-		}
-		return http.SameSiteLaxMode
-	default:
-		return http.SameSiteLaxMode
-	}
-}
-
-// sessionMaxAge calcula la vida de la cookie (segundos) desde el expires_at RFC3339.
-func sessionMaxAge(expiresAt string) int {
-	t, err := time.Parse(time.RFC3339, expiresAt)
-	if err != nil {
-		return defaultSessionMaxAge
-	}
-	secs := int(time.Until(t).Seconds())
-	if secs <= 0 {
-		return defaultSessionMaxAge
-	}
-	return secs
-}
-
-// userIDFromCtx devuelve el user_id de la sesión.
-func userIDFromCtx(c *gin.Context) string {
-	if v, ok := c.Get("user_id"); ok {
-		if s, ok := v.(string); ok {
-			return s
-		}
-	}
-	return ""
+	webgin.ClearSessionCookie(c, sessionCookieOptions(cfg))
 }
 
 // prettyJSON re-indenta el JSON para mostrarlo legible en el textarea.

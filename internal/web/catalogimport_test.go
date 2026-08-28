@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 
+	sharedweb "github.com/EduGoGroup/wapp-shared/web"
+
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 )
 
@@ -195,7 +197,7 @@ func postMultipartWithCookie(router http.Handler, path string, fields map[string
 	csrf := mintCSRF(router)
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
-	_ = mw.WriteField(csrfFieldName, csrf.Value)
+	_ = mw.WriteField(sharedweb.CSRFFieldName, csrf.Value)
 	for k, v := range fields {
 		_ = mw.WriteField(k, v)
 	}
@@ -539,11 +541,9 @@ func TestCatalogImportShowsCurrentWarnings(t *testing.T) {
 // sección NO se emite en el HTML —ni formulario, ni prompt, ni enlaces— y no se llama a la API.
 func TestCatalogImportGateOmitsSectionWithoutFeature(t *testing.T) {
 	api := newCatalogImportAPI([]string{"cart_basic", "menu"}, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/sessions" {
-			_, _ = io.WriteString(w, `[]`)
-			return
-		}
-		// El import NO debe consultarse siquiera cuando la feature no está.
+		// El import NO debe consultarse siquiera cuando la feature no está. La rama que atendía
+		// `/api/v1/sessions` se fue con el dashboard (Plan 047 · T2.1): ahora esa ruta también cae
+		// aquí, que es donde debe caer si alguien la resucita.
 		t.Errorf("sin catalog_import no debía llamarse a %s", r.URL.Path)
 		w.WriteHeader(http.StatusForbidden)
 	})
@@ -577,11 +577,7 @@ func TestCatalogImportGateOmitsSectionWithoutFeature(t *testing.T) {
 
 // TestCatalogImportEmitsNavLinkWithFeature: con la feature, la barra superior ofrece el enlace.
 func TestCatalogImportEmitsNavLinkWithFeature(t *testing.T) {
-	api := newCatalogImportAPI([]string{"catalog_import"}, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/sessions" {
-			_, _ = io.WriteString(w, `[]`)
-			return
-		}
+	api := newCatalogImportAPI([]string{"catalog_import"}, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
 	defer api.close()

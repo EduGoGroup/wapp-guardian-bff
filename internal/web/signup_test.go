@@ -12,6 +12,8 @@ import (
 
 	sharedjwt "github.com/EduGoGroup/wapp-shared/auth/jwt"
 	"github.com/golang-jwt/jwt/v5"
+
+	sharedweb "github.com/EduGoGroup/wapp-shared/web"
 )
 
 func TestShowSignup_RendersForm(t *testing.T) {
@@ -242,9 +244,9 @@ func TestPendingState_RedirectsWhenNoTenant(t *testing.T) {
 		t.Fatalf("firmar token: %v", err)
 	}
 
-	cookieVal, err := encodeSession(sessionData{AccessToken: tokenStr, RefreshToken: "rt-1"})
+	cookieVal, err := sharedweb.EncodeSession(sharedweb.SessionData{AccessToken: tokenStr, RefreshToken: "rt-1"})
 	if err != nil {
-		t.Fatalf("encodeSession: %v", err)
+		t.Fatalf("sharedweb.EncodeSession: %v", err)
 	}
 	cookie := &http.Cookie{Name: sessionCookieName, Value: cookieVal}
 
@@ -275,7 +277,9 @@ func TestPendingState_RedirectsWhenNoTenant(t *testing.T) {
 	if !strings.Contains(body, "Tu acceso está en revisión") {
 		t.Fatal("esperado 'Tu acceso está en revisión' en /pending")
 	}
-	if strings.Contains(body, "Sesiones") || strings.Contains(body, "Flujos") || strings.Contains(body, "Solicitudes") {
+	// «Inicio» es el enlace de la raíz desde el Plan 047 · T2.1 (antes «Sesiones»): un aserto sobre el
+	// literal viejo seguiría verde por no existir ya en ninguna parte, que es la peor forma de pasar.
+	if strings.Contains(body, "Inicio") || strings.Contains(body, "Flujos") || strings.Contains(body, "Solicitudes") {
 		t.Fatal("la pantalla /pending no debe contener opciones de menú de negocio")
 	}
 }

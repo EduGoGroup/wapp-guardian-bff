@@ -13,23 +13,16 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 	"github.com/EduGoGroup/wapp-shared/ui"
-)
+	sharedweb "github.com/EduGoGroup/wapp-shared/web"
+	webgin "github.com/EduGoGroup/wapp-shared/web/gin"
 
-// ginModeOnce asegura que gin.SetMode() se ejecute una única vez por proceso. gin.SetMode escribe
-// variables globales del PAQUETE gin (ginMode/modeName en mode.go) sin ningún mutex propio: en
-// producción newRouterWithLimiter se llama una sola vez y de forma síncrona antes de levantar el
-// http.Server (internal/bootstrap/server.go), así que ahí nunca hay dos goroutines compitiendo. Pero
-// los tests SÍ montan routers en paralelo (t.Parallel + NewRouter por test), y el valor que se fija
-// es siempre la misma constante (gin.ReleaseMode) sin depender de cfg, así que ejecutarlo una sola
-// vez es válido en ambos mundos y elimina la carrera de raíz.
-var ginModeOnce sync.Once
+	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
+)
 
 //go:embed templates
 var templatesFS embed.FS
@@ -47,35 +40,40 @@ func NewRouter(cfg *config.Config) *gin.Engine {
 	return router
 }
 
-// newRouterWithLimiter es como NewRouter pero además devuelve el rate-limiter para poder cerrar su
-// goroutine de barrido (lo usa Run para la vida del proceso y los tests para no filtrar goroutines).
-func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
-	ginModeOnce.Do(func() { gin.SetMode(gin.ReleaseMode) })
+// newRouterWithLimiter es como NewRouter pero además devuelve el rate-limiter para que su dueño
+// pueda soltar el mapa al apagar (lo usa Run para la vida del proceso).
+func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRateLimiter) {
+	webgin.SetReleaseMode()
 
 	router := gin.New()
 	// Proxies de confianza: por defecto (lista vacía) NO se confía en ninguno, de modo que ClientIP()
 	// ignora X-Forwarded-For y usa la IP de la conexión. Esto blinda el rate-limit por IP de /login
 	// (única defensa anti fuerza-bruta) contra la suplantación del header. Solo se confía en la lista
 	// explícita cuando el BFF queda detrás de un proxy de confianza (WAPP_GUARDIAN_TRUSTED_PROXIES).
-	if err := router.SetTrustedProxies(parseTrustedProxies(cfg.TrustedProxies)); err != nil {
+	if err := webgin.SetTrustedProxies(router, cfg.TrustedProxies); err != nil {
 		// Config inválida en el arranque: fail-closed (como el panic al compilar plantillas). Mejor no
 		// arrancar que hacerlo con una allowlist de proxies malformada y un ClientIP() no fiable.
 		slog.Error("lista de proxies de confianza inválida", "valor", cfg.TrustedProxies, "error", err)
 		panic(err)
 	}
 	router.Use(gin.Recovery())
-	router.Use(slogMiddleware())
+	router.Use(webgin.SlogLogger())
 	// Cabeceras de seguridad + nonce CSP por petición (antes de los handlers que renderizan).
-	router.Use(SecurityHeadersMiddleware(cfg))
+	router.Use(webgin.SecurityHeaders(securityOptions(cfg)))
 	// CORS fail-closed (allowlist, nunca "*"); same-origin por defecto.
-	router.Use(CORSMiddleware(cfg))
+	router.Use(webgin.CORS(corsOptions(cfg)))
 
-	var rateLimiter *keyedRateLimiter // nil cuando el rate-limit está apagado.
+	// El limitador se construye AQUÍ y se conserva: antes se descartaba al montar el router y su
+	// goroutine de barrido quedaba viva para siempre, una por router. El del módulo no arranca
+	// ninguna —purga en perezoso dentro de Allow—, así que no hay nada que filtrar.
+	var rateLimiter *sharedweb.KeyedRateLimiter // nil cuando el rate-limit está apagado.
 	if cfg.RateLimitEnabled {
-		var rlMiddleware gin.HandlerFunc
-		rlMiddleware, rateLimiter = RateLimitMiddleware(cfg)
+		rateLimiter = sharedweb.NewKeyedRateLimiter(sharedweb.RateLimiterOptions{
+			RPS:   cfg.RateLimitRPS,
+			Burst: int(cfg.RateLimitBurst),
+		})
 		// Rate-limit global (antes de auth): clava por user_id si hay sesión, si no por IP.
-		router.Use(rlMiddleware)
+		router.Use(webgin.RateLimit(rateLimiter))
 	}
 
 	// Motor de plantillas con el helper `yield`: base.html es el layout maestro y ejecuta el fragmento
@@ -158,12 +156,12 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	// Techo del cuerpo para la ÚNICA pantalla que acepta archivos (el import de catálogo). Va antes del
 	// CSRF a propósito: el CSRF lee el formulario para comparar el token y con eso se traga el cuerpo
 	// entero, así que un tope montado después llegaría tarde.
-	router.Use(BodyLimitMiddleware(maxCatalogImportBody, catalogImportRoute))
+	router.Use(webgin.BodyLimit(maxCatalogImportBody, catalogImportRoute))
 
 	// Defensa CSRF double-submit (H2): a partir de aquí toda ruta que renderiza formularios o muta estado
 	// lleva el token. Se registra DESPUÉS de /static y /healthz (que no renderizan formularios ni mutan) para
 	// no ensuciar sus respuestas cacheables con una cookie de token.
-	router.Use(CSRFMiddleware(cfg))
+	router.Use(webgin.CSRF(csrfOptions(cfg)))
 
 	// --- Rutas públicas (sin sesión) ---
 	// Login server-to-server contra la API pública. GET pinta el form; POST autentica y custodia el JWT.
@@ -183,26 +181,35 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	protected.GET("/pending", h.ShowPending)
 	// Deadline por petición: acota TODA la cadena withAuthRetry hacia la API pública (H4) para que un
 	// upstream lento no cuelgue el handler más allá del presupuesto (bajo el WriteTimeout del servidor).
-	protected.Use(RequestDeadlineMiddleware(cfg))
-	// Dashboard: listado de sesiones del tenant + formulario de envío (T3). POST /send procesa el envío y
-	// re-renderiza el dashboard con el resultado.
-	protected.GET("/", h.ShowDashboard)
-	protected.POST("/send", h.DoSend)
-	// PERFIL de sesión active|passive (ADR-0027, Plan 046 · T1.3; sustituye al rol bot|passive del Plan
-	// 020): select por fila de la tabla del dashboard. POST clásico SSR con CSRF; re-renderiza el
-	// dashboard con el perfil ya cambiado.
+	// Es UNO POR RUTA y no uno para el grupo: ver requestDeadlineByRoute.
+	protected.Use(requestDeadlineByRoute(cfg))
+	// PORTADA: el índice de lo que ESTA consola conserva (plan y capacidades del tenant + accesos a las
+	// pantallas vivas).
+	// PANTALLA PERMANENTE: es el destino de las redirecciones del plano de autenticación y no migra a
+	// KMP.
 	//
-	// 🔴 La ruta vieja `/sessions/:id/role` NO se conserva aquí: es una pantalla SSR y el único cliente
-	// del formulario es esta misma consola, que se despliega con él.
+	// 📌 Este marcador nació SIN ponerse, para no desajustar el recuento con el que se verificó la
+	// tarea (se esperaban 2 permanentes, y con la portada son 3). Fue el criterio equivocado y se
+	// corrigió en el acto: el censo cuenta lo que hay, no lo que se esperaba. Un grep que cuadra porque
+	// alguien se calló una pantalla mide su propia expectativa, no el código.
 	//
-	// 📌 Este comentario decía además que la deprecación con dos rutas vivas «es de la API pública,
-	// donde SÍ hay clientes que no se despliegan a la vez». Ese razonamiento era correcto y su premisa
-	// FALSA: al comprobarla contra los seis repos no apareció ni un consumidor de `/role`. La ruta
-	// pública se retiró con la 0064 por la misma razón que aquí.
-	protected.POST("/sessions/:id/profile", h.DoSetSessionProfile)
+	// 🔴 AQUÍ ESTUVO EL DASHBOARD DE SESIONES, y su retirada (Plan 047 · T2.1) se llevó DOS rutas que
+	// ya no existen: `POST /send` (enviar un mensaje por una sesión) y `POST /sessions/:id/profile`
+	// (cambiar el perfil active|passive, ADR-0027). Las tres pantallas se administran ahora en la
+	// consola del cliente (`wapp-client-console`), y se retiraron de aquí en el mismo ciclo (REQ-08):
+	// dos copias de la misma pantalla divergen, y la que sigue viva contesta antes que la documentación.
+	//
+	// 🔴 LA RUTA `GET /` NO SE FUE CON ELLAS. No es un resto por limpiar: es el destino de TRES
+	// redirecciones —DoLogin tras autenticar, ShowLogin con sesión ya válida y el AuthMiddleware al
+	// confirmarse el tenant viniendo de /pending—. Borrarla convertiría un login correcto en un 404.
+	protected.GET("/", h.ShowHome)
 
 	// Editor de menú/encuestas (T4): flujos (inmutables versionados) + triggers (crear/borrar). "Editar"
 	// un flujo = publicar versión N+1 (POST /flows); "editar" un trigger = borrar + crear.
+	//
+	// El marcador cubre las SEIS rutas de una vez porque el código ya las trata como un bloque y las dos
+	// pantallas coinciden en destino y en disparo: esperan al Plan 045 y se van juntas.
+	// PANTALLA PROVISIONAL: migra a KMP (planes 045/047, ADR-0035).
 	protected.GET("/flows", h.ShowFlows)
 	protected.GET("/flows/:id", h.ShowFlowDetail)
 	protected.POST("/flows", h.DoPublishFlow)
@@ -210,9 +217,10 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	protected.POST("/triggers", h.DoCreateTrigger)
 	protected.POST("/triggers/:id/delete", h.DoDeleteTrigger)
 
-	// Variables de empresa (Plan 041 · T2.1): pares clave→valor que wApp no interpreta. Pantalla
-	// PERMANENTE (capa técnica, no migra a KMP) y SIN gate de feature. El POST guarda el conjunto
-	// entero, que es la única forma que da la API de quitar una variable.
+	// Variables de empresa (Plan 041 · T2.1): pares clave→valor que wApp no interpreta. Va SIN gate de
+	// feature. El POST guarda el conjunto entero, que es la única forma que da la API de quitar una
+	// variable.
+	// PANTALLA PERMANENTE: es capa técnica (ADR-0035) y no migra a KMP.
 	protected.GET("/variables", h.ShowTenantVariables)
 	protected.POST("/variables", h.DoSaveTenantVariables)
 
@@ -254,6 +262,19 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	// es la única que no devuelve nada que pintar: abre un trabajo y la revisión llega después.
 	protected.POST("/intakes/:id/reanalyze", h.DoReanalyzeIntake)
 
+	// SUGERIR LA RESPUESTA CON LA VOZ DE LA DUEÑA (Plan 047 · T2.4, sobre el endpoint del Plan 044 ·
+	// T5.1). Va por ruta propia por lo mismo que `/reanalyze`: no es de la familia de las tres de
+	// arriba —no le habla a nadie, no escribe en la solicitud y no la mueve de estado—, solo redacta
+	// una propuesta y la deja en el campo de aprobar para que la dueña la lea y decida.
+	//
+	// Es POST aunque no escriba nada, y no es por el formulario: consume una inferencia. No es
+	// cacheable, no es gratis, y un GET lo dispararía un prefetch del navegador.
+	//
+	// 🔴 Y ES LA ÚNICA RUTA CON PLAZOS PROPIOS, los tres (cliente HTTP, deadline de petición y write
+	// deadline). El write deadline se instala aquí como middleware de la ruta y no en el grupo:
+	// relevar al WriteTimeout del servidor es exactamente lo que el resto del BFF no debe hacer.
+	protected.POST(quoteSuggestionRoute, quoteSuggestionWriteDeadline(cfg), h.DoSuggestIntakeQuote)
+
 	// Import de catálogo (Plan 041 · T3.5), gateado por la feature `catalog_import` en la plantilla y
 	// por RequireFeature en la plataforma. El POST atiende los dos pasos —comprobar y aplicar— y cuál
 	// se pide lo dice el botón: el que escribe solo existe después de haber enseñado el diff.
@@ -279,47 +300,16 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *keyedRateLimiter) {
 	return router, rateLimiter
 }
 
-// NewRouterWithLimiter construye el engine y la función de limpieza para el rate-limiter.
+// NewRouterWithLimiter construye el engine y la función de limpieza del rate-limiter.
+//
+// Cerrar el limitador libera su mapa de golpe; NO lo inhabilita —Allow sigue atendiendo y purgando
+// después—, así que llamarlo no deja al router sirviendo sin defensa.
 func NewRouterWithLimiter(cfg *config.Config) (*gin.Engine, func()) {
 	router, limiter := newRouterWithLimiter(cfg)
 	cleanup := func() {
 		if limiter != nil {
-			limiter.close()
+			limiter.Close()
 		}
 	}
 	return router, cleanup
-}
-
-// parseTrustedProxies convierte el CSV de proxies de confianza (IPs o CIDRs) a una lista, descartando
-// vacíos. Devuelve nil cuando no hay ninguno: SetTrustedProxies(nil) hace que Gin no confíe en ningún
-// proxy y resuelva ClientIP() desde la IP de la conexión (ignorando X-Forwarded-For).
-func parseTrustedProxies(csv string) []string {
-	var proxies []string
-	for _, raw := range strings.Split(csv, ",") {
-		p := strings.TrimSpace(raw)
-		if p == "" {
-			continue
-		}
-		proxies = append(proxies, p)
-	}
-	return proxies
-}
-
-// slogMiddleware envía cada petición HTTP a slog (diagnóstico).
-func slogMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		start := time.Now()
-		path := c.Request.URL.Path
-		c.Next()
-		latency := time.Since(start)
-		status := c.Writer.Status()
-		if status >= 400 {
-			slog.Warn("petición web con error",
-				"status", status, "method", c.Request.Method, "path", path,
-				"latency", latency, "ip", c.ClientIP())
-		} else {
-			slog.Info("petición web completada",
-				"status", status, "method", c.Request.Method, "path", path, "latency", latency)
-		}
-	}
 }

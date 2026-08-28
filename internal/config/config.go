@@ -84,6 +84,25 @@ type Config struct {
 	// Default 20s.
 	UpstreamTimeout time.Duration
 
+	// QuoteSuggestionTimeout es el presupuesto de la ÚNICA llamada del BFF que espera a que un modelo
+	// REDACTE: POST /intakes/{id}/quote-suggestion (Plan 047 · T2.4 sobre el endpoint del 044 · T5.1).
+	// Es el plazo del cliente HTTP dedicado, y de él SALEN los otros dos plazos de esa ruta — ver
+	// QuoteSuggestionRequestDeadline y QuoteSuggestionWriteDeadline. 0 o negativo == apagado: la ruta
+	// vuelve a los plazos generales (que la matan; ver abajo).
+	//
+	// 🔴 POR QUÉ 55s, Y POR QUÉ NO SE ARREGLA SUBIENDO LOS TRES GLOBALES. Medido contra UAT el
+	// 2026-08-28, con el modelo ya cargado, la llamada tardó 24,8 / 28,4 / 29,7 / 35,5 segundos, y el
+	// cloud se da a sí mismo 48s para redactar (`pipeline.PlazoPorLlamadaSuelo`), así que el techo
+	// realista de la respuesta es ~48-50s. Los tres plazos generales del BFF —15s del http.Client,
+	// 20s de UpstreamTimeout, 30s de WriteTimeout— la cortaban mucho antes, y el WriteTimeout además
+	// de la peor manera: sin dejar pintar pantalla. Subirlos le daría a TODAS las rutas un plazo que
+	// solo necesita ésta, y el WriteTimeout está puesto justo por lo contrario (anti-slowloris,
+	// REQ-B4: aquí no hay streams de larga vida). De ahí que el plazo sea POR RUTA.
+	//
+	// 55s = los ~48 del cloud + holgura para el viaje y el cierre. Sale de
+	// WAPP_GUARDIAN_QUOTE_SUGGESTION_TIMEOUT_SECS. Default 55s.
+	QuoteSuggestionTimeout time.Duration
+
 	// EnableAlphaTestAccounts habilita el renderizado del selector de "Usuario de prueba (Alpha)" en la UI de login.
 	// Se activa mediante WAPP_ALPHA_TEST_ACCOUNTS=true o WAPP_ENABLE_ALPHA_LOGIN=true. Default: false (fail-closed).
 	EnableAlphaTestAccounts bool
@@ -95,6 +114,17 @@ type Config struct {
 	// teclea. Solo tiene efecto cuando EnableAlphaTestAccounts es true (ya gateado, sin servirse en
 	// producción).
 	AlphaTestPassword string
+
+	// ClientConsoleURL es la dirección de la consola del CLIENTE (wapp-client-console), la aplicación
+	// a la que el Plan 047 · T2.1 se llevó la administración de sesiones. La portada la usa para
+	// ofrecer el enlace, y NADA MÁS: el BFF no habla con ella.
+	//
+	// 🔴 VACÍA POR DEFECTO, y ese es el caso normal, no una configuración a medias. En UAT las dos
+	// aplicaciones son loopback en puertos distintos (:8104 y :8107) y no hay URL pública que
+	// publicar: un `localhost:8107` fijo serviría un enlace roto a todo el que no esté sentado en la
+	// máquina. Sin valor, la portada dice dónde se administran las sesiones y no ofrece enlace; con
+	// valor, lo pinta. Sale de WAPP_GUARDIAN_CLIENT_CONSOLE_URL.
+	ClientConsoleURL string
 
 	// IdentityJWKSURL es el endpoint JWKS de identity-api (identity-core) del que salen las claves
 	// públicas para verificar Identity Tokens. Es la PUERTA del modo dual (identity Plan 003, T1.2):
@@ -159,10 +189,69 @@ func Load() Config {
 		ShutdownTimeout: time.Duration(l.GetInt("GUARDIAN_SHUTDOWN_TIMEOUT_SECS", 10)) * time.Second,
 		UpstreamTimeout: time.Duration(l.GetInt("GUARDIAN_UPSTREAM_TIMEOUT_SECS", 20)) * time.Second,
 
+		QuoteSuggestionTimeout: time.Duration(
+			l.GetInt("GUARDIAN_QUOTE_SUGGESTION_TIMEOUT_SECS", 55)) * time.Second,
+
 		EnableAlphaTestAccounts: l.GetBool("ALPHA_TEST_ACCOUNTS", l.GetBool("ENABLE_ALPHA_LOGIN", false)),
 		AlphaTestPassword:       l.GetString("ALPHA_TEST_PASSWORD", ""), // vacía == el operador la teclea.
+
+		ClientConsoleURL: l.GetString("GUARDIAN_CLIENT_CONSOLE_URL", ""), // vacío == la portada no ofrece enlace.
 
 		IdentityJWKSURL: l.GetString("IDENTITY_JWKS_URL", ""), // vacío == modo dual apagado.
 		IdentityBaseURL: l.GetString("IDENTITY_URL", ""),      // vacío == delegación apagada (flujo legacy).
 	}
+}
+
+// Los DOS márgenes de los que salen los otros dos plazos de la ruta de la sugerencia, sumados sobre
+// QuoteSuggestionTimeout. Son márgenes y no números sueltos a propósito: los tres plazos tienen que
+// quedar en ORDEN —cliente < deadline de petición < write deadline— y ese orden es lo único que hace
+// que el corte, cuando llegue, lo dé el cliente HTTP (que devuelve un error traducible a pantalla) y
+// no el servidor (que cierra la conexión sin nada que pintar). Escribir 55/58/60 a mano en tres
+// sitios deja tres números que se desincronizan; escribir uno y dos sumas no.
+//
+// 3s cubre el viaje de vuelta y el render tras el corte del cliente; 5s deja además el margen del
+// cierre de la conexión. Con el default de 55s salen los 58s y los 60s que se midieron contra UAT.
+const (
+	quoteSuggestionRequestMargin = 3 * time.Second
+	quoteSuggestionWriteMargin   = 5 * time.Second
+)
+
+// QuoteSuggestionRequestDeadline es el deadline POR PETICIÓN de la ruta de la sugerencia — el que
+// sustituye a UpstreamTimeout solo ahí. Va por encima del plazo del cliente HTTP para que el que
+// corte primero sea el cliente: un ctx vencido aborta la llamada sin cuerpo que leer, y el aviso en
+// pantalla sale peor. 0 == apagado (la ruta usa UpstreamTimeout como cualquier otra).
+func (c *Config) QuoteSuggestionRequestDeadline() time.Duration {
+	if c.QuoteSuggestionTimeout <= 0 {
+		return 0
+	}
+	return c.QuoteSuggestionTimeout + quoteSuggestionRequestMargin
+}
+
+// QuoteSuggestionWriteDeadline es el write deadline propio de la ruta de la sugerencia, el que se
+// instala con http.NewResponseController sobre la conexión y RELEVA al WriteTimeout del http.Server
+// solo en esa petición.
+//
+// 🔴 Sin él los otros dos plazos no sirven de nada: el WriteTimeout de 30s cierra la conexión a
+// mitad de la espera y el navegador no recibe ni la página degradada. Es el único de los tres que
+// falla sin dejar rastro en pantalla. 0 == apagado (manda el WriteTimeout del servidor).
+func (c *Config) QuoteSuggestionWriteDeadline() time.Duration {
+	if c.QuoteSuggestionTimeout <= 0 {
+		return 0
+	}
+	return c.QuoteSuggestionTimeout + quoteSuggestionWriteMargin
+}
+
+// QuoteSuggestionEffectiveWait es lo que la ruta de la sugerencia espera DE VERDAD antes de rendirse:
+// su plazo propio si lo tiene, y si no el del grupo, que es el que la corta entonces.
+//
+// Existe para que la PANTALLA pueda decir la magnitud sin inventársela. El aviso que lee la dueña
+// («la página espera hasta X») se escribió una vez con la espera de aquel momento y se quedó
+// mintiendo en cuanto los plazos cambiaron —decía «unos segundos» cuando lo medido eran 25-35—, y un
+// número a mano en una plantilla no tiene forma de enterarse. Colgándolo de aquí, mover el plazo
+// mueve el texto.
+func (c *Config) QuoteSuggestionEffectiveWait() time.Duration {
+	if c.QuoteSuggestionTimeout > 0 {
+		return c.QuoteSuggestionTimeout
+	}
+	return c.UpstreamTimeout
 }

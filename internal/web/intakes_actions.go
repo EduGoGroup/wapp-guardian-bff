@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -48,16 +49,27 @@ type intakeActionsView struct {
 	// el formulario del borrador, y un botón que apunta a un formulario que no está en la página no
 	// hace nada — que es peor que no ofrecerlo, porque parece que sí.
 	HasDraft bool
+	// Quote es la CUARTA acción (Plan 047 · T2.4), y es de otra naturaleza que las tres de arriba:
+	// no le habla al cliente, no escribe en la solicitud y no la mueve de estado. Solo redacta una
+	// propuesta y la deja en el campo de aquí al lado. Vive en esta vista —y no en una tarjeta
+	// propia— porque su resultado ES este formulario: separarla dejaría un botón lejos del campo
+	// que precarga.
+	Quote intakeQuoteView
 }
 
 // actionsViewOf arma las tres acciones. Devuelve nil cuando el estado no las admite: un botón que
 // la plataforma va a rechazar no se ofrece (misma regla que el desplegable de un estado terminal y
 // que el formulario de líneas del 041).
-func actionsViewOf(detail *apiclient.IntakeDetail, draft *intakeDraftView, r intakeDetailRender) *intakeActionsView {
+func actionsViewOf(detail *apiclient.IntakeDetail, draft *intakeDraftView, ent entitlementsView,
+	r intakeDetailRender, esperaDeLaSugerencia time.Duration) *intakeActionsView {
 	if detail.Status != intakeEditableStatus {
 		return nil
 	}
-	view := &intakeActionsView{RenderedText: proposedQuoteText(detail, draft), HasDraft: draft != nil}
+	view := &intakeActionsView{
+		RenderedText: proposedQuoteText(detail, draft),
+		HasDraft:     draft != nil,
+		Quote:        quoteViewOf(ent, r.quote, esperaDeLaSugerencia),
+	}
 	if draft != nil {
 		view.Questions = draft.Questions
 		view.QuestionsKnown = draft.QuestionsKnown

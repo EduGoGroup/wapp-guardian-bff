@@ -4,7 +4,7 @@ package apiclient
 type Client struct {
 	*Transport
 	*AuthClient
-	*DashboardClient
+	*EntitlementsClient
 	*EditorClient
 	*IntakesClient
 	*TenantVariablesClient
@@ -12,13 +12,14 @@ type Client struct {
 	*IntegrationsClient
 }
 
-// New construye el cliente unificado con un http.Client de timeout por defecto (15s).
-func New(baseURL string) *Client {
-	t := NewTransport(baseURL)
+// New construye el cliente unificado con un http.Client de timeout por defecto (15s) y el cliente
+// de inferencia aparte, que solo usa la sugerencia de cotización (ver Transport.InferenceHTTPClient).
+func New(baseURL string, opts ...Option) *Client {
+	t := NewTransport(baseURL, opts...)
 	return &Client{
 		Transport:             t,
 		AuthClient:            NewAuthClient(t),
-		DashboardClient:       NewDashboardClient(t),
+		EntitlementsClient:    NewEntitlementsClient(t),
 		EditorClient:          NewEditorClient(t),
 		IntakesClient:         NewIntakesClient(t),
 		TenantVariablesClient: NewTenantVariablesClient(t),

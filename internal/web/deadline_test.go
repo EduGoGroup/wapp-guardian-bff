@@ -10,8 +10,13 @@ import (
 )
 
 // TestRequestDeadlineBoundsSlowUpstream verifica T3/H4: si el upstream tarda más que UpstreamTimeout, el
-// handler no se cuelga esperándolo —el deadline por petición corta la llamada y el dashboard cae a su modo
+// handler no se cuelga esperándolo —el deadline por petición corta la llamada y la portada cae a su modo
 // degradado dentro del presupuesto, muy por debajo del timeout de 15s del cliente HTTP.
+//
+// 📌 El aviso que se busca era el del listado de sesiones hasta el Plan 047 · T2.1; con el dashboard
+// retirado, la llamada que la portada hace —y que el deadline corta— es la de las capacidades, así que
+// el degradado que se ve es el suyo. Lo que el test mide no cambió: que el corte llega y que la página
+// se pinta igual.
 func TestRequestDeadlineBoundsSlowUpstream(t *testing.T) {
 	// Upstream deliberadamente lento: duerme mucho más que el deadline por petición.
 	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -34,10 +39,10 @@ func TestRequestDeadlineBoundsSlowUpstream(t *testing.T) {
 		t.Fatalf("el handler debía cortar por el deadline (~150ms), no esperar al upstream lento; tardó %s", elapsed)
 	}
 	if rec.Code != http.StatusOK {
-		t.Fatalf("el dashboard degradado debía seguir sirviendo 200, got %d", rec.Code)
+		t.Fatalf("la portada degradada debía seguir sirviendo 200, got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "No se pudieron cargar las sesiones") {
-		t.Error("al vencer el deadline el dashboard debía degradar (avisar del fallo del listado)")
+	if !strings.Contains(rec.Body.String(), "No se pudo consultar el plan del tenant") {
+		t.Error("al vencer el deadline la portada debía degradar (avisar de que el plan no se pudo consultar)")
 	}
 }
 
@@ -48,7 +53,7 @@ func TestRequestDeadlineDisabledWhenZero(t *testing.T) {
 		status int
 		body   string
 	}{
-		"GET /api/v1/sessions": {http.StatusOK, `[{"session_id":"s-1","edge_id":"e","state":"online","profile":"active"}]`},
+		"GET /api/v1/entitlements": {http.StatusOK, entitlementsBody("commerce", "cart_basic")},
 	})
 	defer api.Close()
 
@@ -59,9 +64,9 @@ func TestRequestDeadlineDisabledWhenZero(t *testing.T) {
 	rec := getWithCookie(router, "/", validSessionCookie(t))
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("sin deadline el dashboard debía servir 200, got %d", rec.Code)
+		t.Fatalf("sin deadline la portada debía servir 200, got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "s-1") {
-		t.Error("sin deadline el listado normal debía pintarse")
+	if !strings.Contains(rec.Body.String(), "plan · commerce") {
+		t.Error("sin deadline la llamada normal debía completarse y pintarse")
 	}
 }

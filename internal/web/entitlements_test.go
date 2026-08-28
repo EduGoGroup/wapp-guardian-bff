@@ -9,10 +9,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	webgin "github.com/EduGoGroup/wapp-shared/web/gin"
+
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 )
 
-// gatedBlockMarker es el ancla del bloque gateado por `llm_intent` en dashboard.html. Si el bloque no
+// gatedBlockMarker es el ancla del bloque gateado por `llm_intent` en home.html. Si el bloque no
 // se emite, esta cadena no aparece en el HTML: eso es exactamente lo que verifica el gate server-side.
 const gatedBlockMarker = `id="section-llm-intent"`
 
@@ -26,13 +28,12 @@ func entitlementsBody(plan string, features ...string) string {
 		`],"cache_ttl_seconds":60}`
 }
 
-// TestDashboardRendersFeatureChips (T2.4): el dashboard pinta un chip por feature efectiva y el plan.
-func TestDashboardRendersFeatureChips(t *testing.T) {
+// TestPortadaRendersFeatureChips (T2.4): la portada pinta un chip por feature efectiva y el plan.
+func TestPortadaRendersFeatureChips(t *testing.T) {
 	api := routedAPI(map[string]struct {
 		status int
 		body   string
 	}{
-		"GET /api/v1/sessions":     {http.StatusOK, `[]`},
 		"GET /api/v1/entitlements": {http.StatusOK, entitlementsBody("advisor_ai", "cart_basic", "llm_intent", "menu")},
 	})
 	defer api.Close()
@@ -41,11 +42,11 @@ func TestDashboardRendersFeatureChips(t *testing.T) {
 	rec := getWithCookie(router, "/", validSessionCookie(t))
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("dashboard debía renderizar 200, got %d", rec.Code)
+		t.Fatalf("la portada debía renderizar 200, got %d", rec.Code)
 	}
 	out := rec.Body.String()
 	if !strings.Contains(out, `<span class="chip chip--info">plan · advisor_ai</span>`) {
-		t.Error("el dashboard debía nombrar el plan del tenant")
+		t.Error("la portada debía nombrar el plan del tenant")
 	}
 	for _, want := range []string{"cart_basic", "llm_intent", "menu"} {
 		if !strings.Contains(out, `<span class="chip chip--ok">`+want+`</span>`) {
@@ -62,14 +63,13 @@ func TestDashboardRendersFeatureChips(t *testing.T) {
 	}
 }
 
-// TestDashboardGateEmitsSectionWithFeature (T2.5, mitad ON): con `llm_intent` efectiva, el bloque
+// TestPortadaGateEmitsSectionWithFeature (T2.5, mitad ON): con `llm_intent` efectiva, el bloque
 // gateado SÍ está en el HTML.
-func TestDashboardGateEmitsSectionWithFeature(t *testing.T) {
+func TestPortadaGateEmitsSectionWithFeature(t *testing.T) {
 	api := routedAPI(map[string]struct {
 		status int
 		body   string
 	}{
-		"GET /api/v1/sessions":     {http.StatusOK, `[]`},
 		"GET /api/v1/entitlements": {http.StatusOK, entitlementsBody("advisor_ai", "llm_intent", "menu")},
 	})
 	defer api.Close()
@@ -82,14 +82,13 @@ func TestDashboardGateEmitsSectionWithFeature(t *testing.T) {
 	}
 }
 
-// TestDashboardGateOmitsSectionWithoutFeature (T2.5, mitad OFF): sin `llm_intent`, el bloque NO llega
-// al HTML —no basta con ocultarlo—, mientras el resto del dashboard sigue intacto.
-func TestDashboardGateOmitsSectionWithoutFeature(t *testing.T) {
+// TestPortadaGateOmitsSectionWithoutFeature (T2.5, mitad OFF): sin `llm_intent`, el bloque NO llega
+// al HTML —no basta con ocultarlo—, mientras el resto de la portada sigue intacto.
+func TestPortadaGateOmitsSectionWithoutFeature(t *testing.T) {
 	api := routedAPI(map[string]struct {
 		status int
 		body   string
 	}{
-		"GET /api/v1/sessions":     {http.StatusOK, `[]`},
 		"GET /api/v1/entitlements": {http.StatusOK, entitlementsBody("basic", "cart_basic", "menu")},
 	})
 	defer api.Close()
@@ -98,7 +97,7 @@ func TestDashboardGateOmitsSectionWithoutFeature(t *testing.T) {
 	rec := getWithCookie(router, "/", validSessionCookie(t))
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("dashboard debía renderizar 200, got %d", rec.Code)
+		t.Fatalf("la portada debía renderizar 200, got %d", rec.Code)
 	}
 	out := rec.Body.String()
 	if strings.Contains(out, gatedBlockMarker) {
@@ -107,21 +106,21 @@ func TestDashboardGateOmitsSectionWithoutFeature(t *testing.T) {
 	if strings.Contains(out, "Clasificador de intenciones") {
 		t.Error("sin la feature no debe quedar rastro del bloque en el HTML")
 	}
-	// El gate no se lleva por delante lo que no depende de features.
-	if !strings.Contains(out, "Enviar un mensaje") {
+	// El gate no se lleva por delante lo que no depende de features. El testigo era «Enviar un mensaje»
+	// hasta el Plan 047 · T2.1; con el envío retirado, la sección base que sobrevive es la del plan.
+	if !strings.Contains(out, "Plan y capacidades") {
 		t.Error("las secciones base debían seguir emitiéndose")
 	}
 }
 
-// TestDashboardDegradesWhenEntitlementsFail (T2.4 degradado + T2.5 fail-closed): si el endpoint falla,
-// el dashboard sigue sirviendo 200 con las sesiones, avisa del plan no consultado y CIERRA el gate.
-func TestDashboardDegradesWhenEntitlementsFail(t *testing.T) {
+// TestPortadaDegradesWhenEntitlementsFail (T2.4 degradado + T2.5 fail-closed): si el endpoint falla,
+// la portada sigue sirviendo 200 con lo que no depende del plan, avisa de que no se pudo consultar y
+// CIERRA el gate.
+func TestPortadaDegradesWhenEntitlementsFail(t *testing.T) {
 	api := routedAPI(map[string]struct {
 		status int
 		body   string
 	}{
-		"GET /api/v1/sessions": {http.StatusOK,
-			`[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","profile":"active"}]`},
 		"GET /api/v1/entitlements": {http.StatusInternalServerError, `{"error":"detalle interno que no debe verse"}`},
 	})
 	defer api.Close()
@@ -130,7 +129,7 @@ func TestDashboardDegradesWhenEntitlementsFail(t *testing.T) {
 	rec := getWithCookie(router, "/", validSessionCookie(t))
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("el dashboard degradado debía seguir sirviendo 200, got %d", rec.Code)
+		t.Fatalf("la portada degradada debía seguir sirviendo 200, got %d", rec.Code)
 	}
 	out := rec.Body.String()
 	if !strings.Contains(out, "No se pudo consultar el plan del tenant") {
@@ -139,22 +138,23 @@ func TestDashboardDegradesWhenEntitlementsFail(t *testing.T) {
 	if strings.Contains(out, gatedBlockMarker) {
 		t.Error("fail-closed: sin features resueltas, ningún bloque gateado debe emitirse")
 	}
-	if !strings.Contains(out, "edge-alpha") {
-		t.Error("el listado de sesiones no debía verse afectado por el fallo del plan")
+	// El testigo de «la página sigue sirviendo» era el listado de sesiones (Plan 047 · T2.1 lo retiró);
+	// ahora lo es lo que no depende del plan: el aviso de dónde se administran y los accesos sin gate.
+	if !strings.Contains(out, sessionsMovedMarker) || !strings.Contains(out, `href="/variables"`) {
+		t.Error("lo que no depende del plan no debía verse afectado por el fallo del plan")
 	}
 	if strings.Contains(out, "detalle interno que no debe verse") {
 		t.Error("no debe filtrarse el detalle del upstream")
 	}
 }
 
-// TestDashboardEntitlementsForbidden: un 403 (token válido sin el scope entitlements.read) es un caso
+// TestPortadaEntitlementsForbidden: un 403 (token válido sin el scope entitlements.read) es un caso
 // esperado, no un error de plataforma: avisa con su propio mensaje y mantiene el gate cerrado.
-func TestDashboardEntitlementsForbidden(t *testing.T) {
+func TestPortadaEntitlementsForbidden(t *testing.T) {
 	api := routedAPI(map[string]struct {
 		status int
 		body   string
 	}{
-		"GET /api/v1/sessions":     {http.StatusOK, `[]`},
 		"GET /api/v1/entitlements": {http.StatusForbidden, `{"error":"forbidden"}`},
 	})
 	defer api.Close()
@@ -163,7 +163,7 @@ func TestDashboardEntitlementsForbidden(t *testing.T) {
 	rec := getWithCookie(router, "/", validSessionCookie(t))
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("un 403 del plan no debía tumbar el dashboard, got %d", rec.Code)
+		t.Fatalf("un 403 del plan no debía tumbar la portada, got %d", rec.Code)
 	}
 	out := rec.Body.String()
 	if !strings.Contains(out, "no tiene permiso para consultar el plan") {
@@ -214,6 +214,6 @@ func resolveViaPort(t *testing.T, api APIPort) entitlementsView {
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-	c.Set(ctxAccessToken, "tok")
+	c.Set(webgin.ContextAccessToken, "tok")
 	return resolveEntitlements(c, h.AuthHandler, h.api)
 }

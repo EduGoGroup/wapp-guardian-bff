@@ -134,6 +134,13 @@ type intakeDetailRender struct {
 	question    string
 	// reanalyzeText es el material EXTRA que el dueño pegó para regenerar, por lo mismo.
 	reanalyzeText string
+	// quote es la sugerencia que acaba de devolver el generador (nil ⇒ no se pidió en esta página).
+	//
+	// Va aparte de `approveText` aunque el texto viaje por ahí, y no es un duplicado: `approveText`
+	// es LO QUE HAY EN EL CAMPO —venga de quien venga— y esto es la PROCEDENCIA de esta pasada
+	// concreta. Colapsarlos haría que un repintado tras un rechazo siguiera diciendo «lo redactó el
+	// modelo» sobre un texto que la dueña ya cambió a mano.
+	quote *apiclient.IntakeQuoteSuggestion
 	// revision es la interpretación que se está mirando en la comparación del §7.6 (0 ⇒ la última).
 	// Viaja por la QUERY y no por una tabla nueva: sin JavaScript (ADR-0035), saltar de una revisión
 	// a otra es un enlace a esta misma página y el «después» lo pinta el servidor.
@@ -337,7 +344,7 @@ func (h *IntakesHandler) renderIntakeDetail(c *gin.Context, r intakeDetailRender
 	view := transitionsOf(detail, r.allowedFromRejection)
 	view.Edit = editFormOf(detail, view.Transitions, r)
 	view.Draft = draftViewOf(detail, r.draftRows, r.draftDefects)
-	view.Actions = actionsViewOf(detail, view.Draft, r)
+	view.Actions = actionsViewOf(detail, view.Draft, entitlements, r, h.cfg.QuoteSuggestionEffectiveWait())
 	view.Compare = compareViewOf(detail, entitlements, r)
 	view.OverdueHours = intakeOverdueHours
 	data["View"] = view
