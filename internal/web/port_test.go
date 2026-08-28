@@ -30,6 +30,7 @@ type fakeAPIPort struct {
 	approveIntake   func(ctx context.Context, accessToken, id, renderedText string) (*apiclient.IntakeDetail, error)
 	requestInfo     func(ctx context.Context, accessToken, id, question string) (*apiclient.IntakeDetail, error)
 	reanalyze       func(ctx context.Context, accessToken, id, text string) (*apiclient.IntakeReanalysis, error)
+	suggestQuote    func(ctx context.Context, accessToken, id string) (*apiclient.IntakeQuoteSuggestion, error)
 	discardIntakes  func(ctx context.Context, accessToken string, intakeIDs []string) (*apiclient.IntakeDiscardResult, error)
 
 	getTenantVariables     func(ctx context.Context, accessToken string) (*apiclient.TenantVariables, error)
@@ -142,6 +143,12 @@ func (f *fakeAPIPort) ReanalyzeIntake(ctx context.Context, at, id, text string) 
 		return f.reanalyze(ctx, at, id, text)
 	}
 	return &apiclient.IntakeReanalysis{}, nil
+}
+func (f *fakeAPIPort) SuggestIntakeQuote(ctx context.Context, at, id string) (*apiclient.IntakeQuoteSuggestion, error) {
+	if f.suggestQuote != nil {
+		return f.suggestQuote(ctx, at, id)
+	}
+	return &apiclient.IntakeQuoteSuggestion{}, nil
 }
 func (f *fakeAPIPort) DiscardIntakes(ctx context.Context, at string, ids []string) (*apiclient.IntakeDiscardResult, error) {
 	if f.discardIntakes != nil {

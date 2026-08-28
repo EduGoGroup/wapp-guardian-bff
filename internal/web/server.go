@@ -252,6 +252,15 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	// es la única que no devuelve nada que pintar: abre un trabajo y la revisión llega después.
 	protected.POST("/intakes/:id/reanalyze", h.DoReanalyzeIntake)
 
+	// SUGERIR LA RESPUESTA CON LA VOZ DE LA DUEÑA (Plan 047 · T2.4, sobre el endpoint del Plan 044 ·
+	// T5.1). Va por ruta propia por lo mismo que `/reanalyze`: no es de la familia de las tres de
+	// arriba —no le habla a nadie, no escribe en la solicitud y no la mueve de estado—, solo redacta
+	// una propuesta y la deja en el campo de aprobar para que la dueña la lea y decida.
+	//
+	// Es POST aunque no escriba nada, y no es por el formulario: consume una inferencia. No es
+	// cacheable, no es gratis, y un GET lo dispararía un prefetch del navegador.
+	protected.POST("/intakes/:id/quote-suggestion", h.DoSuggestIntakeQuote)
+
 	// Import de catálogo (Plan 041 · T3.5), gateado por la feature `catalog_import` en la plantilla y
 	// por RequireFeature en la plataforma. El POST atiende los dos pasos —comprobar y aplicar— y cuál
 	// se pide lo dice el botón: el que escribe solo existe después de haber enseñado el diff.

@@ -69,6 +69,11 @@ type DashboardAPI interface {
 // plataforma abre un trabajo que corre por detrás y contesta con el número que la revisión TENDRÁ.
 // Cuando responde, esa revisión NO EXISTE todavía, así que no hay detalle nuevo que devolver — y una
 // firma que lo devolviera obligaría a inventarlo.
+//
+// 🔴 `SuggestIntakeQuote` tampoco devuelve detalle, y por un motivo DISTINTO y más importante: NO
+// CAMBIA NADA. Redacta un texto y lo devuelve; no aprueba, no transiciona y no le manda nada al
+// cliente. Esa estrechez de la firma es lo que sostiene INV-1 —la máquina propone por un camino, la
+// dueña aprueba por otro—, y devolver aquí un `*IntakeDetail` insinuaría que algo se guardó.
 type IntakeManager interface {
 	ListIntakes(ctx context.Context, accessToken string, f apiclient.IntakeFilter) (*apiclient.IntakePage, error)
 	GetIntake(ctx context.Context, accessToken, id string) (*apiclient.IntakeDetail, error)
@@ -78,6 +83,7 @@ type IntakeManager interface {
 	ApproveIntake(ctx context.Context, accessToken, id, renderedText string) (*apiclient.IntakeDetail, error)
 	RequestIntakeInfo(ctx context.Context, accessToken, id, question string) (*apiclient.IntakeDetail, error)
 	ReanalyzeIntake(ctx context.Context, accessToken, id, text string) (*apiclient.IntakeReanalysis, error)
+	SuggestIntakeQuote(ctx context.Context, accessToken, id string) (*apiclient.IntakeQuoteSuggestion, error)
 	DiscardIntakes(ctx context.Context, accessToken string, intakeIDs []string) (*apiclient.IntakeDiscardResult, error)
 }
 
