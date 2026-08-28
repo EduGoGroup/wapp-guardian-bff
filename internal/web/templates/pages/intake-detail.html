@@ -418,9 +418,17 @@
                 ampliando el plan del tenant.</p>
             {{ end }}
             {{/* SIN JAVASCRIPT (ADR-0035) NO HAY INDICADOR DE ESPERA: esto es un POST normal y la
-                 página no vuelve hasta que la plataforma contesta. Redactarlo es lo único honesto
-                 que se puede hacer sin tocar los plazos — ver la deuda declarada en el handler. */}}
-            <p class="supporting">Redactarla puede tardar unos segundos: la página se queda cargando
+                 página no vuelve hasta que la plataforma contesta, así que decir cuánto se tarda es
+                 lo único que esta pantalla puede ofrecer en lugar de una barra de progreso.
+
+                 🔴 EL TOPE NO SE ESCRIBE AQUÍ: sale de `.MaxWait`, que cuelga del plazo configurado
+                 de la ruta (config.QuoteSuggestionEffectiveWait). Esta frase ya mintió una vez —decía
+                 «unos segundos», redactada cuando la espera moría a los 15s, y siguió diciéndolo
+                 cuando pasó a ser de 25-35s— porque un número a mano en una plantilla no se entera de
+                 que alguien movió un plazo. La magnitud típica sí va en palabras: es una medida de
+                 campo (24,8-35,5s contra UAT el 2026-08-28), no un plazo del que el código sepa. */}}
+            <p class="supporting">Redactarla tarda del orden de medio minuto.
+                Esta página espera hasta {{ .MaxWait }}: se queda cargando, sin barra de progreso,
                 hasta que la propuesta esté. Si no llega, no ha pasado nada — vuelve a pulsar.</p>
         </form>
         {{ end }}

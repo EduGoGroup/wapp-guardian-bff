@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -421,5 +422,70 @@ func TestQuoteButtonAlsoNeedsCartBasicInTheTemplate(t *testing.T) {
 		if strings.Contains(without, absent) {
 			t.Errorf("sin `cart_basic` la plantilla no puede emitir %q", absent)
 		}
+	}
+}
+
+// TestElAvisoDeEsperaDiceLaMagnitudDeVerdad fija la frase que le dice a la dueña cuánto va a esperar,
+// y sobre todo la REGRESIÓN concreta que se acaba de corregir: decía «unos segundos» cuando lo medido
+// contra UAT son 24,8-35,5 s y el tope de la página es de casi un minuto. Es el tipo de fallo que no
+// rompe nada y solo se paga en la persona que se queda cuarenta segundos delante de una página en
+// blanco que le prometió «unos segundos».
+//
+// El tope se comprueba CONTRA EL PLAZO CONFIGURADO y con dos valores distintos, que es lo que
+// distingue «sale del plazo» de «hay un número escrito en la plantilla que hoy coincide».
+func TestElAvisoDeEsperaDiceLaMagnitudDeVerdad(t *testing.T) {
+	casos := []struct {
+		nombre string
+		plazo  time.Duration
+		espera string
+	}{
+		{"el plazo de producción", 55 * time.Second, "55 segundos"},
+		{"otro plazo cualquiera", 40 * time.Second, "40 segundos"},
+		{"un plazo de más de un minuto", 90 * time.Second, "2 minutos"},
+	}
+	for _, tc := range casos {
+		t.Run(tc.nombre, func(t *testing.T) {
+			var seen []string
+			api := quoteAPI(t, []string{"cart_basic", "llm_intake"}, http.StatusOK, "{}", &seen)
+			defer api.Close()
+
+			cfg := authTestCfg(api.URL)
+			cfg.QuoteSuggestionTimeout = tc.plazo
+			out := getWithCookie(NewRouter(cfg), "/intakes/in-ambar", validSessionCookie(t)).Body.String()
+
+			// PRIMERO el aserto positivo, porque sin él los dos de abajo son vacuos: si el bloque de la
+			// sugerencia no se hubiera pintado, «no dice unos segundos» saldría verde sin haber mirado
+			// ninguna frase.
+			if !strings.Contains(out, intakeQuoteMarker) {
+				t.Fatal("el bloque de la sugerencia no se pintó: los asertos del aviso no miran nada")
+			}
+			if !strings.Contains(out, "Esta página espera hasta "+tc.espera) {
+				t.Errorf("el aviso debía decir el tope real de la espera (%q, que sale del plazo "+
+					"configurado de %s) y no lo dice", tc.espera, tc.plazo)
+			}
+			// LA REGRESIÓN, nombrada: la frase que había antes describía una espera que no era la
+			// que la dueña iba a tener.
+			if strings.Contains(out, "unos segundos") {
+				t.Error("el aviso volvió a decir «unos segundos»: lo medido son 24,8-35,5 s y el tope " +
+					"de esta página es de casi un minuto, así que esa frase le miente a quien la lee")
+			}
+			// Y lo que la frase YA decía bien y no se puede perder al reescribirla.
+			if !strings.Contains(out, "se queda cargando") || !strings.Contains(out, "no ha pasado nada") {
+				t.Error("el aviso tiene que seguir diciendo que la página se queda cargando y que, " +
+					"si no llega, no ha pasado nada y se puede volver a pulsar")
+			}
+		})
+	}
+}
+
+// TestElAvisoDeEsperaNoInventaUnaMagnitudSinPlazo cubre el borde: con la Config armada a mano y sin
+// plazo ninguno, el aviso no puede decir un número —no lo sabe—, y decir «0 segundos» sería peor que
+// no decir nada.
+func TestElAvisoDeEsperaNoInventaUnaMagnitudSinPlazo(t *testing.T) {
+	if got := quoteWaitText(0); got != "que la plataforma conteste" {
+		t.Errorf("sin plazo el aviso no debe inventar una magnitud; dijo %q", got)
+	}
+	if got := quoteWaitText(-3 * time.Second); got != "que la plataforma conteste" {
+		t.Errorf("con un plazo negativo tampoco; dijo %q", got)
 	}
 }

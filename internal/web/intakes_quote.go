@@ -3,7 +3,9 @@ package web
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -30,6 +32,14 @@ type intakeQuoteView struct {
 	Suggested bool
 	// OriginText es QUIÉN redactó lo que hay en el campo, ya redactado para la dueña.
 	OriginText string
+	// MaxWait es CUÁNTO espera esta página antes de rendirse, en palabras y ya redondeado.
+	//
+	// 🔴 SALE DEL PLAZO CONFIGURADO, no de un número escrito en la plantilla, y esa es toda la
+	// razón de que este campo exista. El aviso decía «unos segundos» porque se redactó cuando la
+	// espera moría a los 15s; en cuanto la ruta pasó a esperar de verdad, la frase se quedó
+	// mintiéndole a la dueña —lo medido son 24,8-35,5s— sin que nada fallara. Colgado del plazo,
+	// mover el plazo mueve el texto.
+	MaxWait string
 }
 
 // quoteViewOf decide si el botón se puede pulsar, y si no, POR QUÉ.
@@ -38,8 +48,9 @@ type intakeQuoteView struct {
 // desenlaces malos (líneas sin precio y solicitud sin líneas) dependen del estado del borrador en la
 // plataforma, y adivinarlos desde el espejo local sería apagar el botón por una foto vieja. Llegan
 // como RECHAZO, y mapQuoteSuggestionError los dice con lo que hay que hacer.
-func quoteViewOf(ent entitlementsView, suggestion *apiclient.IntakeQuoteSuggestion) intakeQuoteView {
-	view := intakeQuoteView{}
+func quoteViewOf(ent entitlementsView, suggestion *apiclient.IntakeQuoteSuggestion,
+	espera time.Duration) intakeQuoteView {
+	view := intakeQuoteView{MaxWait: quoteWaitText(espera)}
 	if !ent.Has(intakeLLMFeature) {
 		view.Paywall = true
 		view.Reason = quoteFeatureNotice(intakeLLMFeature)
@@ -51,6 +62,28 @@ func quoteViewOf(ent entitlementsView, suggestion *apiclient.IntakeQuoteSuggesti
 		view.OriginText = quoteOriginText(suggestion)
 	}
 	return view
+}
+
+// quoteWaitText pone en palabras lo que la página espera antes de rendirse.
+//
+// Redondea a propósito: el aviso lo lee una persona que está decidiendo si quedarse mirando la
+// pantalla, y «57 segundos» no le sirve mejor que «un minuto» — pero «unos segundos» sí le sirve
+// PEOR, porque describe una espera que no es la que va a tener. El corte del minuto es donde la
+// unidad deja de ayudar: por debajo se cuenta en segundos, por encima se dice en minutos.
+func quoteWaitText(espera time.Duration) string {
+	if espera <= 0 {
+		// Sin plazo conocido no se inventa una magnitud: se dice lo único cierto, que espera a que
+		// llegue. Es el caso de un Config armado a mano (los tests), no el de producción.
+		return "que la plataforma conteste"
+	}
+	if espera < time.Minute {
+		return strconv.Itoa(int(espera.Round(time.Second)/time.Second)) + " segundos"
+	}
+	minutos := int(espera.Round(time.Minute) / time.Minute)
+	if minutos <= 1 {
+		return "un minuto"
+	}
+	return strconv.Itoa(minutos) + " minutos"
 }
 
 // quoteFeatureNotice redacta el paywall de la sugerencia. Va aparte del de Regenerar porque lleva a

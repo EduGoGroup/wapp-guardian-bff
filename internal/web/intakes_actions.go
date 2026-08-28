@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -60,14 +61,14 @@ type intakeActionsView struct {
 // la plataforma va a rechazar no se ofrece (misma regla que el desplegable de un estado terminal y
 // que el formulario de líneas del 041).
 func actionsViewOf(detail *apiclient.IntakeDetail, draft *intakeDraftView, ent entitlementsView,
-	r intakeDetailRender) *intakeActionsView {
+	r intakeDetailRender, esperaDeLaSugerencia time.Duration) *intakeActionsView {
 	if detail.Status != intakeEditableStatus {
 		return nil
 	}
 	view := &intakeActionsView{
 		RenderedText: proposedQuoteText(detail, draft),
 		HasDraft:     draft != nil,
-		Quote:        quoteViewOf(ent, r.quote),
+		Quote:        quoteViewOf(ent, r.quote, esperaDeLaSugerencia),
 	}
 	if draft != nil {
 		view.Questions = draft.Questions

@@ -240,3 +240,18 @@ func (c *Config) QuoteSuggestionWriteDeadline() time.Duration {
 	}
 	return c.QuoteSuggestionTimeout + quoteSuggestionWriteMargin
 }
+
+// QuoteSuggestionEffectiveWait es lo que la ruta de la sugerencia espera DE VERDAD antes de rendirse:
+// su plazo propio si lo tiene, y si no el del grupo, que es el que la corta entonces.
+//
+// Existe para que la PANTALLA pueda decir la magnitud sin inventársela. El aviso que lee la dueña
+// («la página espera hasta X») se escribió una vez con la espera de aquel momento y se quedó
+// mintiendo en cuanto los plazos cambiaron —decía «unos segundos» cuando lo medido eran 25-35—, y un
+// número a mano en una plantilla no tiene forma de enterarse. Colgándolo de aquí, mover el plazo
+// mueve el texto.
+func (c *Config) QuoteSuggestionEffectiveWait() time.Duration {
+	if c.QuoteSuggestionTimeout > 0 {
+		return c.QuoteSuggestionTimeout
+	}
+	return c.UpstreamTimeout
+}
