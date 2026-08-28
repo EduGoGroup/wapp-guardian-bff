@@ -4,10 +4,10 @@ go 1.26.5
 
 require (
 	github.com/EduGoGroup/identity-shared/auth v0.3.1
-	github.com/EduGoGroup/wapp-shared/auth v0.4.1
+	github.com/EduGoGroup/wapp-shared/auth v0.5.0
 	github.com/EduGoGroup/wapp-shared/config v0.3.0
 	github.com/EduGoGroup/wapp-shared/logger v0.2.0
-	github.com/EduGoGroup/wapp-shared/ui v0.1.0
+	github.com/EduGoGroup/wapp-shared/ui v0.2.0
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	golang.org/x/time v0.6.0
