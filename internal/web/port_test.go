@@ -10,6 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	webgin "github.com/EduGoGroup/wapp-shared/web/gin"
+
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 )
 
@@ -242,8 +244,8 @@ func TestWithAuthRetryRefreshesOn401(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-	c.Set(ctxAccessToken, "token-viejo")
-	c.Set(ctxRefreshToken, "r-old")
+	c.Set(webgin.ContextAccessToken, "token-viejo")
+	c.Set(webgin.ContextRefreshToken, "r-old")
 
 	calls := 0
 	var seen []string
@@ -280,7 +282,7 @@ func TestSendMessageViaFakePort(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-	c.Set(ctxAccessToken, "tok")
+	c.Set(webgin.ContextAccessToken, "tok")
 
 	var result *apiclient.SendResult
 	err := h.withAuthRetry(c, func(token string) error {

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	sharedweb "github.com/EduGoGroup/wapp-shared/web"
+
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 )
 
@@ -64,9 +66,9 @@ func TestIsAuthenticatedFromContext(t *testing.T) {
 
 	// Cookie caducada sobre /login (público, sin AuthMiddleware): no debe pintar "Cerrar sesión".
 	expired := makeToken(t, time.Now().Add(-time.Hour))
-	value, err := encodeSession(sessionData{AccessToken: expired, RefreshToken: "r"})
+	value, err := sharedweb.EncodeSession(sharedweb.SessionData{AccessToken: expired, RefreshToken: "r"})
 	if err != nil {
-		t.Fatalf("encodeSession: %v", err)
+		t.Fatalf("sharedweb.EncodeSession: %v", err)
 	}
 	rec := getWithCookie(router, "/login", &http.Cookie{Name: sessionCookieName, Value: value})
 	if rec.Code != http.StatusOK {

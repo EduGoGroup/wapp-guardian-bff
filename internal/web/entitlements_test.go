@@ -9,6 +9,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	webgin "github.com/EduGoGroup/wapp-shared/web/gin"
+
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 )
 
@@ -214,6 +216,6 @@ func resolveViaPort(t *testing.T, api APIPort) entitlementsView {
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-	c.Set(ctxAccessToken, "tok")
+	c.Set(webgin.ContextAccessToken, "tok")
 	return resolveEntitlements(c, h.AuthHandler, h.api)
 }

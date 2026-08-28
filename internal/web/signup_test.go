@@ -12,6 +12,8 @@ import (
 
 	sharedjwt "github.com/EduGoGroup/wapp-shared/auth/jwt"
 	"github.com/golang-jwt/jwt/v5"
+
+	sharedweb "github.com/EduGoGroup/wapp-shared/web"
 )
 
 func TestShowSignup_RendersForm(t *testing.T) {
@@ -242,9 +244,9 @@ func TestPendingState_RedirectsWhenNoTenant(t *testing.T) {
 		t.Fatalf("firmar token: %v", err)
 	}
 
-	cookieVal, err := encodeSession(sessionData{AccessToken: tokenStr, RefreshToken: "rt-1"})
+	cookieVal, err := sharedweb.EncodeSession(sharedweb.SessionData{AccessToken: tokenStr, RefreshToken: "rt-1"})
 	if err != nil {
-		t.Fatalf("encodeSession: %v", err)
+		t.Fatalf("sharedweb.EncodeSession: %v", err)
 	}
 	cookie := &http.Cookie{Name: sessionCookieName, Value: cookieVal}
 

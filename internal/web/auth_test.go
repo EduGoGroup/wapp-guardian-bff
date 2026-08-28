@@ -14,6 +14,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 
+	sharedweb "github.com/EduGoGroup/wapp-shared/web"
+	webgin "github.com/EduGoGroup/wapp-shared/web/gin"
+
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/config"
 )
 
@@ -92,7 +95,7 @@ func mintCSRF(router http.Handler) *http.Cookie {
 
 func postForm(router http.Handler, path string, form url.Values) *httptest.ResponseRecorder {
 	csrf := mintCSRF(router)
-	form.Set(csrfFieldName, csrf.Value)
+	form.Set(sharedweb.CSRFFieldName, csrf.Value)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -167,9 +170,9 @@ func TestProtectedWithoutCookieRedirects(t *testing.T) {
 // TestProtectedExpiredTokenClearsCookie: cookie con token expirado → cookie limpiada + redirect /login.
 func TestProtectedExpiredTokenClearsCookie(t *testing.T) {
 	expired := makeToken(t, time.Now().Add(-time.Hour))
-	value, err := encodeSession(sessionData{AccessToken: expired, RefreshToken: "r-x"})
+	value, err := sharedweb.EncodeSession(sharedweb.SessionData{AccessToken: expired, RefreshToken: "r-x"})
 	if err != nil {
-		t.Fatalf("encodeSession: %v", err)
+		t.Fatalf("sharedweb.EncodeSession: %v", err)
 	}
 
 	router := NewRouter(authTestCfg("http://api.invalid"))
@@ -194,9 +197,9 @@ func TestProtectedExpiredTokenClearsCookie(t *testing.T) {
 // TestValidSessionReachesHome: cookie válida → la home renderiza 200 (no redirige).
 func TestValidSessionReachesHome(t *testing.T) {
 	access := makeToken(t, time.Now().Add(time.Hour))
-	value, err := encodeSession(sessionData{AccessToken: access, RefreshToken: "r-ok"})
+	value, err := sharedweb.EncodeSession(sharedweb.SessionData{AccessToken: access, RefreshToken: "r-ok"})
 	if err != nil {
-		t.Fatalf("encodeSession: %v", err)
+		t.Fatalf("sharedweb.EncodeSession: %v", err)
 	}
 
 	router := NewRouter(authTestCfg("http://api.invalid"))
@@ -222,7 +225,7 @@ func TestRefreshSessionRenewsCookie(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-	c.Set(ctxRefreshToken, "r-old")
+	c.Set(webgin.ContextRefreshToken, "r-old")
 
 	tok, err := h.refreshSession(c)
 	if err != nil {

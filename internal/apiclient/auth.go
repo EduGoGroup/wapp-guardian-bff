@@ -7,23 +7,21 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/EduGoGroup/wapp-shared/iam"
 )
 
-// IdentityContext es el contexto de identidad que la API devuelve en el login (tenant/usuario/roles).
-type IdentityContext struct {
-	TenantID string   `json:"tenant_id"`
-	UserID   string   `json:"user_id"`
-	Roles    []string `json:"roles"`
-}
-
-// AuthResult es el wire format de /api/v1/auth/{login,refresh}: par de tokens + contexto.
-type AuthResult struct {
-	AccessToken  string          `json:"access_token"`
-	RefreshToken string          `json:"refresh_token"`
-	TokenType    string          `json:"token_type"`
-	ExpiresAt    string          `json:"expires_at"`
-	Context      IdentityContext `json:"context"`
-}
+// IdentityContext y AuthResult son los tipos del módulo `wapp-shared/iam`, no una copia con el mismo
+// shape: son ALIAS, así que en el ecosistema hay UNA sola definición de cada uno (INV-08) y el resto
+// del BFF —el puerto, los handlers y sus tests— sigue nombrándolos por este paquete sin cambiar.
+//
+// Que sirvan también para el login DIRECTO contra la plataforma (el que no delega en identity, y que
+// este paquete conserva) no es una casualidad: el wire format es el mismo en las dos vías, porque la
+// vía delegada existe justo para devolver lo que la directa ya devolvía.
+type (
+	IdentityContext = iam.IdentityContext
+	AuthResult      = iam.AuthResult
+)
 
 type loginRequest struct {
 	Email    string `json:"email"`

@@ -13,6 +13,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	sharedweb "github.com/EduGoGroup/wapp-shared/web"
+	webgin "github.com/EduGoGroup/wapp-shared/web/gin"
+
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 )
 
@@ -51,7 +54,7 @@ func middlewareProbeRouter(h *Handler) *gin.Engine {
 	prot := r.Group("/")
 	prot.Use(h.AuthMiddleware())
 	prot.GET("/probe", func(c *gin.Context) {
-		tok, _ := c.Get(ctxAccessToken)
+		tok, _ := c.Get(webgin.ContextAccessToken)
 		s, _ := tok.(string)
 		c.String(http.StatusOK, s)
 	})
@@ -61,9 +64,9 @@ func middlewareProbeRouter(h *Handler) *gin.Engine {
 // cookieFor serializa una sesión (access + refresh) al valor de la cookie HttpOnly.
 func cookieFor(t *testing.T, access, refresh string) *http.Cookie {
 	t.Helper()
-	value, err := encodeSession(sessionData{AccessToken: access, RefreshToken: refresh})
+	value, err := sharedweb.EncodeSession(sharedweb.SessionData{AccessToken: access, RefreshToken: refresh})
 	if err != nil {
-		t.Fatalf("encodeSession: %v", err)
+		t.Fatalf("sharedweb.EncodeSession: %v", err)
 	}
 	return &http.Cookie{Name: sessionCookieName, Value: value}
 }

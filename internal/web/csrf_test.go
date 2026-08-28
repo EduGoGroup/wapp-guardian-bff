@@ -1,13 +1,14 @@
 package web
 
 import (
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	sharedweb "github.com/EduGoGroup/wapp-shared/web"
 )
 
 // TestCSRFRejectsPostWithoutToken: un POST mutante sin token CSRF (ni cookie ni campo) → 403, antes incluso
@@ -32,7 +33,7 @@ func TestCSRFRejectsTokenMismatch(t *testing.T) {
 	csrf := mintCSRF(router)
 
 	rec := httptest.NewRecorder()
-	form := url.Values{"email": {"a@b.com"}, "password": {"secret"}, csrfFieldName: {"otro-valor-distinto"}}
+	form := url.Values{"email": {"a@b.com"}, "password": {"secret"}, sharedweb.CSRFFieldName: {"otro-valor-distinto"}}
 	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(csrf)
@@ -55,7 +56,7 @@ func TestCSRFAcceptsMatchingToken(t *testing.T) {
 	csrf := mintCSRF(router)
 
 	rec := httptest.NewRecorder()
-	form := url.Values{"email": {"a@b.com"}, "password": {"secret"}, csrfFieldName: {csrf.Value}}
+	form := url.Values{"email": {"a@b.com"}, "password": {"secret"}, sharedweb.CSRFFieldName: {csrf.Value}}
 	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(csrf)
@@ -112,17 +113,5 @@ func TestLogoutPOSTClearsSession(t *testing.T) {
 	raw := sessionSetCookie(rec)
 	if raw == "" || !strings.Contains(raw, "Max-Age=0") {
 		t.Errorf("POST /logout debía limpiar la cookie de sesión (Max-Age=0), got %q", raw)
-	}
-}
-
-// TestGenerateCSRFTokenFailsClosed: si se agota la entropía, la generación del token falla (fail-closed) en
-// vez de devolver un token vacío/predecible.
-func TestGenerateCSRFTokenFailsClosed(t *testing.T) {
-	orig := randRead
-	randRead = func([]byte) (int, error) { return 0, errors.New("sin entropía") }
-	defer func() { randRead = orig }()
-
-	if _, err := generateCSRFToken(); err == nil {
-		t.Fatal("generateCSRFToken debía fallar cuando no hay entropía")
 	}
 }
