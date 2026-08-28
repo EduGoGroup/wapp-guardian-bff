@@ -65,7 +65,24 @@ func (h *AuthHandler) DoLogin(c *gin.Context) {
 				"El servicio de identidad no está disponible en este momento. Inténtalo de nuevo en unos minutos.")
 			return
 		}
-		slog.Warn("login rechazado", "error", err)
+		// La RESPUESTA sigue siendo ciega a propósito (REQ-C3: no filtrar si un correo existe), pero el
+		// LOG no tiene por qué serlo, y fundirlo ahí deja ciego a quien diagnostica: un 403 del System
+		// Gate —contraseña correcta, sin la fila en iam.user_systems— es indistinguible de una
+		// contraseña mal escrita, y la persona reintenta hasta que el lockout la bloquea. Costó una
+		// tarde el 2026-08-28. Las dos consolas ya separaban estas ramas; el BFF no.
+		//
+		// 🔑 Se pregunta por los errores del apiclient del BFF, NO por los sentinelas de `iam`: esta
+		// ruta no los propaga (el 401 llega como apiclient.ErrUnauthorized y el 403 como *APIError).
+		// `StatusCodeOf` es el idioma que ya usan entitlements.go y catalogimport_handler.go.
+		switch {
+		case apiclient.StatusCodeOf(err) == http.StatusForbidden:
+			slog.Warn("login rechazado por el System Gate: falta la fila en iam.user_systems para "+apiclient.SystemBFF,
+				"error", err)
+		case errors.Is(err, apiclient.ErrUnauthorized):
+			slog.Warn("login rechazado por identity: credenciales inválidas", "error", err)
+		default:
+			slog.Warn("login rechazado", "error", err)
+		}
 		h.renderLoginError(c, http.StatusUnauthorized,
 			"Credenciales inválidas. Revisa tus datos e inténtalo de nuevo.")
 		return
