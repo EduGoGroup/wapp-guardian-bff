@@ -183,12 +183,14 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	// upstream lento no cuelgue el handler más allá del presupuesto (bajo el WriteTimeout del servidor).
 	protected.Use(webgin.RequestDeadline(cfg.UpstreamTimeout))
 	// PORTADA: el índice de lo que ESTA consola conserva (plan y capacidades del tenant + accesos a las
-	// pantallas vivas). Es permanente —destino de las redirecciones del plano de autenticación— y no
-	// migra a KMP, pero NO lleva marcador de estado a propósito: los dos tokens que este fichero usa
-	// para clasificar —provisional y permanente— son el censo de las pantallas de NEGOCIO del
-	// inventario del 047, se verifican contando con grep, y meter aquí uno desajustaría el recuento
-	// sin que nadie sepa por qué subió. Si un día la portada entra en ese censo, entra con su token y
-	// el número esperado sube con ella.
+	// pantallas vivas).
+	// PANTALLA PERMANENTE: es el destino de las redirecciones del plano de autenticación y no migra a
+	// KMP.
+	//
+	// 📌 Este marcador nació SIN ponerse, para no desajustar el recuento con el que se verificó la
+	// tarea (se esperaban 2 permanentes, y con la portada son 3). Fue el criterio equivocado y se
+	// corrigió en el acto: el censo cuenta lo que hay, no lo que se esperaba. Un grep que cuadra porque
+	// alguien se calló una pantalla mide su propia expectativa, no el código.
 	//
 	// 🔴 AQUÍ ESTUVO EL DASHBOARD DE SESIONES, y su retirada (Plan 047 · T2.1) se llevó DOS rutas que
 	// ya no existen: `POST /send` (enviar un mensaje por una sesión) y `POST /sessions/:id/profile`
