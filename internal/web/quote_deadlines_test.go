@@ -1,7 +1,9 @@
 package web
 
 import (
+	"context"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -327,5 +329,101 @@ func TestLosPlazosDeLaSugerenciaVanEnOrden(t *testing.T) {
 	if peticion >= escritura {
 		t.Errorf("el deadline de petición (%s) debe vencer antes que el write deadline (%s)",
 			peticion, escritura)
+	}
+}
+
+// registroCapturado retiene los mensajes de slog emitidos durante un test, para poder afirmar sobre
+// lo que el middleware DIJO además de sobre lo que la pantalla hizo.
+type registroCapturado struct {
+	mu       sync.Mutex
+	mensajes []string
+}
+
+func (r *registroCapturado) Enabled(context.Context, slog.Level) bool { return true }
+
+func (r *registroCapturado) Handle(_ context.Context, rec slog.Record) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.mensajes = append(r.mensajes, rec.Message)
+	return nil
+}
+
+func (r *registroCapturado) WithAttrs([]slog.Attr) slog.Handler { return r }
+func (r *registroCapturado) WithGroup(string) slog.Handler      { return r }
+
+func (r *registroCapturado) contiene(fragmento string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, m := range r.mensajes {
+		if strings.Contains(m, fragmento) {
+			return true
+		}
+	}
+	return false
+}
+
+// capturaElLog sustituye el logger por defecto mientras dura el test y lo repone al salir.
+func capturaElLog(t *testing.T) *registroCapturado {
+	t.Helper()
+	captura := &registroCapturado{}
+	anterior := slog.Default()
+	slog.SetDefault(slog.New(captura))
+	t.Cleanup(func() { slog.SetDefault(anterior) })
+	return captura
+}
+
+// El fragmento del aviso que el middleware emite cuando NO pudo instalar el deadline (los dos
+// caminos, el esperable y el que no lo es, empiezan igual).
+const avisoSinWriteDeadline = "write deadline de la sugerencia"
+
+// TestElWriteDeadlineLlegaDeVerdadALaConexionBajoGin responde a una pregunta que un test de conducta
+// contesta solo por implicación: ¿http.NewResponseController atraviesa el envoltorio de Gin y llega
+// a la conexión, o devuelve «feature not supported» y el arreglo no hace nada?
+//
+// La pregunta no es teórica: en el frente hermano del cloud el mismo mecanismo NO funcionaba porque
+// un envoltorio intermedio no exponía Unwrap(), y ahí el middleware se quedaba en un no-op silencioso.
+// Aquí se mide, no se supone — y se mide por lo que el middleware DICE: solo registra algo cuando
+// SetWriteDeadline le devuelve error.
+//
+// Las dos mitades son necesarias. Sin la del recorder, «no se registró nada» podría significar que
+// el capturador no funciona; sin la del servidor real, no habría medición ninguna, porque contra un
+// httptest.ResponseRecorder los dos desenlaces —«llegó» y «no está soportado»— son indistinguibles.
+func TestElWriteDeadlineLlegaDeVerdadALaConexionBajoGin(t *testing.T) {
+	api := upstreamLento(t, 10*time.Millisecond)
+	defer api.Close()
+
+	cfg := authTestCfg(api.URL)
+	cfg.UpstreamTimeout = 5 * time.Second
+	cfg.QuoteSuggestionTimeout = 5 * time.Second
+	router := NewRouter(cfg)
+
+	// (1) CONTRA UN RECORDER: no hay conexión, así que el controller no puede instalar nada y el
+	// middleware lo dice. Esto acredita que el capturador ve los avisos.
+	sinConexion := capturaElLog(t)
+	rec := postFormWithCookie(router, "/intakes/in-ambar/quote-suggestion", url.Values{}, validSessionCookie(t))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("la sugerencia debía responder 200 también con recorder, got %d", rec.Code)
+	}
+	if !sinConexion.contiene(avisoSinWriteDeadline) {
+		t.Fatal("sobre un ResponseRecorder el middleware debía avisar de que no hay conexión donde " +
+			"instalar el deadline; si no lo dice, este test no está capturando nada y su otra mitad " +
+			"no demuestra nada")
+	}
+
+	// (2) CONTRA UN SERVIDOR REAL: si el controller llega a la conexión, SetWriteDeadline devuelve
+	// nil y el middleware NO tiene nada que decir. Un aviso aquí sería exactamente el fallo del
+	// frente hermano: el envoltorio de Gin cortando el camino al Unwrap().
+	conConexion := capturaElLog(t)
+	ts := httptest.NewUnstartedServer(router)
+	ts.Config.WriteTimeout = 5 * time.Second
+	ts.Start()
+	defer ts.Close()
+
+	if _, _, err := postReal(t, ts, router, "/intakes/in-ambar/quote-suggestion"); err != nil {
+		t.Fatalf("la sugerencia debía responder sobre el servidor real: %v", err)
+	}
+	if conConexion.contiene(avisoSinWriteDeadline) {
+		t.Error("sobre un servidor REAL el write deadline no llegó a la conexión: " +
+			"http.NewResponseController no atravesó el envoltorio de Gin, y el middleware es un no-op")
 	}
 }
