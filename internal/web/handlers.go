@@ -43,11 +43,16 @@ func NewHandler(cfg *config.Config) *Handler {
 // Que la transición se gobierne por env es lo que permite encender, apagar y comparar los dos flujos
 // en el mismo binario, sin desplegar nada distinto.
 func newAPIClient(cfg *config.Config) APIPort {
+	// El plazo del cliente de inferencia va por los DOS caminos, delegado o no: quién autentica no
+	// cambia cuánto tarda el modelo en redactar, y una rama que lo pusiera solo en uno dejaría la
+	// sugerencia rota en el otro sin que ningún test de autenticación lo notara.
+	opts := []apiclient.Option{apiclient.WithInferenceTimeout(cfg.QuoteSuggestionTimeout)}
+
 	identityURL := strings.TrimSpace(cfg.IdentityBaseURL)
 	if identityURL == "" {
-		return apiclient.New(cfg.PublicAPIBaseURL)
+		return apiclient.New(cfg.PublicAPIBaseURL, opts...)
 	}
-	client, err := apiclient.NewDelegated(cfg.PublicAPIBaseURL, identityURL)
+	client, err := apiclient.NewDelegated(cfg.PublicAPIBaseURL, identityURL, opts...)
 	if err != nil {
 		// Fail-closed en el arranque, como la allowlist de proxies y las plantillas: unas URLs con
 		// las que no se puede hablar con el plano de identidad convertirían cada login en un fallo

@@ -181,7 +181,8 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	protected.GET("/pending", h.ShowPending)
 	// Deadline por petición: acota TODA la cadena withAuthRetry hacia la API pública (H4) para que un
 	// upstream lento no cuelgue el handler más allá del presupuesto (bajo el WriteTimeout del servidor).
-	protected.Use(webgin.RequestDeadline(cfg.UpstreamTimeout))
+	// Es UNO POR RUTA y no uno para el grupo: ver requestDeadlineByRoute.
+	protected.Use(requestDeadlineByRoute(cfg))
 	// PORTADA: el índice de lo que ESTA consola conserva (plan y capacidades del tenant + accesos a las
 	// pantallas vivas).
 	// PANTALLA PERMANENTE: es el destino de las redirecciones del plano de autenticación y no migra a
@@ -268,7 +269,11 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	//
 	// Es POST aunque no escriba nada, y no es por el formulario: consume una inferencia. No es
 	// cacheable, no es gratis, y un GET lo dispararía un prefetch del navegador.
-	protected.POST("/intakes/:id/quote-suggestion", h.DoSuggestIntakeQuote)
+	//
+	// 🔴 Y ES LA ÚNICA RUTA CON PLAZOS PROPIOS, los tres (cliente HTTP, deadline de petición y write
+	// deadline). El write deadline se instala aquí como middleware de la ruta y no en el grupo:
+	// relevar al WriteTimeout del servidor es exactamente lo que el resto del BFF no debe hacer.
+	protected.POST(quoteSuggestionRoute, quoteSuggestionWriteDeadline(cfg), h.DoSuggestIntakeQuote)
 
 	// Import de catálogo (Plan 041 · T3.5), gateado por la feature `catalog_import` en la plantilla y
 	// por RequireFeature en la plataforma. El POST atiende los dos pasos —comprobar y aplicar— y cuál

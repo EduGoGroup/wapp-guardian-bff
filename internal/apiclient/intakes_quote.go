@@ -114,7 +114,13 @@ func (c *IntakesClient) SuggestIntakeQuote(ctx context.Context, accessToken, id 
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.t.HTTPClient.Do(req)
+	// 🔴 EL ÚNICO USO DE InferenceHTTPClient DE TODO EL PAQUETE, y tiene que seguir siéndolo: es la
+	// única llamada del BFF que espera a que un modelo redacte. El cliente general corta a los 15s y
+	// esta llamada tardó 24,8 / 28,4 / 29,7 / 35,5 segundos medida contra UAT el 2026-08-28, así que
+	// por el cliente general no cabe. Cambiarlo por c.t.HTTPClient devuelve el fallo que este plazo
+	// existe para quitar; usarlo en otra llamada le regala 55s a algo que no los necesita. Hay un
+	// test estructural que cuenta las apariciones de este selector: si aparece en otro sitio, falla.
+	resp, err := c.t.InferenceHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("apiclient: %s: %w", op, err)
 	}
