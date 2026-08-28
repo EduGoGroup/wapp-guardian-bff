@@ -163,30 +163,31 @@ func quoteFallbackText(reason string) string {
 // y lo que cambia es la línea del ORIGEN, no el aviso.
 //
 // ════════════════════════════════════════════════════════════════════════════
-// 🔴 DEUDA DECLARADA: LOS PLAZOS DE LOS DOS LADOS NO CUADRAN, Y ESTE ES EL LADO CORTO
+// 🔴 LOS PLAZOS DE ESTA RUTA SON PROPIOS — Y ESO ES LO QUE LA HACE POSIBLE
 // ════════════════════════════════════════════════════════════════════════════
 //
-// Medido el 2026-08-28, con los cuatro números delante:
+// Ésta es la única llamada del BFF que espera a que un modelo redacte, y con los plazos generales
+// no cabía. Medido el 2026-08-28, con los cuatro números delante:
 //
 //   - el cloud le da a ESTA llamada al modelo 48 s
 //     (`bootstrap.go:1367` → `quotetext.ConPlazo(pipeline.PlazoPorLlamadaSuelo)`, y
-//     `pipeline.go:207` dice 48 s);
-//   - el `http.Client` de este BFF corta cada llamada a los 15 s (`apiclient/transport.go:17`);
-//   - el deadline por petición del grupo `protected` son 20 s (`GUARDIAN_UPSTREAM_TIMEOUT_SECS`);
-//   - y el `WriteTimeout` del servidor, 30 s.
+//     `pipeline.go:207` dice 48 s), y en UAT tardó 24,8 / 28,4 / 29,7 / 35,5 s;
+//   - el `http.Client` general de este BFF corta cada llamada a los 15 s;
+//   - el deadline por petición del grupo `protected` son 20 s;
+//   - y el `WriteTimeout` del servidor, 30 s — que además cortaba SIN dejar pintar pantalla.
 //
-// O sea: EL BFF CORTA PRIMERO. Una inferencia que pase de ~15 s —que es el caso corriente en CPU,
-// como quedó medido en la Ola 1.7 del Plan 044— muere aquí con el aviso genérico de
-// `mapIntakeActionStatusError`, mientras el cloud sigue redactando y acaba devolviendo un 200 que
-// ya no escucha nadie. La dueña no pierde nada (esta puerta no escribe), pero se queda sin la
-// sugerencia y sin saber por qué.
+// O sea: EL BFF CORTABA PRIMERO, siempre. Hoy los tres plazos de esta ruta —y solo de ésta— son
+// 55 s / 58 s / 60 s: el cliente de inferencia del apiclient
+// (`Transport.InferenceHTTPClient`), el deadline que instala `requestDeadlineByRoute` y el write
+// deadline de `quoteSuggestionWriteDeadline`. Los tres viven en `internal/web/quote_deadlines.go`
+// con su razonamiento; ninguno de los generales se movió.
 //
-// NO SE ARREGLA AQUÍ, y no es pereza: `defaultTimeout` es del transporte COMPARTIDO y subirlo le
-// daría 48 s a todas las llamadas del BFF, que es justo lo que ese timeout existe para impedir.
-// Lo que hace falta es un plazo POR LLAMADA en el apiclient (o una env var propia para esta ruta)
-// más un `UpstreamTimeout` que lo cubra sin pasarse del `WriteTimeout` — tres piezas coordinadas,
-// que es una decisión de la ola, no de esta tarea. Mientras tanto la pantalla avisa de que puede
-// tardar, que es lo único honesto que se puede decir sin tocar los plazos.
+// 🔴 HUECO DECLARADO, y es consecuencia del plazo largo, no un descuido: con 55 s de llamada bajo
+// un deadline de petición de 58 s, la cadena `withAuthRetry` NO tiene sitio para su reintento. Si
+// justo aquí cayera un 401, no hay presupuesto para refrescar y repetir una inferencia de 55 s —no
+// cabría bajo ningún WriteTimeout razonable—, así que la dueña vería el aviso y pulsaría otra vez.
+// Es raro por construcción: el AuthMiddleware refresca proactivamente a dos minutos del
+// vencimiento, así que un token que entra vivo a esta ruta no expira dentro de ella.
 // ════════════════════════════════════════════════════════════════════════════
 func (h *IntakesHandler) DoSuggestIntakeQuote(c *gin.Context) {
 	id, entitlements, ok := h.actionPreflight(c)

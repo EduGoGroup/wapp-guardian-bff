@@ -124,8 +124,9 @@ type DelegatedClient struct {
 // Devuelve error porque `iam.NewClient` valida las opciones ANTES de la primera llamada: una URL sin
 // esquema fallaba antes dentro del primer login, con un mensaje que parecía un problema del usuario.
 // El plazo que se le pasa es el mismo que tenía el Transport de identity (defaultTimeout), para que
-// la migración no mueva ningún reloj.
-func NewDelegated(platformBaseURL, identityBaseURL string) (*DelegatedClient, error) {
+// la migración no mueva ningún reloj. Y es el de IDENTITY, que no espera a ningún modelo: las
+// Option de aquí van al Transport de la PLATAFORMA, que es por donde sale la sugerencia.
+func NewDelegated(platformBaseURL, identityBaseURL string, opts ...Option) (*DelegatedClient, error) {
 	identity, err := iam.NewClient(iam.Options{
 		System:          SystemBFF,
 		IdentityBaseURL: identityBaseURL,
@@ -135,7 +136,7 @@ func NewDelegated(platformBaseURL, identityBaseURL string) (*DelegatedClient, er
 	if err != nil {
 		return nil, fmt.Errorf("apiclient: delegación de identidad: %w", err)
 	}
-	t := NewTransport(platformBaseURL)
+	t := NewTransport(platformBaseURL, opts...)
 	return &DelegatedClient{
 		Transport:              t,
 		DelegatedAuthenticator: NewDelegatedAuthenticator(identity, t),
