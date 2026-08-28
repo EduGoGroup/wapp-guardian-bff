@@ -417,6 +417,11 @@
             <p class="supporting">Es cosa del plan contratado, no de esta solicitud: se resuelve
                 ampliando el plan del tenant.</p>
             {{ end }}
+            {{/* SIN JAVASCRIPT (ADR-0035) NO HAY INDICADOR DE ESPERA: esto es un POST normal y la
+                 página no vuelve hasta que la plataforma contesta. Redactarlo es lo único honesto
+                 que se puede hacer sin tocar los plazos — ver la deuda declarada en el handler. */}}
+            <p class="supporting">Redactarla puede tardar unos segundos: la página se queda cargando
+                hasta que la propuesta esté. Si no llega, no ha pasado nada — vuelve a pulsar.</p>
         </form>
         {{ end }}
 

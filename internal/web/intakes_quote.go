@@ -161,6 +161,33 @@ func quoteFallbackText(reason string) string {
 //
 // 🔴 Y un modelo caído NO se pinta como error: la plataforma responde 200 con el texto determinista,
 // y lo que cambia es la línea del ORIGEN, no el aviso.
+//
+// ════════════════════════════════════════════════════════════════════════════
+// 🔴 DEUDA DECLARADA: LOS PLAZOS DE LOS DOS LADOS NO CUADRAN, Y ESTE ES EL LADO CORTO
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Medido el 2026-08-28, con los cuatro números delante:
+//
+//   - el cloud le da a ESTA llamada al modelo 48 s
+//     (`bootstrap.go:1367` → `quotetext.ConPlazo(pipeline.PlazoPorLlamadaSuelo)`, y
+//     `pipeline.go:207` dice 48 s);
+//   - el `http.Client` de este BFF corta cada llamada a los 15 s (`apiclient/transport.go:17`);
+//   - el deadline por petición del grupo `protected` son 20 s (`GUARDIAN_UPSTREAM_TIMEOUT_SECS`);
+//   - y el `WriteTimeout` del servidor, 30 s.
+//
+// O sea: EL BFF CORTA PRIMERO. Una inferencia que pase de ~15 s —que es el caso corriente en CPU,
+// como quedó medido en la Ola 1.7 del Plan 044— muere aquí con el aviso genérico de
+// `mapIntakeActionStatusError`, mientras el cloud sigue redactando y acaba devolviendo un 200 que
+// ya no escucha nadie. La dueña no pierde nada (esta puerta no escribe), pero se queda sin la
+// sugerencia y sin saber por qué.
+//
+// NO SE ARREGLA AQUÍ, y no es pereza: `defaultTimeout` es del transporte COMPARTIDO y subirlo le
+// daría 48 s a todas las llamadas del BFF, que es justo lo que ese timeout existe para impedir.
+// Lo que hace falta es un plazo POR LLAMADA en el apiclient (o una env var propia para esta ruta)
+// más un `UpstreamTimeout` que lo cubra sin pasarse del `WriteTimeout` — tres piezas coordinadas,
+// que es una decisión de la ola, no de esta tarea. Mientras tanto la pantalla avisa de que puede
+// tardar, que es lo único honesto que se puede decir sin tocar los plazos.
+// ════════════════════════════════════════════════════════════════════════════
 func (h *IntakesHandler) DoSuggestIntakeQuote(c *gin.Context) {
 	id, entitlements, ok := h.actionPreflight(c)
 	if !ok {
