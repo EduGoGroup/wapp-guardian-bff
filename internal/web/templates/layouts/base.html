@@ -37,7 +37,11 @@
         </a>
         {{ if and .IsAuthenticated (not .HideNav) }}
         <nav class="app-bar__actions">
-            <a href="/" class="btn btn--text{{ if eq .CurrentPath "/" }} btn--active{{ end }}">Sesiones</a>
+            {{/* La raíz es la PORTADA (índice de lo que esta consola conserva), no el dashboard de
+                 sesiones: eso se administra desde el Plan 047 · T2.1 en la consola del cliente. El
+                 enlace se llamaba «Sesiones» y se renombró con la retirada — un enlace que promete una
+                 pantalla que ya no está es peor que no tenerlo. */}}
+            <a href="/" class="btn btn--text{{ if eq .CurrentPath "/" }} btn--active{{ end }}">Inicio</a>
             {{/* El enlace a la bandeja solo se emite si la página resolvió las features del tenant y
                  `cart_basic` está contratada. En las páginas que no las resuelven la clave no existe,
                  se lee como falsa y el enlace no llega al HTML: fail-closed también en la navegación. */}}

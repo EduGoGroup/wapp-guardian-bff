@@ -42,13 +42,28 @@ func (v entitlementsView) Has(feature string) bool { return v.enabled[feature] }
 
 // resolveEntitlements pide las features efectivas del tenant con el token de la sesión y devuelve
 // SIEMPRE una vista usable: el fallo se traduce en la vista cero (fail-closed) más un aviso, nunca en
-// un error que tumbe la página. El dashboard debe seguir sirviendo aunque el catálogo de planes no
-// conteste, igual que ya hace cuando falla el listado de sesiones.
+// un error que tumbe la página. Una pantalla debe seguir sirviendo aunque el catálogo de planes no
+// conteste.
 //
-// El 401 no se trata aparte: withAuthRetry ya refresca y reintenta, y si aun así persiste, quien
-// decide expulsar al operador es la llamada de negocio de la página (en el dashboard, el listado de
-// sesiones), no esta consulta accesoria.
+// El 401 no se trata aquí: withAuthRetry ya refresca y reintenta, y si aun así persiste, quien decide
+// expulsar al operador es la llamada de negocio de la página, no esta consulta accesoria.
+//
+// 🔴 LA PORTADA ES LA EXCEPCIÓN, y no por gusto. Hasta el Plan 047 · T2.1 su llamada de negocio era el
+// listado de sesiones, y era ESA la que echaba al login ante un 401 persistente. Al retirarse el
+// dashboard, la portada se quedó con una sola llamada —ésta— y con ella se habría ido esa expulsión:
+// un token vigente en el reloj pero repudiado por la plataforma habría pintado una portada degradada
+// en vez de mandar a iniciar sesión. Por eso existe resolveEntitlementsWithError: la portada lee el
+// error y decide, y el resto de pantallas —que sí tienen su propia llamada de negocio— siguen usando
+// esta, que lo traga.
 func resolveEntitlements(c *gin.Context, auth *AuthHandler, api EntitlementsReader) entitlementsView {
+	view, _ := resolveEntitlementsWithError(c, auth, api)
+	return view
+}
+
+// resolveEntitlementsWithError es resolveEntitlements devolviendo además el fallo que la vista
+// degradada esconde. La vista que devuelve es SIEMPRE usable, error o no: quien lo ignore se comporta
+// exactamente como antes.
+func resolveEntitlementsWithError(c *gin.Context, auth *AuthHandler, api EntitlementsReader) (entitlementsView, error) {
 	var ent *apiclient.Entitlements
 	err := auth.withAuthRetry(c, func(accessToken string) error {
 		var gerr error
@@ -57,7 +72,7 @@ func resolveEntitlements(c *gin.Context, auth *AuthHandler, api EntitlementsRead
 	})
 	if err != nil || ent == nil {
 		slog.Warn("no se pudieron leer las features del tenant (modo degradado; el gate cierra)", "error", err)
-		return entitlementsView{Notice: entitlementsNotice(err)}
+		return entitlementsView{Notice: entitlementsNotice(err)}, err
 	}
 
 	enabled := make(map[string]bool, len(ent.Features))
@@ -69,7 +84,7 @@ func resolveEntitlements(c *gin.Context, auth *AuthHandler, api EntitlementsRead
 		Features: ent.Features,
 		Resolved: true,
 		enabled:  enabled,
-	}
+	}, nil
 }
 
 // entitlementsNotice traduce el fallo a un aviso legible, sin filtrar el detalle del upstream (mismo

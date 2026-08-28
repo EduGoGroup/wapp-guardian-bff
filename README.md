@@ -5,10 +5,18 @@ consola operativa mínima, primer consumidor real de la API pública `/api/v1` d
 
 ## Qué es
 
-Consola web BFF (Back-For-Frontend) de **operación** de wApp: permite listar las sesiones
-(teléfonos) vinculadas del tenant, enviar un mensaje de WhatsApp por una de ellas, gestionar
-menús/encuestas (`flows` versionados) y sus disparadores (`triggers`), y ver el **plan y las
-capacidades contratadas** del tenant —que además deciden qué secciones se pintan—. Es la **implementación de
+Consola web BFF (Back-For-Frontend) de **operación** de wApp: permite atender la bandeja de
+solicitudes que llegan por WhatsApp, gestionar menús/encuestas (`flows` versionados) y sus
+disparadores (`triggers`), importar el catálogo, configurar el puente CRM y las variables de empresa,
+y ver el **plan y las capacidades contratadas** del tenant —que además deciden qué secciones se
+pintan—.
+
+> 🔴 **Las SESIONES ya no se administran aquí.** Listar los teléfonos vinculados, cambiarles el perfil
+> `active|passive` y enviar un mensaje se mudaron a la **consola del cliente**
+> (`guardian/wapp-client-console`) con el **Plan 047 · T2.1**, y se retiraron de este BFF en el mismo
+> ciclo: dos copias de la misma pantalla divergen, y la que sigue viva contesta antes que la
+> documentación. La portada lo dice, y ofrece el enlace solo si `WAPP_GUARDIAN_CLIENT_CONSOLE_URL`
+> está puesta (vacía por defecto: en UAT no hay URL pública que publicar). Es la **implementación de
 referencia** de un cliente de `/api/v1` (Pieza 04) — su contrato consumido, documentado en
 [`docs/contrato-api-publica.md`](docs/contrato-api-publica.md), sirve de plantilla para futuros
 clientes Android/iOS.
@@ -50,7 +58,7 @@ Navegador ──HTTPS──►  wapp-guardian-bff  ──HTTPS Bearer──►  
   sí se puede fijar porque no hay SSE de larga vida: el QR es local en el Edge).
 - **UI Material Design 3** propia (paleta teal/verde), CSS embebido y servido mismo-origen
   (`internal/web/static/css/app.css`), sin CDNs — encaja con la CSP.
-- **Gate por capacidad, server-side**: el dashboard lee `GET /api/v1/entitlements` y envuelve las
+- **Gate por capacidad, server-side**: la portada lee `GET /api/v1/entitlements` y envuelve las
   secciones que dependen de una feature en `{{ if $.Entitlements.Has "<feature>" }}`. Sin la feature
   el bloque **no se emite en el HTML** (no se esconde con CSS ni JS), y si el endpoint falla la vista
   es **fail-closed**: se degrada con un aviso y ningún bloque gateado sale
@@ -95,9 +103,8 @@ internal/
 ├── apiclient/                — cliente HTTP server-to-server contra /api/v1
 │   ├── transport.go          — request autenticada, ErrUnauthorized/APIError, StatusCodeOf
 │   ├── auth.go               — login/refresh/logout (AuthResult y sus DTO)
-│   ├── dashboard.go          — sessions + perfil de sesión (active|passive) + messages
 │   ├── editor.go             — flows (listar/ver/publicar) + triggers (listar/crear/borrar)
-│   ├── entitlements.go       — GET /api/v1/entitlements (plan + features efectivas)
+│   ├── entitlements.go       — EntitlementsClient: GET /api/v1/entitlements (plan + features)
 │   └── identity.go/exchange.go/delegated.go — identity-api y canje (delegación opcional)
 └── web/
     ├── server.go             — NewRouter (Gin), rutas, http.Server endurecido
@@ -109,11 +116,11 @@ internal/
     ├── render.go             — cookie de sesión (set/clear/maxAge) y render()
     ├── session.go            — sessionData + parse-unverified+exp de los claims
     ├── auth_handler.go       — login/logout, AuthMiddleware, refresh proactivo/pasivo, withAuthRetry
-    ├── dashboard_handler.go  — listado de sesiones + envío de mensaje
+    ├── home_handler.go       — PORTADA: plan/capacidades + accesos a lo que esta consola conserva
     ├── editor_handler.go     — flows (publicar versión) + triggers (crear/borrar)
     ├── entitlements.go       — vista de plan/features (Has) y gate fail-closed
     ├── static/css/app.css    — design system MD3 embebido (//go:embed)
-    └── templates/            — layout base.html + páginas (login, dashboard, flows, triggers)
+    └── templates/            — layout base.html + páginas (login, home, intakes, flows, triggers…)
 docs/contrato-api-publica.md — contrato consumido de /api/v1 (referencia para otros clientes)
 ```
 

@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// intakesGateMarker es el ancla del bloque gateado por `cart_basic` en el dashboard, e
+// intakesGateMarker es el ancla del bloque gateado por `cart_basic` en la portada, e
 // intakesListMarker la del listado. Si el gate cierra, estas cadenas no aparecen en el HTML: eso es
 // lo que distingue un gate server-side de un `display:none`.
 const (
@@ -149,16 +149,14 @@ func TestIntakesListRejectedFilter(t *testing.T) {
 	}
 }
 
-// TestIntakesGateOmitsBlocksWithoutFeature (criterio de aceptación): sin `cart_basic`, ni el
-// dashboard ni la propia pantalla emiten el bloque de solicitudes. Se verifica sobre el HTML
-// RENDERIZADO, que es donde el gate importa.
+// TestIntakesGateOmitsBlocksWithoutFeature (criterio de aceptación): sin `cart_basic`, ni la portada
+// ni la propia pantalla emiten el bloque de solicitudes. Se verifica sobre el HTML RENDERIZADO, que
+// es donde el gate importa.
 func TestIntakesGateOmitsBlocksWithoutFeature(t *testing.T) {
 	api := intakesAPI([]string{"menu", "llm_intent"}, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/sessions" {
-			_, _ = io.WriteString(w, `[]`)
-			return
-		}
-		// La bandeja NO debe consultarse siquiera cuando la feature no está.
+		// La bandeja NO debe consultarse siquiera cuando la feature no está. La rama que atendía
+		// `/api/v1/sessions` se fue con el dashboard (Plan 047 · T2.1): ahora esa ruta también cae
+		// aquí, que es donde debe caer si alguien la resucita.
 		t.Errorf("sin cart_basic no debía llamarse a %s", r.URL.Path)
 		w.WriteHeader(http.StatusForbidden)
 	})
@@ -169,14 +167,15 @@ func TestIntakesGateOmitsBlocksWithoutFeature(t *testing.T) {
 
 	dash := getWithCookie(router, "/", cookie).Body.String()
 	if strings.Contains(dash, intakesGateMarker) {
-		t.Error("sin cart_basic, el dashboard NO debía emitir el bloque de solicitudes")
+		t.Error("sin cart_basic, la portada NO debía emitir el bloque de solicitudes")
 	}
 	if strings.Contains(dash, "Abrir la bandeja") || strings.Contains(dash, `href="/intakes"`) {
-		t.Error("sin la feature no debe quedar rastro de la bandeja en el HTML del dashboard")
+		t.Error("sin la feature no debe quedar rastro de la bandeja en el HTML de la portada")
 	}
-	// El gate no se lleva por delante lo que no depende de la feature.
-	if !strings.Contains(dash, "Enviar un mensaje") {
-		t.Error("las secciones base del dashboard debían seguir emitiéndose")
+	// El gate no se lleva por delante lo que no depende de la feature. El testigo era «Enviar un
+	// mensaje» hasta el Plan 047 · T2.1; con el envío retirado, lo es la tarjeta del plan.
+	if !strings.Contains(dash, "Plan y capacidades") {
+		t.Error("las secciones base de la portada debían seguir emitiéndose")
 	}
 
 	list := getWithCookie(router, "/intakes", cookie).Body.String()
@@ -188,21 +187,17 @@ func TestIntakesGateOmitsBlocksWithoutFeature(t *testing.T) {
 	}
 }
 
-// TestIntakesGateEmitsBlocksWithFeature: con `cart_basic`, el bloque del dashboard y el enlace de la
+// TestIntakesGateEmitsBlocksWithFeature: con `cart_basic`, el bloque de la portada y el enlace de la
 // barra sí llegan al HTML.
 func TestIntakesGateEmitsBlocksWithFeature(t *testing.T) {
-	api := intakesAPI([]string{"cart_basic", "menu"}, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/sessions" {
-			_, _ = io.WriteString(w, `[]`)
-			return
-		}
+	api := intakesAPI([]string{"cart_basic", "menu"}, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
 	defer api.Close()
 
 	out := getWithCookie(NewRouter(authTestCfg(api.URL)), "/", validSessionCookie(t)).Body.String()
 	if !strings.Contains(out, intakesGateMarker) {
-		t.Error("con cart_basic, el dashboard debía emitir el bloque de solicitudes")
+		t.Error("con cart_basic, la portada debía emitir el bloque de solicitudes")
 	}
 	if !strings.Contains(out, `<a href="/intakes" class="btn btn--text`) {
 		t.Error("con la feature, la barra superior debía ofrecer el enlace a la bandeja")

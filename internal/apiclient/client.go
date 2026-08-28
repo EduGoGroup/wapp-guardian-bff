@@ -4,7 +4,7 @@ package apiclient
 type Client struct {
 	*Transport
 	*AuthClient
-	*DashboardClient
+	*EntitlementsClient
 	*EditorClient
 	*IntakesClient
 	*TenantVariablesClient
@@ -18,7 +18,7 @@ func New(baseURL string) *Client {
 	return &Client{
 		Transport:             t,
 		AuthClient:            NewAuthClient(t),
-		DashboardClient:       NewDashboardClient(t),
+		EntitlementsClient:    NewEntitlementsClient(t),
 		EditorClient:          NewEditorClient(t),
 		IntakesClient:         NewIntakesClient(t),
 		TenantVariablesClient: NewTenantVariablesClient(t),

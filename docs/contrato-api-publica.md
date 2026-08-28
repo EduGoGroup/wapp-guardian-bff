@@ -2,9 +2,14 @@
 
 > Documenta cómo **este BFF** (`wapp-guardian-bff`) consume la API pública REST de
 > `cloud/wapp-cloud-platform` (`:8103`, Plan 018). Es la implementación de referencia: describe el
-> contrato **tal como el código lo usa hoy** (`internal/apiclient/{auth.go,dashboard.go,editor.go,
-> entitlements.go}`), para que un futuro cliente Android/iOS lo replique sin tener que leer el BFF
-> entero. Fuente de
+> contrato **tal como el código lo usa hoy** (`internal/apiclient/{auth.go,editor.go,intakes.go,
+> entitlements.go,…}`), para que un futuro cliente Android/iOS lo replique sin tener que leer el BFF
+> entero.
+>
+> 🔴 **Las tres rutas de SESIONES ya no las consume este BFF** (Plan 047 · T2.1): se administran en
+> `guardian/wapp-client-console`. Se quedan documentadas aquí —la plataforma las sirve igual y este
+> documento es la plantilla de cualquier cliente—, pero con la columna de cliente marcada: lo que
+> describen ya no se puede comprobar contra el código de este repo. Fuente de
 > verdad del contrato real es siempre la propia API pública; este documento describe **el
 > subconjunto y la forma en que este BFF lo consume**.
 
@@ -67,7 +72,7 @@ Request (`refreshRequest`, `auth.go:30`): `{ "refresh_token": "…" }`. Response
 `AuthResult` que login (nuevo `access_token`+`refresh_token`).
 
 **Patrón refresh + reintento** (`internal/web/auth_handler.go:190`, función `withAuthRetry`,
-reusada por dashboard/flows/triggers/entitlements): toda llamada de negocio se ejecuta primero con el
+reusada por portada/flows/triggers/intakes/entitlements): toda llamada de negocio se ejecuta primero con el
 `access_token` vigente; si la API responde `401` (`apiclient.ErrUnauthorized`), el BFF llama
 `Refresh` una vez, re-emite la cookie (`refreshSession`, `internal/web/auth_handler.go:159`) y
 **reintenta la llamada original una sola vez**. Si el refresh también falla, el error original se
@@ -84,15 +89,15 @@ local.
 
 Todas las llamadas de esta sección llevan `Authorization: Bearer <access_token>`
 (`newAuthedRequest`, `transport.go:78`) y usan el patrón refresh+reintento de §2 cuando el
-llamador es un handler del dashboard/editor.
+llamador es un handler de la consola (portada, bandeja, editor…).
 
 | Método y ruta | Request | Response 2xx | Códigos de error relevantes | Cliente (`apiclient`) |
 |---|---|---|---|---|
-| `GET /api/v1/sessions` | — | `[]Session{session_id, edge_id, state, profile, self_pn?, last_connected_at?, last_seen_at?}` | `401` | `ListSessions` (`dashboard.go`) |
-| `POST /api/v1/sessions/{id}/profile` | `{profile}` con `profile ∈ {active, passive}` (`setSessionProfileRequest`) | `{session_id, profile}` (200; este BFF descarta el body y re-lista) | `400` perfil inválido · `401` · `404` sesión ajena/inexistente (opaco) · `500` | `SetSessionProfile` (`dashboard.go`) |
+| `GET /api/v1/sessions` | — | `[]Session{session_id, edge_id, state, profile, self_pn?, last_connected_at?, last_seen_at?}` | `401` | 🔴 **ya no en este BFF** (047 · T2.1) — `wapp-client-console` |
+| `POST /api/v1/sessions/{id}/profile` | `{profile}` con `profile ∈ {active, passive}` (`setSessionProfileRequest`) | `{session_id, profile}` (200; el cliente descarta el body y re-lista) | `400` perfil inválido · `401` · `404` sesión ajena/inexistente (opaco) · `500` | 🔴 **ya no en este BFF** (047 · T2.1) — `wapp-client-console` |
 | ~~`POST /api/v1/sessions/{id}/role`~~ | 🔴 **RETIRADA** de la plataforma (migración `0064`), junto con el campo `role` de la respuesta de `GET /api/v1/sessions`. Su ciclo de deprecación se cerró sin esperar: al comprobarlo, **no había ningún consumidor** de esa ruta fuera de la propia plataforma. | — | — | — |
-| `POST /api/v1/messages` | `{session_id, to, text}` (`sendMessageRequest`) | `SendResult{acked_command_id, ok, error?}` (200 **incluso si `ok:false`**) | `400` datos inválidos · `401` · `404` sesión ajena · `502` Edge offline · `504` timeout · `500` | `SendMessage` (`dashboard.go:88`) |
-| `GET /api/v1/entitlements` | — | `Entitlements{plan, features[], cache_ttl_seconds}` | `401` · `403` token sin el scope `entitlements.read` | `GetEntitlements` (`entitlements.go:26`) |
+| `POST /api/v1/messages` | `{session_id, to, text}` (`sendMessageRequest`) | `SendResult{acked_command_id, ok, error?}` (200 **incluso si `ok:false`**) | `400` datos inválidos · `401` · `404` sesión ajena · `502` Edge offline · `504` timeout · `500` | 🔴 **ya no en este BFF** (047 · T2.1) — `wapp-client-console` |
+| `GET /api/v1/entitlements` | — | `Entitlements{plan, features[], cache_ttl_seconds}` | `401` · `403` token sin el scope `entitlements.read` | `GetEntitlements` (`entitlements.go`) |
 | `GET /api/v1/flows` | — | `[]FlowSummary{flow_id, version, created_at?}` | `401` | `ListFlows` (`editor.go:102`) |
 | `GET /api/v1/flows/{id}` | — | `model.Flow` crudo (`{flow_id, version, initial, nodes}`), devuelto sin re-serializar | `401` · `404` (ajeno/inexistente, opaco) | `GetFlow` (`editor.go:123`) |
 | `POST /api/v1/flows` | `{definition: <model.Flow>}` (**anidado**, `publishFlowRequest`) | `PublishFlowResult{flow_id, version}` (201) | `401` · `4xx` rechazo de validación (mensaje mostrable) · `5xx` | `PublishFlow` (`editor.go:144`) |
@@ -107,7 +112,7 @@ Notas de contrato:
   está en la lista, no está contratado. El tenant no viaja ni en la petición ni en la respuesta (sale
   del token, INV-8). El `403` por falta de scope es un caso esperado, no un fallo de plataforma: se
   distingue con `StatusCodeOf`. **Este BFF resuelve por petición, deliberadamente**: pide el endpoint
-  en cada render del dashboard, así que no necesita `cache_ttl_seconds` —el gate va siempre fresco—.
+  en cada render de cada pantalla, así que no necesita `cache_ttl_seconds` —el gate va siempre fresco—.
   El TTL está en el contrato para los clientes que **sí** cachean (una app móvil, p. ej.): respétalo
   si guardas la respuesta. Y ojo con el alcance: en este BFF las features deciden lo que se **pinta**
   (§6), nunca lo que se **puede** —eso lo resuelve el servidor en cada llamada—.
@@ -117,12 +122,12 @@ Notas de contrato:
 - **Triggers no tienen edición in-place**: no hay `PUT`. "Editar" = `DELETE` + `POST`.
 - **Perfil de sesión** (`POST /api/v1/sessions/{id}/profile`, scope `sessions.write`, ADR-0027 ·
   Plan 046 · T1.2): `active` dispara triggers/auto-responde; `passive` solo transporta salida. El
-  tenant sale del token (INV-8) y el `session_id` del path; el body solo lleva `{profile}`. Este BFF
-  valida el perfil client-side antes de enviar (ver §4) y tras el 200 re-lista las sesiones (el
-  perfil nuevo se ve en la tabla).
+  tenant sale del token (INV-8) y el `session_id` del path; el body solo lleva `{profile}`. El cliente
+  valida el perfil antes de enviar y tras el 200 re-lista las sesiones (el perfil nuevo se ve en la
+  tabla). 🔴 Ese cliente ya no es este BFF, sino `wapp-client-console` (Plan 047 · T2.1).
   - **Los identificadores viajan en inglés** (`active`/`passive`); «activa»/«pasiva» es SOLO el
-    vocabulario del dueño en la vista (`profileLabel`, `dashboard_handler.go`). Que el `value` del
-    `<option>` y su texto no coincidan es deliberado.
+    vocabulario del dueño en la vista. Que el `value` del `<option>` y su texto no coincidan es
+    deliberado.
   - **Sustituye al rol `bot|passive`** del Plan 020. `Session.Role` sigue en el DTO como respaldo de
     LECTURA mientras dure la deprecación —`Session.EffectiveProfile` traduce `bot`→`active`— porque
     el BFF y la plataforma no se despliegan a la vez. No se escribe por la ruta vieja.
@@ -153,9 +158,10 @@ sin acoplarse al string del error:
    termina en `/login`.
 2. **`*APIError{Op, StatusCode}`** (`transport.go:36`) — cualquier otro no-2xx en un endpoint de
    **lectura**, o un `5xx`/error genérico en uno de **escritura**. **No** arrastra el cuerpo de la
-   respuesta: el mensaje al usuario es genérico y fijo por código (mapeo en
-   `internal/web/dashboard_handler.go:83` para `SendMessage`: `400`→"datos inválidos", `404`→"sesión
-   ajena", `502`→"desconectado", `504`→"tardó demasiado", resto→genérico). El código se extrae con
+   respuesta: el mensaje al usuario es genérico y fijo por código (el mapeo de `SendMessage` vivía en
+   `internal/web/dashboard_handler.go` y se fue con la retirada del 047 · T2.1 —`400`→"datos
+   inválidos", `404`→"sesión ajena", `502`→"desconectado", `504`→"tardó demasiado", resto→genérico—;
+   el patrón sigue vivo en los handlers que quedan). El código se extrae con
    `apiclient.StatusCodeOf(err)` (`transport.go:54`).
 3. **`*RejectionError{Op, StatusCode, Message}`** (`editor.go:55`) — **solo** en endpoints de
    **escritura** (`PublishFlow`, `CreateTrigger`) y **solo** para `4xx` distinto de `401`. Aquí el
@@ -171,10 +177,10 @@ mensaje seguro de exponer.
 ### Ack asimétrico de `POST /api/v1/messages`
 
 `SendMessage` devuelve **200** con `{ok: false, error: "..."}` cuando el Edge recibió el comando
-pero **no pudo entregarlo** — es distinto de un error de transporte. Este BFF trata `ok:false`
-como fallo de negocio pero **no expone `result.Error`** al usuario (mensaje fijo genérico,
-`internal/web/dashboard_handler.go:94`): el detalle del Edge no se considera "contenido propio del
-operador".
+pero **no pudo entregarlo** — es distinto de un error de transporte. El cliente debe tratar `ok:false`
+como fallo de negocio y **no exponer `result.Error`** al usuario (mensaje fijo genérico): el detalle
+del Edge no se considera "contenido propio del operador". 🔴 Quien lo implementa ya no es este BFF
+sino `wapp-client-console` (Plan 047 · T2.1); la regla se queda escrita porque es del contrato.
 
 ## 5. Diferencia con la mini-web local del Edge (`wapp-ctl`)
 
@@ -200,10 +206,10 @@ con `wapp-ctl` en la máquina del Edge, no con esta consola ni con `/api/v1`.
 
 ## 6. Cómo este BFF usa las features en la UI (Plan 040 · Ola 2)
 
-Las features de §3 alimentan dos cosas en el dashboard, y conviene no confundirlas:
+Las features de §3 alimentan dos cosas en la UI, y conviene no confundirlas:
 
 1. **Los chips informativos** — el plan y una etiqueta por feature efectiva
-   (`templates/pages/dashboard.html:13-25`). Si el endpoint no se pudo consultar, en su lugar sale un
+   (`templates/pages/home.html`). Si el endpoint no se pudo consultar, en su lugar sale un
    aviso de modo degradado; la página **no** se cae por eso.
 2. **El gate de secciones** — un bloque de UI que depende de una capacidad se emite solo si la
    feature está contratada:
@@ -214,13 +220,22 @@ Las features de §3 alimentan dos cosas en el dashboard, y conviene no confundir
 
    El gate vive en la **plantilla**, no en CSS ni en JS: sin la feature el bloque **no llega al
    HTML**, así que no hay nada que destapar con el inspector (y encaja con la CSP sin
-   `'unsafe-inline'`). Hoy lo usa la sección del clasificador de intenciones
-   (`templates/pages/dashboard.html:124`, feature `llm_intent`).
+   `'unsafe-inline'`). En la portada (`templates/pages/home.html`) lo usan los accesos a la bandeja
+   (`cart_basic`), al import de catálogo (`catalog_import`), a integraciones (`crm_bridge`) y el
+   bloque del clasificador (`llm_intent`).
 
 **Fail-closed**: `resolveEntitlements` nunca devuelve error — ante un fallo, un `403` o un endpoint
-que aún no exista, devuelve la vista cero (`internal/web/entitlements.go:60`), y `Has` sobre esa
-vista responde `false` para todo (`internal/web/entitlements.go:41`). Una consola que enseña de menos es
-preferible a una que promete lo que el tenant no ha contratado.
+que aún no exista, devuelve la vista cero (`internal/web/entitlements.go`), y `Has` sobre esa
+vista responde `false` para todo. Una consola que enseña de menos es preferible a una que promete lo
+que el tenant no ha contratado.
+
+🔴 **Una excepción, y no abre ningún gate**: en la PORTADA, un `401` que sobrevive al refresh echa al
+login (`resolveEntitlementsWithError`, `internal/web/home_handler.go`). Existe porque hasta el Plan
+047 · T2.1 quien expulsaba era el listado de sesiones —la llamada de negocio de esa página—, y al
+retirarse el dashboard la portada se quedó con una sola llamada, que traga el `401` a propósito. Un
+cliente que replique el patrón necesita la misma regla en alguna parte: si NINGUNA de sus llamadas
+distingue «no se pudo preguntar» de «tu sesión ya no vale», el usuario navega una consola muerta hasta
+que el token vence.
 
 Un cliente móvil que replique el patrón debería replicar también la regla: **pintar por feature es
 cortesía de UI, no control de acceso.** La autorización real la aplica el middleware `RequireFeature`
