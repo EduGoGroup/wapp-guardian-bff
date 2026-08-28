@@ -377,11 +377,12 @@ func TestQuoteOriginNeverInventsAProvenance(t *testing.T) {
 // es el `{{ if .Entitlements.Has "cart_basic" }}` de la plantilla.
 func renderIntakeDetailTemplate(t *testing.T, ent entitlementsView) string {
 	t.Helper()
-	tmpl, err := template.New("").Funcs(template.FuncMap{
-		"hasPrefix":   strings.HasPrefix,
-		"statusLabel": intakeStatusLabel,
-		"yield":       func(string, any) (template.HTML, error) { return "", nil },
-	}).ParseFS(templatesFS, "templates/layouts/*.html", "templates/pages/*.html")
+	// Los helpers salen de funcsDePlantilla, el MISMO sitio que usa el router: esta copia local del
+	// FuncMap se quedó atrás al añadir `cuenta` y reventó el gate con «function "cuenta" not defined».
+	// Sólo `yield` se stubea, que es lo único que legítimamente difiere aquí.
+	tmpl, err := template.New("").
+		Funcs(funcsDePlantilla(func(string, any) (template.HTML, error) { return "", nil })).
+		ParseFS(templatesFS, "templates/layouts/*.html", "templates/pages/*.html")
 	if err != nil {
 		t.Fatalf("compilar plantillas: %v", err)
 	}

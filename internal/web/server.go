@@ -35,6 +35,30 @@ var appCSS []byte
 
 // NewRouter construye el *gin.Engine completo (plantillas + rutas + middlewares) sin dependencias
 // externas opcionales. Se expone para que los tests lo monten con httptest sin levantar un puerto real.
+// funcsDePlantilla es el ÚNICO sitio donde se declaran los helpers de plantilla. Existe porque no lo
+// era: `intakes_quote_test.go` compilaba las plantillas con su propia copia del FuncMap, y al añadir
+// `cuenta` esa copia se quedó atrás y reventó el gate con «function "cuenta" not defined». El arreglo
+// no fue añadir la clave en los dos sitios —eso deja la copia viva y volvería a divergir—, sino que
+// no haya dos sitios.
+//
+// `yield` viaja como parámetro y no como clave fija porque es lo ÚNICO que legítimamente difiere: el
+// router necesita cerrar sobre la plantilla ya compilada y los tests lo stubean.
+func funcsDePlantilla(yield func(string, any) (template.HTML, error)) template.FuncMap {
+	return template.FuncMap{
+		// hasPrefix resalta el enlace activo de la navegación (app-bar): la sección se decide por el
+		// prefijo del path (p. ej. "/flows/menu" activa "Flujos").
+		"hasPrefix": strings.HasPrefix,
+		// statusLabel traduce la clave del ciclo de vida de una solicitud al nombre de negocio. Es
+		// presentación pura: lo que se puede hacer con ese estado lo dice la plataforma, no esta tabla.
+		"statusLabel": intakeStatusLabel,
+		// cuenta arma «1 revisión» / «2 revisiones» sin que el singular se cuele en plural. Ya existía
+		// para los plazos de integrations_handler.go; lo que faltaba era exponerlo a las plantillas,
+		// y por eso una de ellas decía «hay 1 revisiones más» desde que se escribió.
+		"cuenta": cuenta,
+		"yield":  yield,
+	}
+}
+
 func NewRouter(cfg *config.Config) *gin.Engine {
 	router, _ := newRouterWithLimiter(cfg)
 	return router
@@ -81,25 +105,17 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	// global mutable): el helper `yield` cierra sobre `tmpl`, que se asigna tras el parse, así cada router
 	// tiene su propio motor y los tests pueden montar routers en paralelo sin compartir estado.
 	var tmpl *template.Template
-	root := template.New("").Funcs(template.FuncMap{
-		// hasPrefix resalta el enlace activo de la navegación (app-bar): la sección se decide por el
-		// prefijo del path (p. ej. "/flows/menu" activa "Flujos").
-		"hasPrefix": strings.HasPrefix,
-		// statusLabel traduce la clave del ciclo de vida de una solicitud al nombre de negocio. Es
-		// presentación pura: lo que se puede hacer con ese estado lo dice la plataforma, no esta tabla.
-		"statusLabel": intakeStatusLabel,
-		"yield": func(name string, data interface{}) (template.HTML, error) {
-			if name == "" {
-				return "", nil
-			}
-			var buf bytes.Buffer
-			if err := tmpl.ExecuteTemplate(&buf, name, data); err != nil {
-				slog.Error("error al renderizar plantilla yield", "nombre", name, "error", err)
-				return "", err
-			}
-			return template.HTML(buf.String()), nil // #nosec G203 -- fragmento de plantilla propia.
-		},
-	})
+	root := template.New("").Funcs(funcsDePlantilla(func(name string, data any) (template.HTML, error) {
+		if name == "" {
+			return "", nil
+		}
+		var buf bytes.Buffer
+		if err := tmpl.ExecuteTemplate(&buf, name, data); err != nil {
+			slog.Error("error al renderizar plantilla yield", "nombre", name, "error", err)
+			return "", err
+		}
+		return template.HTML(buf.String()), nil // #nosec G203 -- fragmento de plantilla propia.
+	}))
 	tmpl, err := root.ParseFS(templatesFS,
 		"templates/layouts/*.html",
 		"templates/pages/*.html",

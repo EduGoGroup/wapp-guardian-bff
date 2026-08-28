@@ -702,8 +702,15 @@ func TestDraftWarnsWhenTheInterpretationIsNoLongerTheLatest(t *testing.T) {
 	defer api.Close()
 
 	out := getWithCookie(NewRouter(authTestCfg(api.URL)), "/intakes/in-ambar", validSessionCookie(t)).Body.String()
-	if !strings.Contains(out, "Después de esta interpretación hay 1 revisiones más") {
+	if !strings.Contains(out, "Después de esta interpretación hay 1 revisión más") {
 		t.Error("con revisiones posteriores hay que avisar de que este bloque no es lo vigente")
+	}
+	// 🔴 El aserto de arriba decía «1 revisiones» y CONGELABA el defecto: el aviso se escribió sin
+	// concordancia de plural y el test lo fijó tal cual. Este hermano impide que vuelva, y mira la
+	// forma equivocada en vez de la correcta —que ya está arriba— porque es la que reaparece si
+	// alguien devuelve `{{ .Newer }}` crudo a la plantilla.
+	if strings.Contains(out, "1 revisiones") {
+		t.Error("con n=1 el aviso tiene que decir «1 revisión», no «1 revisiones»")
 	}
 }
 
