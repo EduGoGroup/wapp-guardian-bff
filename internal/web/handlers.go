@@ -19,7 +19,7 @@ type Handler struct {
 	refresh *sharedweb.RefreshGroup[*apiclient.AuthResult]
 
 	*AuthHandler
-	*DashboardHandler
+	*HomeHandler
 	*EditorHandler
 	*IntakesHandler
 	*TenantVariablesHandler
@@ -64,7 +64,7 @@ func newAPIClient(cfg *config.Config) APIPort {
 func NewHandlerWithAPI(cfg *config.Config, api APIPort) *Handler {
 	refresh := sharedweb.NewRefreshGroup[*apiclient.AuthResult]()
 	ah := NewAuthHandler(cfg, api, refresh)
-	dh := NewDashboardHandler(cfg, api, ah)
+	hh := NewHomeHandler(cfg, api, ah)
 	eh := NewEditorHandler(cfg, api, ah)
 	ih := NewIntakesHandler(cfg, api, ah)
 	vh := NewTenantVariablesHandler(cfg, api, ah)
@@ -75,7 +75,7 @@ func NewHandlerWithAPI(cfg *config.Config, api APIPort) *Handler {
 		api:                    api,
 		refresh:                refresh,
 		AuthHandler:            ah,
-		DashboardHandler:       dh,
+		HomeHandler:            hh,
 		EditorHandler:          eh,
 		IntakesHandler:         ih,
 		TenantVariablesHandler: vh,

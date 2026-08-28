@@ -20,10 +20,31 @@ ve el token). **No** empareja teléfonos ni custodia DEK.
 | Área | Qué hace | Endpoint `/api/v1` consumido |
 |---|---|---|
 | Login/sesión | Login server-side, JWT en cookie HttpOnly, refresh+reintento, logout | `auth/{login,refresh,logout}` (plataforma) o identity + `auth/exchange` si la delegación está encendida |
-| Sesiones | Lista los teléfonos/sesiones vinculados del tenant (self_pn/state/profile) y cambia el **perfil** `active|passive` por sesión — «activa»/«pasiva» de cara al dueño (ADR-0027) | `GET sessions`, `POST sessions/{id}/profile` |
-| Enviar mensaje | Elegir sesión + destino + texto y despachar | `POST messages` |
+| ~~Sesiones~~ | 🔴 **RETIRADO (Plan 047 · T2.1)** — se administran en `guardian/wapp-client-console` | — |
+| ~~Enviar mensaje~~ | 🔴 **RETIRADO (Plan 047 · T2.1)** — se administra en `guardian/wapp-client-console` | — |
+| Portada | Índice de lo que ESTA consola conserva: plan/capacidades + accesos, y el aviso de dónde se administran ahora las sesiones | `GET entitlements` |
 | Editar menú/encuestas | Listar/ver flows y **publicar versión nueva** (inmutables); triggers listar/crear/borrar | `flows`, `flows/{id}`, `triggers` |
 | Plan y capacidades | Pinta el plan del tenant y un chip por feature efectiva, y **gatea qué secciones se emiten** (ver abajo) | `GET entitlements` |
+
+### 🔴 Lo que se RETIRÓ de aquí (Plan 047 · T2.1)
+
+`GET /` era el **dashboard de sesiones**; hoy es la **portada**. Se fueron tres cosas y su código
+entero: la tabla de teléfonos vinculados, el `<select>` de perfil (`POST /sessions/:id/profile`) y el
+formulario de envío (`POST /send`), con `apiclient/dashboard.go`, `web/dashboard_handler.go` y sus
+tests. Viven ahora en **`guardian/wapp-client-console`**.
+
+Tres cosas que conviene saber antes de tocar esto:
+
+1. **`GET /` NO se fue con ellas.** Es el destino de TRES redirecciones del plano de autenticación
+   (`DoLogin` tras autenticar, `ShowLogin` con sesión ya válida, `AuthMiddleware` al confirmarse el
+   tenant viniendo de `/pending`). Borrarla convierte un login correcto en un 404, y hay un test que
+   recorre la cadena entera para impedirlo (`TestLoginSigueAterrizandoEnLaPortada`).
+2. **La portada expulsa al login ante un 401 persistente**, y esa línea de `ShowHome` es deliberada:
+   quien expulsaba antes era el listado de sesiones (la llamada de negocio de la página). Al retirarse,
+   la única llamada que queda son las capacidades, y `resolveEntitlements` traga el 401 a propósito
+   («es accesoria»). Por eso existe `resolveEntitlementsWithError`: la portada lee el error y decide.
+3. **`DashboardClient` se renombró a `EntitlementsClient`.** Su único método siempre fue
+   `GetEntitlements`; el nombre venía de quién lo usaba, no de qué hacía.
 
 > **Diferido (NO implementado):** subida de contenido/PDF, campañas, plantillas/contactos/segmentos, editor
 > visual de nodos, `tenant-content`/`media`. Ver `../../docs/plans/021-cliente-web-referencia/` (REQ-E5).
@@ -52,10 +73,10 @@ de esta aplicación**: la del Edge sobrevive (modelo Google).
 
 ## El gate por feature (Plan 040 · Ola 2) — el patrón que copiarán 041/042
 
-El dashboard pide `GET /api/v1/entitlements` en cada render (`resolveEntitlements`,
-`internal/web/entitlements.go:51`) y mete la vista en los datos de plantilla bajo la clave
-`Entitlements` (`internal/web/dashboard_handler.go:162-169`). Con eso, una sección que dependa de una
-capacidad se envuelve así —y **así es como se añaden las secciones nuevas**:
+Cada pantalla pide `GET /api/v1/entitlements` en su render (`resolveEntitlements`,
+`internal/web/entitlements.go`) y mete la vista en los datos de plantilla bajo la clave
+`Entitlements` (en la portada, `internal/web/home_handler.go`). Con eso, una sección que dependa de
+una capacidad se envuelve así —y **así es como se añaden las secciones nuevas**:
 
 ```
 {{ if $.Entitlements.Has "<feature>" }} … {{ end }}
@@ -65,13 +86,16 @@ Dos reglas que no se negocian al tocar esto:
 
 1. **El gate es server-side, en la PLANTILLA.** Sin la feature, el bloque **no se emite en el HTML**.
    Nunca lo escondas con CSS (`display:none`) ni con JS: lo no contratado no debe estar ahí para que
-   alguien lo destape con el inspector, y además la CSP no admite `'unsafe-inline'`. Hoy el único
-   gateado es el clasificador de intenciones (`templates/pages/dashboard.html:124`, `llm_intent`).
+   alguien lo destape con el inspector, y además la CSP no admite `'unsafe-inline'`. En la portada
+   (`templates/pages/home.html`) están gateados los accesos a la bandeja (`cart_basic`), al import de
+   catálogo (`catalog_import`), a integraciones (`crm_bridge`) y el bloque del clasificador
+   (`llm_intent`).
 2. **Fail-closed.** `resolveEntitlements` no devuelve error nunca: ante un fallo o un `403` devuelve
-   la vista cero (`internal/web/entitlements.go:60`) y `Has` responde `false` para todo
-   (`internal/web/entitlements.go:41`).
-   El dashboard sigue sirviendo con un aviso de modo degradado, y con todos los bloques gateados
-   fuera. No añadas una rama que abra el gate cuando las features no se pudieron resolver.
+   la vista cero y `Has` responde `false` para todo (`internal/web/entitlements.go`). La pantalla
+   sigue sirviendo con un aviso de modo degradado, y con todos los bloques gateados fuera. No añadas
+   una rama que abra el gate cuando las features no se pudieron resolver.
+   La ÚNICA excepción es el 401 en la portada, y no abre ningún gate: echa al login
+   (`resolveEntitlementsWithError`, ver arriba).
 
 Y el alcance, para no confundirse: este gate decide lo que se **pinta**. Lo que se **puede** lo
 resuelve el middleware `RequireFeature` de la plataforma
@@ -117,13 +141,15 @@ de autorización, y esconder un botón nunca sustituye a ese corte.
 cmd/guardian-bff/main.go   — punto de entrada (config + logger + web.Run en :8104)
 internal/config/           — Config desde env (WAPP_GUARDIAN_*, WAPP_PUBLIC_API_BASE)
 internal/apiclient/        — clientes HTTP (Bearer server-side): transport (request autenticada,
-                             ErrUnauthorized/APIError), auth, dashboard (sesiones/rol/mensajes),
+                             ErrUnauthorized/APIError), auth, intakes (bandeja), catalogimport,
+                             tenantvariables, integrations,
                              editor (flows+triggers), entitlements + delegated (el adaptador del
                              plano de identidad al puerto Authenticator; el cliente de identity y el
                              canje son github.com/EduGoGroup/wapp-shared/iam)
 internal/web/              — server (Gin, cableado de middlewares), policy (nombres de cookie,
                              entropía y opciones del módulo), auth_handler (login/AuthMiddleware/
-                             refresh), session (claims del JWT), dashboard_handler, editor_handler,
+                             refresh), session (claims del JWT), home_handler (la PORTADA),
+                             intakes_*, editor_handler,
                              entitlements (vista de features + gate); templates/ +
                              static/css/app.css (//go:embed). El middleware transversal —CSP+nonce,
                              CSRF, rate-limit, deadline, body-limit, single-flight, render— es
@@ -135,7 +161,7 @@ go.mod                     — módulo: github.com/EduGoGroup/wapp-guardian-bff 
 
 ## Puntos abiertos relevantes
 
-- Multi-teléfono: la consola opera N sesiones por Edge (ADR-0008); hoy listado + cambio de **perfil** (`active|passive`, ADR-0027); el resto de la operación de sesión (status/retiro) sigue fuera.
-- El perfil `passive` **todavía no entrega la privacidad que promete el ADR-0027**: el filtrado de entrantes en el Edge es de la Ola 2 del Plan 046 y no existe. La consola lo dice con un aviso explícito en `dashboard.html`, y `TestDashboardNoPrometeLaPrivacidadQueAunNoEntrega` impide que alguien lo borre por limpieza.
+- Multi-teléfono y perfil `active|passive` (ADR-0008 / ADR-0027): **ya no son de este repo** (Plan 047 · T2.1). Con ellos se fue el aviso de que `passive` todavía no entrega la privacidad que el ADR promete —el filtrado de entrantes en el Edge es de la Ola 2 del Plan 046 y sigue sin existir—, y su test guardián (`TestDashboardNoPrometeLaPrivacidadQueAunNoEntrega`). 🔴 Ese aviso y ese test tienen que existir en `wapp-client-console`: si no llegaron allí, la garantía se perdió al mudarse.
+- La portada no ofrece enlace a la consola del cliente salvo que `WAPP_GUARDIAN_CLIENT_CONSOLE_URL` esté puesta. En UAT no lo está (loopback en puertos distintos, sin URL pública), así que el operador tiene que saber la dirección por otro medio.
 - Recuperación ante pérdida de DEK implica re-emparejar (sin backdoor) — fuera del BFF (local del Edge).
 - Alcance diferido (campañas, plantillas/contactos, editor visual, media) — futuros planes.

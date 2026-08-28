@@ -96,6 +96,17 @@ type Config struct {
 	// producción).
 	AlphaTestPassword string
 
+	// ClientConsoleURL es la dirección de la consola del CLIENTE (wapp-client-console), la aplicación
+	// a la que el Plan 047 · T2.1 se llevó la administración de sesiones. La portada la usa para
+	// ofrecer el enlace, y NADA MÁS: el BFF no habla con ella.
+	//
+	// 🔴 VACÍA POR DEFECTO, y ese es el caso normal, no una configuración a medias. En UAT las dos
+	// aplicaciones son loopback en puertos distintos (:8104 y :8107) y no hay URL pública que
+	// publicar: un `localhost:8107` fijo serviría un enlace roto a todo el que no esté sentado en la
+	// máquina. Sin valor, la portada dice dónde se administran las sesiones y no ofrece enlace; con
+	// valor, lo pinta. Sale de WAPP_GUARDIAN_CLIENT_CONSOLE_URL.
+	ClientConsoleURL string
+
 	// IdentityJWKSURL es el endpoint JWKS de identity-api (identity-core) del que salen las claves
 	// públicas para verificar Identity Tokens. Es la PUERTA del modo dual (identity Plan 003, T1.2):
 	// vacío == modo dual apagado y el BFF arranca sin identity, exactamente como hoy.
@@ -161,6 +172,8 @@ func Load() Config {
 
 		EnableAlphaTestAccounts: l.GetBool("ALPHA_TEST_ACCOUNTS", l.GetBool("ENABLE_ALPHA_LOGIN", false)),
 		AlphaTestPassword:       l.GetString("ALPHA_TEST_PASSWORD", ""), // vacía == el operador la teclea.
+
+		ClientConsoleURL: l.GetString("GUARDIAN_CLIENT_CONSOLE_URL", ""), // vacío == la portada no ofrece enlace.
 
 		IdentityJWKSURL: l.GetString("IDENTITY_JWKS_URL", ""), // vacío == modo dual apagado.
 		IdentityBaseURL: l.GetString("IDENTITY_URL", ""),      // vacío == delegación apagada (flujo legacy).

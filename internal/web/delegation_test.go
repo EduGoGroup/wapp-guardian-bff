@@ -318,7 +318,10 @@ func TestDelegacionRefrescaProactivamenteYReCanjea(t *testing.T) {
 	identity.onJSON("/api/v1/auth/refresh", identityLoginBody(identityToken, "rt-2"))
 	platform := newUpstreamStub(t)
 	platform.onJSON("/api/v1/auth/exchange", exchangeBody(contextToken2, nuevoExp))
-	platform.onJSON("/api/v1/sessions", `[]`)
+	// La llamada de negocio de la portada. Era el listado de sesiones hasta el Plan 047 · T2.1; con el
+	// dashboard retirado, la única que la portada hace —y por tanto la que lleva el Bearer que se
+	// inspecciona abajo— es la de las capacidades del tenant.
+	platform.onJSON("/api/v1/entitlements", entitlementsBody("commerce", "cart_basic"))
 
 	router := NewRouter(delegatedCfg(platform.url(), identity.url()))
 	// Context Token vigente pero dentro del margen proactivo de 2 minutos.
@@ -337,7 +340,7 @@ func TestDelegacionRefrescaProactivamenteYReCanjea(t *testing.T) {
 	if body := identity.bodyOf("/api/v1/auth/refresh"); !strings.Contains(body, `"refresh_token":"rt-1"`) {
 		t.Errorf("identity debía recibir el refresh vigente de la cookie, got %q", body)
 	}
-	if got := platform.bearerOf("/api/v1/sessions"); got != "Bearer "+contextToken2 {
+	if got := platform.bearerOf("/api/v1/entitlements"); got != "Bearer "+contextToken2 {
 		t.Error("el negocio debía llamarse con el Context Token RE-CANJEADO")
 	}
 
@@ -365,7 +368,7 @@ func TestDelegacionRefresh401DeIdentityEchaAlUsuario(t *testing.T) {
 		_, _ = io.WriteString(w, `{"error":"invalid_refresh_token"}`)
 	})
 	platform := newUpstreamStub(t)
-	platform.onJSON("/api/v1/sessions", `[]`) // solo se llamaría si NO se echa al usuario.
+	platform.onJSON("/api/v1/entitlements", entitlementsBody("commerce", "cart_basic")) // solo se llamaría si NO se echa al usuario.
 
 	router := NewRouter(delegatedCfg(platform.url(), identity.url()))
 	// Dentro del margen proactivo: el refresh lo dispara el reloj, no un 401 del negocio.
@@ -380,7 +383,7 @@ func TestDelegacionRefresh401DeIdentityEchaAlUsuario(t *testing.T) {
 	if raw == "" || !strings.Contains(raw, "Max-Age=0") {
 		t.Errorf("debía limpiarse la cookie de sesión (Max-Age=0), got %q", raw)
 	}
-	if got := platform.hitsOf("/api/v1/sessions"); got != 0 {
+	if got := platform.hitsOf("/api/v1/entitlements"); got != 0 {
 		t.Errorf("no debía llegarse al negocio con una sesión ya muerta, got %d llamadas", got)
 	}
 }
@@ -400,15 +403,14 @@ func TestDelegacionRefrescaAnte401YReintenta(t *testing.T) {
 	platform := newUpstreamStub(t)
 	platform.onJSON("/api/v1/auth/exchange", exchangeBody(contextToken2, nuevoExp))
 	var llamadas int
-	platform.on("/api/v1/sessions", func(w http.ResponseWriter, _ *http.Request) {
+	platform.on("/api/v1/entitlements", func(w http.ResponseWriter, _ *http.Request) {
 		llamadas++
 		if llamadas == 1 {
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = io.WriteString(w, `{"error":"token_revoked"}`)
 			return
 		}
-		_, _ = io.WriteString(w,
-			`[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","profile":"active"}]`)
+		_, _ = io.WriteString(w, entitlementsBody("commerce", "cart_basic"))
 	})
 
 	router := NewRouter(delegatedCfg(platform.url(), identity.url()))
@@ -419,10 +421,10 @@ func TestDelegacionRefrescaAnte401YReintenta(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("tras el 401 y el refresh la página debía pintarse, got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "edge-alpha") {
-		t.Error("el reintento debía traer las sesiones del tenant")
+	if !strings.Contains(rec.Body.String(), "plan · commerce") {
+		t.Error("el reintento debía traer el plan del tenant")
 	}
-	if got := platform.hitsOf("/api/v1/sessions"); got != 2 {
+	if got := platform.hitsOf("/api/v1/entitlements"); got != 2 {
 		t.Errorf("debía reintentarse la llamada de negocio (2 intentos), got %d", got)
 	}
 	if got := identity.hitsOf("/api/v1/auth/refresh"); got != 1 {
@@ -451,8 +453,7 @@ func TestDelegacion409DelCanjeDegradaSinEcharAlUsuario(t *testing.T) {
 		w.WriteHeader(http.StatusConflict)
 		_, _ = io.WriteString(w, `{"error":"el usuario pertenece a más de un tenant"}`)
 	})
-	platform.onJSON("/api/v1/sessions",
-		`[{"session_id":"s-1","edge_id":"edge-alpha","state":"online","profile":"active"}]`)
+	platform.onJSON("/api/v1/entitlements", entitlementsBody("commerce", "cart_basic"))
 
 	router := NewRouter(delegatedCfg(platform.url(), identity.url()))
 	// Dentro del margen proactivo (vence en 1 min), pero AÚN VIGENTE: ahí está el matiz.
@@ -476,10 +477,10 @@ func TestDelegacion409DelCanjeDegradaSinEcharAlUsuario(t *testing.T) {
 		t.Errorf("debía intentarse el canje una vez, got %d", got)
 	}
 	// Y el negocio siguió con el token viejo, que es lo que significa degradar aquí.
-	if got := platform.bearerOf("/api/v1/sessions"); got != "Bearer "+porVencer {
+	if got := platform.bearerOf("/api/v1/entitlements"); got != "Bearer "+porVencer {
 		t.Error("el negocio debía continuar con el Context Token aún vigente")
 	}
-	if !strings.Contains(rec.Body.String(), "edge-alpha") {
+	if !strings.Contains(rec.Body.String(), "plan · commerce") {
 		t.Error("la consola debía seguir operando en modo degradado")
 	}
 }

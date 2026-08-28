@@ -15,15 +15,6 @@ type Authenticator interface {
 	Signup(ctx context.Context, email, password, firstName, lastName, origin string) error
 }
 
-// SessionManager define el contrato para administrar sesiones del tenant y envío de mensajes.
-type SessionManager interface {
-	ListSessions(ctx context.Context, accessToken string) ([]apiclient.Session, error)
-	// SetSessionProfile escribe el PERFIL de negocio de la sesión (`active`/`passive`, ADR-0027).
-	// No confundir con `devices.role` del Edge (`primary`/`standby`, ADR-0018): dominios distintos.
-	SetSessionProfile(ctx context.Context, accessToken, sessionID, profile string) error
-	SendMessage(ctx context.Context, accessToken, sessionID, to, text string) (*apiclient.SendResult, error)
-}
-
 // EntitlementsReader define el contrato para leer el plan y las features efectivas del tenant del
 // token. Va segregado del resto porque no es una operación de negocio: es lo que decide QUÉ se pinta,
 // y lo consulta cualquier página que tenga secciones condicionadas por feature.
@@ -31,10 +22,14 @@ type EntitlementsReader interface {
 	GetEntitlements(ctx context.Context, accessToken string) (*apiclient.Entitlements, error)
 }
 
-// DashboardAPI es lo que el dashboard consume: sesiones y envío, más las features efectivas con las
-// que decide qué secciones emite.
-type DashboardAPI interface {
-	SessionManager
+// HomeAPI es lo que la PORTADA consume, y hoy es una sola cosa: las features efectivas del tenant.
+//
+// 📌 Antes se llamaba `DashboardAPI` y componía `SessionManager` + `EntitlementsReader`, porque la
+// portada era el dashboard de sesiones. El Plan 047 · T2.1 se llevó las sesiones a la consola del
+// cliente, y con ellas la mitad de sesiones de este puerto. Lo que queda es un alias de una sola
+// interfaz, y se conserva —en vez de usar `EntitlementsReader` a pelo— porque nombra al CONSUMIDOR:
+// cuando la portada vuelva a pedir algo propio, se añade aquí y no en el contrato compartido.
+type HomeAPI interface {
 	EntitlementsReader
 }
 
@@ -183,7 +178,6 @@ type EditorManager interface {
 // APIPort es el puerto compuesto por compatibilidad con el cliente unificado de la API pública.
 type APIPort interface {
 	Authenticator
-	SessionManager
 	EntitlementsReader
 	EditorManager
 	IntakeManager
@@ -200,9 +194,8 @@ type APIPort interface {
 var (
 	_ Authenticator      = (*apiclient.AuthClient)(nil)
 	_ Authenticator      = (*apiclient.DelegatedAuthenticator)(nil)
-	_ SessionManager     = (*apiclient.DashboardClient)(nil)
-	_ EntitlementsReader = (*apiclient.DashboardClient)(nil)
-	_ DashboardAPI       = (*apiclient.DashboardClient)(nil)
+	_ EntitlementsReader = (*apiclient.EntitlementsClient)(nil)
+	_ HomeAPI            = (*apiclient.EntitlementsClient)(nil)
 	_ EditorManager      = (*apiclient.EditorClient)(nil)
 	_ IntakeManager      = (*apiclient.IntakesClient)(nil)
 

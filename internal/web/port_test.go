@@ -20,7 +20,6 @@ import (
 // cumple el puerto.
 type fakeAPIPort struct {
 	refresh         func(ctx context.Context, refreshToken string) (*apiclient.AuthResult, error)
-	sendMessage     func(ctx context.Context, accessToken, sessionID, to, text string) (*apiclient.SendResult, error)
 	getEntitlements func(ctx context.Context, accessToken string) (*apiclient.Entitlements, error)
 	listIntakes     func(ctx context.Context, accessToken string, f apiclient.IntakeFilter) (*apiclient.IntakePage, error)
 	getIntake       func(ctx context.Context, accessToken, id string) (*apiclient.IntakeDetail, error)
@@ -63,16 +62,6 @@ func (f *fakeAPIPort) Refresh(ctx context.Context, rt string) (*apiclient.AuthRe
 func (f *fakeAPIPort) Logout(context.Context, string, string) error { return nil }
 func (f *fakeAPIPort) Signup(context.Context, string, string, string, string, string) error {
 	return nil
-}
-func (f *fakeAPIPort) ListSessions(context.Context, string) ([]apiclient.Session, error) {
-	return nil, nil
-}
-func (f *fakeAPIPort) SetSessionProfile(context.Context, string, string, string) error { return nil }
-func (f *fakeAPIPort) SendMessage(ctx context.Context, at, sid, to, text string) (*apiclient.SendResult, error) {
-	if f.sendMessage != nil {
-		return f.sendMessage(ctx, at, sid, to, text)
-	}
-	return nil, nil
 }
 func (f *fakeAPIPort) GetEntitlements(ctx context.Context, at string) (*apiclient.Entitlements, error) {
 	if f.getEntitlements != nil {
@@ -273,32 +262,5 @@ func TestWithAuthRetryRefreshesOn401(t *testing.T) {
 	}
 	if seen[1] != newAccess {
 		t.Errorf("el reintento debía usar el token refrescado, got %q", seen[1])
-	}
-}
-
-// TestSendMessageViaFakePort comprueba que el Handler opera contra el puerto inyectado (no el cliente
-// concreto): el doble devuelve un Ack y sendResultView lo refleja, sin transporte HTTP.
-func TestSendMessageViaFakePort(t *testing.T) {
-	fake := &fakeAPIPort{
-		sendMessage: func(_ context.Context, _, _, _, _ string) (*apiclient.SendResult, error) {
-			return &apiclient.SendResult{AckedCommandID: "cmd-fake-1", OK: true}, nil
-		},
-	}
-	h := NewHandlerWithAPI(authTestCfg("http://api.invalid"), fake)
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-	c.Set(webgin.ContextAccessToken, "tok")
-
-	var result *apiclient.SendResult
-	err := h.withAuthRetry(c, func(token string) error {
-		var serr error
-		result, serr = h.api.SendMessage(c.Request.Context(), token, "s-1", "+1", "hola")
-		return serr
-	})
-	view := sendResultView(result, err)
-	if !view.Success || view.CommandID != "cmd-fake-1" {
-		t.Fatalf("el envío por el puerto fake debía reflejar el Ack, got %+v", view)
 	}
 }

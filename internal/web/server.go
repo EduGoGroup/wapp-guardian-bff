@@ -182,25 +182,31 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	// Deadline por petición: acota TODA la cadena withAuthRetry hacia la API pública (H4) para que un
 	// upstream lento no cuelgue el handler más allá del presupuesto (bajo el WriteTimeout del servidor).
 	protected.Use(webgin.RequestDeadline(cfg.UpstreamTimeout))
-	// Dashboard: listado de sesiones del tenant + formulario de envío (T3). POST /send procesa el envío y
-	// re-renderiza el dashboard con el resultado.
-	protected.GET("/", h.ShowDashboard)
-	protected.POST("/send", h.DoSend)
-	// PERFIL de sesión active|passive (ADR-0027, Plan 046 · T1.3; sustituye al rol bot|passive del Plan
-	// 020): select por fila de la tabla del dashboard. POST clásico SSR con CSRF; re-renderiza el
-	// dashboard con el perfil ya cambiado.
+	// PORTADA: el índice de lo que ESTA consola conserva (plan y capacidades del tenant + accesos a las
+	// pantallas vivas). Es permanente —destino de las redirecciones del plano de autenticación— y no
+	// migra a KMP, pero NO lleva marcador de estado a propósito: los dos tokens que este fichero usa
+	// para clasificar —provisional y permanente— son el censo de las pantallas de NEGOCIO del
+	// inventario del 047, se verifican contando con grep, y meter aquí uno desajustaría el recuento
+	// sin que nadie sepa por qué subió. Si un día la portada entra en ese censo, entra con su token y
+	// el número esperado sube con ella.
 	//
-	// 🔴 La ruta vieja `/sessions/:id/role` NO se conserva aquí: es una pantalla SSR y el único cliente
-	// del formulario es esta misma consola, que se despliega con él.
+	// 🔴 AQUÍ ESTUVO EL DASHBOARD DE SESIONES, y su retirada (Plan 047 · T2.1) se llevó DOS rutas que
+	// ya no existen: `POST /send` (enviar un mensaje por una sesión) y `POST /sessions/:id/profile`
+	// (cambiar el perfil active|passive, ADR-0027). Las tres pantallas se administran ahora en la
+	// consola del cliente (`wapp-client-console`), y se retiraron de aquí en el mismo ciclo (REQ-08):
+	// dos copias de la misma pantalla divergen, y la que sigue viva contesta antes que la documentación.
 	//
-	// 📌 Este comentario decía además que la deprecación con dos rutas vivas «es de la API pública,
-	// donde SÍ hay clientes que no se despliegan a la vez». Ese razonamiento era correcto y su premisa
-	// FALSA: al comprobarla contra los seis repos no apareció ni un consumidor de `/role`. La ruta
-	// pública se retiró con la 0064 por la misma razón que aquí.
-	protected.POST("/sessions/:id/profile", h.DoSetSessionProfile)
+	// 🔴 LA RUTA `GET /` NO SE FUE CON ELLAS. No es un resto por limpiar: es el destino de TRES
+	// redirecciones —DoLogin tras autenticar, ShowLogin con sesión ya válida y el AuthMiddleware al
+	// confirmarse el tenant viniendo de /pending—. Borrarla convertiría un login correcto en un 404.
+	protected.GET("/", h.ShowHome)
 
 	// Editor de menú/encuestas (T4): flujos (inmutables versionados) + triggers (crear/borrar). "Editar"
 	// un flujo = publicar versión N+1 (POST /flows); "editar" un trigger = borrar + crear.
+	//
+	// El marcador cubre las SEIS rutas de una vez porque el código ya las trata como un bloque y las dos
+	// pantallas coinciden en destino y en disparo: esperan al Plan 045 y se van juntas.
+	// PANTALLA PROVISIONAL: migra a KMP (planes 045/047, ADR-0035).
 	protected.GET("/flows", h.ShowFlows)
 	protected.GET("/flows/:id", h.ShowFlowDetail)
 	protected.POST("/flows", h.DoPublishFlow)
@@ -208,9 +214,10 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	protected.POST("/triggers", h.DoCreateTrigger)
 	protected.POST("/triggers/:id/delete", h.DoDeleteTrigger)
 
-	// Variables de empresa (Plan 041 · T2.1): pares clave→valor que wApp no interpreta. Pantalla
-	// PERMANENTE (capa técnica, no migra a KMP) y SIN gate de feature. El POST guarda el conjunto
-	// entero, que es la única forma que da la API de quitar una variable.
+	// Variables de empresa (Plan 041 · T2.1): pares clave→valor que wApp no interpreta. Va SIN gate de
+	// feature. El POST guarda el conjunto entero, que es la única forma que da la API de quitar una
+	// variable.
+	// PANTALLA PERMANENTE: es capa técnica (ADR-0035) y no migra a KMP.
 	protected.GET("/variables", h.ShowTenantVariables)
 	protected.POST("/variables", h.DoSaveTenantVariables)
 

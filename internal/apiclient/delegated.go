@@ -110,7 +110,7 @@ func bffError(err error) error {
 type DelegatedClient struct {
 	*Transport
 	*DelegatedAuthenticator
-	*DashboardClient
+	*EntitlementsClient
 	*EditorClient
 	*IntakesClient
 	*TenantVariablesClient
@@ -139,7 +139,7 @@ func NewDelegated(platformBaseURL, identityBaseURL string) (*DelegatedClient, er
 	return &DelegatedClient{
 		Transport:              t,
 		DelegatedAuthenticator: NewDelegatedAuthenticator(identity, t),
-		DashboardClient:        NewDashboardClient(t),
+		EntitlementsClient:     NewEntitlementsClient(t),
 		EditorClient:           NewEditorClient(t),
 		IntakesClient:          NewIntakesClient(t),
 		TenantVariablesClient:  NewTenantVariablesClient(t),
