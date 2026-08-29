@@ -209,7 +209,15 @@ func postReal(t *testing.T, ts *httptest.Server, router http.Handler, ruta strin
 
 	// Cliente sin plazo propio y sin reutilizar conexiones: el único corte que puede aparecer aquí
 	// es el del servidor, que es lo que se está midiendo.
-	cli := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+	//
+	// 🔴 Y NO SIGUE REDIRECTS (T3.5). Desde que la sugerencia hace POST-Redirect-GET, seguirlos
+	// mediría DOS peticiones —la que espera al modelo y la que repinta— bajo un solo aserto, y la
+	// segunda corre con los plazos GENERALES a propósito. Lo que este fichero mide es el plazo de la
+	// PRIMERA. Para /reanalyze, que sigue pintando sobre el POST, esto no cambia nada.
+	cli := &http.Client{
+		Transport:     &http.Transport{DisableKeepAlives: true},
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 	resp, err := cli.Do(req)
 	if err != nil {
 		return nil, "", err
@@ -222,14 +230,14 @@ func postReal(t *testing.T, ts *httptest.Server, router http.Handler, ruta strin
 	return resp, string(cuerpo), nil
 }
 
-// TestLaRespuestaLentaDeLaSugerenciaLlegaAPintarse es el criterio del TERCER plazo, el que falla sin
+// TestLaRespuestaLentaDeLaSugerenciaLlegaEntera es el criterio del TERCER plazo, el que falla sin
 // dejar rastro: sin un write deadline propio, el WriteTimeout del http.Server cierra la conexión a
 // mitad de la espera y el navegador no recibe ni la página degradada.
 //
 // El montaje es el de producción en pequeño: un servidor real con WriteTimeout corto, un upstream
 // que tarda MÁS que ese WriteTimeout, y los dos plazos de petición holgados para que el único que
 // pueda cortar sea el del servidor. La sugerencia tiene que llegar entera; la ruta hermana, no.
-func TestLaRespuestaLentaDeLaSugerenciaLlegaAPintarse(t *testing.T) {
+func TestLaRespuestaLentaDeLaSugerenciaLlegaEntera(t *testing.T) {
 	api := upstreamLento(t, 700*time.Millisecond)
 	defer api.Close()
 
@@ -243,15 +251,26 @@ func TestLaRespuestaLentaDeLaSugerenciaLlegaAPintarse(t *testing.T) {
 	ts.Start()
 	defer ts.Close()
 
-	resp, cuerpo, err := postReal(t, ts, router, "/intakes/in-ambar/quote-suggestion")
+	resp, _, err := postReal(t, ts, router, "/intakes/in-ambar/quote-suggestion")
 	if err != nil {
-		t.Fatalf("la sugerencia lenta debía llegar a pintarse y la conexión se cortó: %v", err)
+		t.Fatalf("la respuesta lenta de la sugerencia debía llegar y la conexión se cortó: %v", err)
 	}
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("la sugerencia debía responder 200, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("la sugerencia debía responder 303, got %d", resp.StatusCode)
 	}
-	if !strings.Contains(cuerpo, "Hola Ambar 💛 Torta de chocolate 45.00 — Total 65.50") {
-		t.Error("la respuesta llegó, pero sin el texto sugerido: no se pintó la pantalla entera")
+	// 🔄 GIRADO POR T3.5, y el aserto NO se debilita: se muda al artefacto que ahora lleva el
+	// resultado. Antes se comprobaba que el texto venía en el cuerpo; hoy el cuerpo del 303 está
+	// vacío por diseño y el texto viaja en la cookie efímera. Que esa cookie llegue prueba
+	// exactamente lo mismo de antes —la inferencia lenta terminó Y su resultado salió por la
+	// conexión antes de que el WriteTimeout de 300 ms la cerrara—, que es el tercer plazo.
+	llevaElTexto := false
+	for _, c := range resp.Cookies() {
+		if c.Name == quoteCookieName && c.Value != "" {
+			llevaElTexto = true
+		}
+	}
+	if !llevaElTexto {
+		t.Error("la respuesta llegó, pero sin la cotización: el resultado de la espera larga no salió")
 	}
 
 	// Y el contraste: la ruta hermana, con la MISMA espera y el mismo servidor, sí la corta el
@@ -401,8 +420,11 @@ func TestElWriteDeadlineLlegaDeVerdadALaConexionBajoGin(t *testing.T) {
 	// middleware lo dice. Esto acredita que el capturador ve los avisos.
 	sinConexion := capturaElLog(t)
 	rec := postFormWithCookie(router, "/intakes/in-ambar/quote-suggestion", url.Values{}, validSessionCookie(t))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("la sugerencia debía responder 200 también con recorder, got %d", rec.Code)
+	if rec.Code != http.StatusSeeOther {
+		// 303 desde T3.5: la ruta redirige. Lo que este test mide es lo que DICE el middleware del
+		// write deadline, no el código de estado; el status se comprueba solo para saber que la
+		// petición recorrió la ruta entera y no murió antes de llegar al middleware.
+		t.Fatalf("la sugerencia debía responder 303 también con recorder, got %d", rec.Code)
 	}
 	if !sinConexion.contiene(avisoSinWriteDeadline) {
 		t.Fatal("sobre un ResponseRecorder el middleware debía avisar de que no hay conexión donde " +

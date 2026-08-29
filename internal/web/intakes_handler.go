@@ -262,10 +262,26 @@ func (h *IntakesHandler) renderIntakesList(c *gin.Context, r intakesListRender) 
 
 // ShowIntakeDetail pinta una solicitud con sus líneas, el cambio de estado y la corrección manual.
 func (h *IntakesHandler) ShowIntakeDetail(c *gin.Context) {
-	h.renderIntakeDetail(c, intakeDetailRender{
-		status: http.StatusOK, id: strings.TrimSpace(c.Param("id")),
+	id := strings.TrimSpace(c.Param("id"))
+	render := intakeDetailRender{
+		status: http.StatusOK, id: id,
 		revision: intakeRevisionFromQuery(c),
-	})
+	}
+
+	// La cotización que dejó el POST de la sugerencia, si es que venimos de ahí (Plan 047 · T3.5). Se
+	// lee y se BORRA en el mismo gesto, así que el F5 siguiente ya no la encuentra: se repinta el
+	// detalle sin el texto de la máquina y sin volver a pedirlo. Esa es toda la tarea.
+	//
+	// 🔑 Va ANTES del render y no dentro de él: renderIntakeDetail lo llaman 27 sitios, y consumir
+	// ahí la cookie la haría desaparecer también cuando quien pinta es un POST que no tiene nada que
+	// ver — un repinte tras un rechazo se llevaría por delante una sugerencia recién pedida.
+	if quote := h.takeQuoteFlash(c, id); quote != nil {
+		render.approveText = quote.RenderedText
+		render.quote = quote
+		render.notice = &intakeNotice{Success: true, Message: quoteSuggestedNotice}
+	}
+
+	h.renderIntakeDetail(c, render)
 }
 
 // intakeRevisionFromQuery lee qué interpretación se está mirando. Un valor ilegible o negativo vale

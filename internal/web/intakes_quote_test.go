@@ -78,12 +78,11 @@ func TestQuoteSuggestionPreloadsTheApproveFieldAndSendsNothing(t *testing.T) {
 		`{"rendered_text":"Hola Ambar 💛 Torta de chocolate 45.00 — Total 65.50","source":"llm"}`, &seen)
 	defer api.Close()
 
-	rec := postFormWithCookie(NewRouter(authTestCfg(api.URL)), "/intakes/in-ambar/quote-suggestion",
-		url.Values{}, validSessionCookie(t))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("la sugerencia debía responder 200, got %d", rec.Code)
-	}
-	out := rec.Body.String()
+	// 🔄 GIRADO POR T3.5, NO REBAJADO: esta ruta pasó a POST-Redirect-GET, así que la pantalla que
+	// este test siempre ha examinado ya no llega en la respuesta del POST sino en el GET siguiente.
+	// Todo lo que afirmaba sigue afirmándose, sobre la página que ahora lo enseña.
+	_, get := postQuoteAndFollow(t, NewRouter(authTestCfg(api.URL)), validSessionCookie(t))
+	out := get.Body.String()
 
 	// El texto está EN EL CAMPO editable de aprobar, no en un cartel de solo lectura: la dueña lo
 	// ajusta antes de mandarlo.
@@ -118,12 +117,12 @@ func TestQuoteSuggestionDeterministicIsNotAnErrorOnScreen(t *testing.T) {
 		  "fallback_reason":"proveedor_no_disponible"}`, &seen)
 	defer api.Close()
 
-	rec := postFormWithCookie(NewRouter(authTestCfg(api.URL)), "/intakes/in-ambar/quote-suggestion",
-		url.Values{}, validSessionCookie(t))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("un modelo caído NO es un error de pantalla: debía dar 200, got %d", rec.Code)
-	}
-	out := rec.Body.String()
+	// 🔄 GIRADO POR T3.5: el respaldo sobrio también viaja por el redirect. Que un 200 con
+	// `deterministic` NO se pinte como error es lo mismo que este test siempre midió — y ahora,
+	// además, comprueba que el MOTIVO sobrevive al viaje: sin él la pantalla diría que lo redactó el
+	// modelo, que es justo la confusión que T2.4 vino a impedir.
+	_, get := postQuoteAndFollow(t, NewRouter(authTestCfg(api.URL)), validSessionCookie(t))
+	out := get.Body.String()
 
 	if !strings.Contains(out, "Total: 65.50") {
 		t.Error("el texto determinista debía quedar igualmente en el campo")

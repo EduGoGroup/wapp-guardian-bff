@@ -2,12 +2,16 @@ package web
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	sharedweb "github.com/EduGoGroup/wapp-shared/web"
+	webgin "github.com/EduGoGroup/wapp-shared/web/gin"
 
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 )
@@ -184,6 +188,100 @@ func quoteFallbackText(reason string) string {
 	return "Motivo (sin traducir en esta consola): `" + reason + "`."
 }
 
+// quoteSuggestedNotice es el acuse de la sugerencia, en UN solo sitio porque lo pintan DOS caminos
+// —el redirect y el repinte de reserva— y dos copias se separan en cuanto alguien toque una.
+const quoteSuggestedNotice = "Propuesta lista en el campo de abajo. NO SE HA ENVIADO NADA y la " +
+	"solicitud sigue donde estaba: léela, cámbiala si hace falta y aprueba tú."
+
+// intakeDetailPath es la pantalla de UNA solicitud: el destino del redirect y el Path de la cookie
+// efímera. Se compone en un solo sitio porque los dos tienen que coincidir EXACTAMENTE —el navegador
+// identifica una cookie por la terna (dominio, ruta, nombre)—, y dos literales iguales escritos
+// aparte se desalinean el día que alguien mueva la ruta.
+func intakeDetailPath(id string) string { return "/intakes/" + id }
+
+// intakeQuoteFlash es lo que viaja del POST al GET dentro de la cookie efímera. Las claves son de una
+// letra a propósito: el presupuesto de una cookie es de bytes, y el nombre del campo se paga tantas
+// veces como el valor.
+type intakeQuoteFlash struct {
+	// ID es la solicitud a la que pertenece este texto. Ver takeQuoteFlash: es la SEGUNDA cerradura.
+	ID string `json:"i"`
+	// Text es la cotización redactada.
+	Text string `json:"t"`
+	// Source y Fallback son de dónde salió y por qué, para que el GET pinte la MISMA línea de origen
+	// que pintaba el POST. Sin ellos el redirect perdería justo lo que distingue «la voz de la dueña
+	// funciona» de «lleva semanas apagada».
+	Source   string `json:"s"`
+	Fallback string `json:"f,omitempty"`
+}
+
+// maxQuoteCookieValue es cuánto se admite meter en la cookie de la cotización, en bytes del valor ya
+// codificado.
+//
+// 🔴 EXISTE PORQUE EL MECANISMO QUE SE REUTILIZA AQUÍ NO SE ESCRIBIÓ PARA ESTO. La cookie de un solo
+// uso de `wapp-shared/web` nació en la Ola A para un token de invitación —43 caracteres— y para un
+// código de enrolamiento, y NO tiene guarda de tamaño. Una cotización no tiene largo acotado: el
+// cloud no le pone tope (verificado el 2026-08-29: no hay ni un límite de longitud sobre
+// `rendered_text` en `internal/intakes/`), y el navegador DESCARTA EN SILENCIO una cookie que pase de
+// unos 4 KB — sin error, sin aviso, sin nada que falle. Sin este número, el desenlace de una
+// cotización larga sería el peor posible: la dueña espera 40 s, la página redirige, y el texto NO
+// ESTÁ. Peor que no haber hecho el PRG.
+//
+// El presupuesto: ~4096 B por cookie contando nombre y atributos, y el valor va en base64 (crece un
+// tercio). 3000 B de valor codificado dejan sitio de sobra para lo demás y admiten un texto de unos
+// 2 KB, que es varias veces la cotización más larga que se ha visto en campo.
+const maxQuoteCookieValue = 3000
+
+// setQuoteFlash guarda la cotización para el GET siguiente. Devuelve si CUPO: cuando no cupo, quien
+// llama tiene que pintar sobre el POST, que es lo que se hacía siempre.
+//
+// 🔑 No perder el texto manda sobre hacer el PRG. Son dos cosas buenas y solo una es imprescindible:
+// el PRG ahorra teclas, pero perder una cotización que costó 40 s de modelo es un daño de verdad.
+func (h *IntakesHandler) setQuoteFlash(c *gin.Context, id string, out *apiclient.IntakeQuoteSuggestion) bool {
+	valor, err := sharedweb.EncodeCookiePayload(intakeQuoteFlash{
+		ID: id, Text: out.RenderedText, Source: out.Source, Fallback: out.FallbackReason,
+	})
+	if err != nil {
+		// Sin el texto en el log: es contenido de negocio del cliente (§7.6, la misma razón del
+		// `no-store` de la página).
+		slog.Warn("no se pudo empaquetar la cotización para el redirect", "error", err, "intake_id", id)
+		return false
+	}
+	if len(valor) > maxQuoteCookieValue {
+		slog.Info("cotización demasiado larga para la cookie: se pinta sobre el POST",
+			"intake_id", id, "bytes", len(valor), "tope", maxQuoteCookieValue)
+		return false
+	}
+	webgin.SetOneTimeCookie(c, quoteCookieOptions(h.cfg, id), valor)
+	return true
+}
+
+// takeQuoteFlash lee la cotización que dejó el POST y BORRA la cookie en el mismo gesto, que es lo
+// que hace que el texto sobreviva UNA vez: el F5 siguiente ya no encuentra nada.
+//
+// 🔴 COMPRUEBA QUE EL TEXTO ES DE ESTA SOLICITUD, y no es una comprobación de adorno. Es la segunda
+// de las dos cerraduras del comentario de quoteCookieOptions: si por lo que sea la cookie llegara a
+// la pantalla de otra solicitud, aquí se descarta. Pintar la cotización de A en la pantalla de B
+// pondría los precios de A delante de quien está a punto de responderle a B.
+func (h *IntakesHandler) takeQuoteFlash(c *gin.Context, id string) *apiclient.IntakeQuoteSuggestion {
+	raw := webgin.TakeOneTimeCookie(c, quoteCookieOptions(h.cfg, id))
+	if raw == "" {
+		return nil
+	}
+	var flash intakeQuoteFlash
+	if err := sharedweb.DecodeCookiePayload(raw, &flash); err != nil {
+		slog.Warn("la cookie de la cotización llegó ilegible", "error", err, "intake_id", id)
+		return nil
+	}
+	if flash.ID != id || strings.TrimSpace(flash.Text) == "" {
+		slog.Warn("la cookie de la cotización no es de esta solicitud, o venía vacía",
+			"intake_id", id, "cookie_intake_id", flash.ID)
+		return nil
+	}
+	return &apiclient.IntakeQuoteSuggestion{
+		RenderedText: flash.Text, Source: flash.Source, FallbackReason: flash.Fallback,
+	}
+}
+
 // DoSuggestIntakeQuote pide la cotización redactada con la voz de la dueña y la deja EN EL CAMPO de
 // aprobar, editable y sin enviar nada (Plan 047 · T2.4 sobre el endpoint del Plan 044 · T5.1).
 //
@@ -259,17 +357,39 @@ func (h *IntakesHandler) DoSuggestIntakeQuote(c *gin.Context) {
 		return
 	}
 
+	// ════════════════════════════════════════════════════════════════════════════
+	// POST-REDIRECT-GET (Plan 047 · T3.5) — Y AQUÍ EL MOTIVO ES EL COSTE, NO EL RIESGO
+	// ════════════════════════════════════════════════════════════════════════════
+	//
+	// Ésta es la ÚNICA acción de la bandeja que se lleva al PRG, y la razón es que es la única cara:
+	// las otras siete repintan sobre el POST —la casa entera lo hace, 27 llamadas a
+	// renderIntakeDetail— y un F5 encima de ellas cuesta una llamada barata. Encima de ésta cuesta
+	// 20-40 s de modelo, medidos en campo (22,1 s en la corrida que cerró T2.4). No se convierte la
+	// familia entera a PRG por el camino: eso sería otra tarea, y esta pantalla es provisional.
+	//
+	// 🔑 El mecanismo NO se inventa: es la cookie de un solo uso que la Ola A construyó y probó para
+	// el token de invitación (`wapp-shared/web`, ya en el go.mod de este BFF). Lo único que hay de
+	// nuevo es el tope de tamaño, que ese mecanismo no traía — ver maxQuoteCookieValue.
+	//
+	// 🔴 Y los desenlaces MALOS de esta ruta siguen pintando sobre el POST, a propósito: son baratos
+	// de repetir (el cloud los rechaza sin llamar al modelo) y llevan un código de estado —400, 403—
+	// que un 303 borraría. El PRG está aquí por el segundo que cuesta repetir la acción, no por la
+	// estética de la barra de direcciones.
+	if h.setQuoteFlash(c, id, out) {
+		c.Redirect(http.StatusSeeOther, intakeDetailPath(id))
+		return
+	}
+
+	// No cupo en la cookie: se pinta sobre el POST, como siempre. El texto no se pierde; lo que se
+	// pierde es el PRG, y esa es la mitad prescindible.
+	//
 	// El texto entra por `approveText`, que es el MISMO carril por el que se repinta lo que la dueña
 	// teclea tras un rechazo. No hay un segundo camino para «el texto de la máquina»: en cuanto está
 	// en el campo, es un borrador suyo y se edita como tal.
 	h.renderIntakeDetail(c, intakeDetailRender{
 		status: http.StatusOK, id: id, entitlements: &entitlements,
 		approveText: out.RenderedText, quote: out,
-		notice: &intakeNotice{
-			Success: true,
-			Message: "Propuesta lista en el campo de abajo. NO SE HA ENVIADO NADA y la solicitud sigue " +
-				"donde estaba: léela, cámbiala si hace falta y aprueba tú.",
-		},
+		notice: &intakeNotice{Success: true, Message: quoteSuggestedNotice},
 	})
 }
 
