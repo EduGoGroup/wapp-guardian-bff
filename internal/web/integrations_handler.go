@@ -113,9 +113,9 @@ func (v outboxView) HasDead() bool { return v.Dead > 0 }
 // IntegrationsHandler sirve la pantalla del puente CRM: por dónde salen los eventos del tenant, a qué
 // endpoint se entregan y con qué secreto se firman.
 //
-// Es una pantalla PERMANENTE (ADR-0035, doc 14 D-03/D-14): configurar la integración es capa técnica
-// del producto, no una operación de negocio, así que no migra a la app KMP y no lleva marca de
-// provisionalidad.
+// Es una pantalla PERMANENTE (ADR-0035 §3, doc 14 D-03/D-14): configurar la integración es capa
+// técnica del producto, no una operación de negocio, así que no migra —se queda en el BFF— y no lleva
+// marca de provisionalidad.
 type IntegrationsHandler struct {
 	cfg  *config.Config
 	api  IntegrationsAPI

@@ -536,3 +536,45 @@ func TestEditorRoutesProtected(t *testing.T) {
 		t.Errorf("POST /triggers sin cookie debía redirigir a /login, got %d", rec.Code)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// El distintivo VISIBLE de provisionalidad (ADR-0047 · punto 2)
+// ---------------------------------------------------------------------------
+
+// TestEditorScreensCarryProvisionalBadge cierra la asimetría que el ADR-0047 anotó y que nadie había
+// escrito: de las seis pantallas provisionales del BFF, la bandeja y el import se lo decían AL
+// USUARIO, y flujos, detalle de flujo y disparadores lo decían sólo en un comentario de `server.go`.
+// «O lo dicen las tres o no lo dice ninguna.»
+//
+// 🔴 El test existe porque el distintivo es lo primero que se cae al reordenar una plantilla, y un
+// comentario no lo sujeta: sin un aserto que lo exija, la asimetría se reabre en silencio y la
+// pantalla vuelve a callarse su fecha de caducidad. Es hermano de los que ya cubren `intakes.html`,
+// `intake-detail.html` y `catalog-import.html`.
+//
+// Comprueba el literal completo —destino y ADR incluidos— y no sólo la palabra «PROVISIONAL»: lo que
+// el ADR-0047 corrige no es que faltara la marca, es que la marca nombrara un destino que nadie ha
+// empezado.
+func TestEditorScreensCarryProvisionalBadge(t *testing.T) {
+	const badge = "PROVISIONAL — migra a la consola de administración (Plan 047, ADR-0047)"
+
+	api := routedAPI(map[string]struct {
+		status int
+		body   string
+	}{
+		"GET /api/v1/flows":              {http.StatusOK, `[{"flow_id":"menu-soporte","version":3}]`},
+		"GET /api/v1/flows/menu-soporte": {http.StatusOK, `{"flow_id":"menu-soporte","version":3,"initial":"inicio","nodes":{}}`},
+		"GET /api/v1/triggers":           {http.StatusOK, `[{"trigger_id":"tr-1","kind":"keyword","keyword":"hola","match_type":"exact","flow_id":"menu","priority":10,"enabled":true}]`},
+	})
+	defer api.Close()
+
+	router := NewRouter(authTestCfg(api.URL))
+	for _, path := range []string{"/flows", "/flows/menu-soporte", "/triggers"} {
+		rec := getWithCookie(router, path, validSessionCookie(t))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s debía renderizar 200, got %d", path, rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), badge) {
+			t.Errorf("GET %s debía llevar el distintivo visible %q (ADR-0047 §2)", path, badge)
+		}
+	}
+}

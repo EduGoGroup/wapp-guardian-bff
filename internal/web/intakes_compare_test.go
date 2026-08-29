@@ -135,7 +135,7 @@ func TestIntakeCompareRendersOriginalNextToInterpretation(t *testing.T) {
 		t.Error("la pantalla no debe introducir JS (ADR-0035: server-side, cero framework)")
 	}
 	// NO-REGRESIÓN: la marca PROVISIONAL sigue estando.
-	if !strings.Contains(out, "PROVISIONAL — migra a KMP (Plan 045/047, ADR-0035)") {
+	if !strings.Contains(out, "PROVISIONAL — migra a la consola de administración (Plan 047, ADR-0047)") {
 		t.Error("la marca PROVISIONAL debía seguir en el detalle")
 	}
 }
@@ -289,7 +289,7 @@ func TestIntakeCompareBordeSinLlmIntake(t *testing.T) {
 			t.Errorf("la razón del botón deshabilitado debía contener %q", want)
 		}
 	}
-	if !strings.Contains(out, "PROVISIONAL — migra a KMP (Plan 045/047, ADR-0035)") {
+	if !strings.Contains(out, "PROVISIONAL — migra a la consola de administración (Plan 047, ADR-0047)") {
 		t.Error("la marca PROVISIONAL debía seguir en el detalle")
 	}
 	// Y no se gasta un viaje a una ruta que la plataforma va a rechazar: el POST corta aquí.

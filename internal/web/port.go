@@ -38,9 +38,10 @@ type HomeAPI interface {
 // mano y descartar por lotes lo que ya no va a ninguna parte.
 //
 // Va segregado del resto porque es un frente propio y de pago: sus CINCO rutas exigen la feature
-// `cart_basic` en la plataforma, y la pantalla que lo consume es PROVISIONAL (migra a KMP con los
-// planes 045/047, ADR-0035). Cuando esa pantalla muera, esta interfaz se va con ella sin arrastrar
-// a nadie.
+// `cart_basic` en la plataforma, y la pantalla que lo consume es PROVISIONAL (migra a
+// `wapp-client-console` con el Plan 047, ADR-0047; antes decía «a KMP», y dejó de decirlo porque el
+// Plan 045 está al 0 % y esa app está diferida: el marcador no era ejecutable). Cuando esa pantalla
+// muera, esta interfaz se va con ella sin arrastrar a nadie.
 //
 // `ReplaceIntakeItems` recibe el conjunto COMPLETO de líneas de cliente, no una operación por
 // línea, porque así es el contrato de la plataforma (PUT, no POST): añadir, quitar y corregir son
@@ -109,8 +110,9 @@ type TenantVariablesManager interface {
 // que interpretar, y solo hay una con un `Applied` distinto.
 //
 // Va segregado del resto por lo mismo que la bandeja: es un frente de pago (feature
-// `catalog_import`) y la pantalla que lo consume es PROVISIONAL (migra a KMP con los planes
-// 045/047, ADR-0035). Cuando esa pantalla muera, esta interfaz se va con ella.
+// `catalog_import`) y la pantalla que lo consume es PROVISIONAL (migra a `wapp-client-console` con el
+// Plan 047, ADR-0047; antes decía «a KMP», y dejó de decirlo porque el Plan 045 está al 0 % y esa app
+// está diferida: el marcador no era ejecutable). Cuando esa pantalla muera, esta interfaz se va con ella.
 // Las dos puertas del import —JSON y planilla— van en el MISMO puerto y no en dos, porque para la
 // pantalla son un solo acto con dos entradas: el paso 2 sale siempre por la de JSON, incluso cuando
 // el paso 1 entró por la planilla (el `document` normalizado que devuelve el tabular es lo que lo
@@ -143,7 +145,7 @@ type CatalogImportAPI interface {
 //
 // Va segregado del resto por lo mismo que la bandeja: es un frente de pago (feature `crm_bridge`,
 // que la plataforma exige en los TRES verbos, también el GET). A diferencia de la bandeja, su
-// pantalla es PERMANENTE: es capa técnica (ADR-0035, doc 14 D-03/D-14) y no migra a KMP.
+// pantalla es PERMANENTE: es capa técnica y no migra (ADR-0035 §3, doc 14 D-03/D-14): se queda en el BFF.
 type IntegrationsManager interface {
 	GetIntegration(ctx context.Context, accessToken string) (*apiclient.Integration, error)
 	SaveIntegration(ctx context.Context, accessToken string, s apiclient.IntegrationSettings) (*apiclient.Integration, error)
@@ -180,7 +182,7 @@ type IntegrationsAPI interface {
 //
 // Va segregado del resto por lo mismo que la bandeja: es un frente de pago (feature `api_llm`, que la
 // plataforma exige en los TRES verbos, también el GET). A diferencia de la bandeja, su pantalla es
-// PERMANENTE: es capa técnica (ADR-0035, D-047.5/D-047.9) y no migra a KMP.
+// PERMANENTE: es capa técnica y no migra (ADR-0035 §3, D-047.5/D-047.9): se queda en el BFF.
 type TenantLLMManager interface {
 	GetTenantLLM(ctx context.Context, accessToken string) (*apiclient.TenantLLM, error)
 	SaveTenantLLM(ctx context.Context, accessToken string, s apiclient.TenantLLMSettings) (*apiclient.TenantLLM, error)

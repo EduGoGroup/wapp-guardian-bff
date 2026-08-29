@@ -149,8 +149,11 @@ type intakeDetailRender struct {
 
 // IntakesHandler sirve la bandeja de solicitudes: listado con filtros, detalle y cambio de estado.
 //
-// PANTALLA PROVISIONAL (ADR-0035): esta consola web muere cuando la operación pase a la app KMP
-// (planes 045/047). Está construida para ser borrada de una pieza —handler, plantillas y puerto
+// PANTALLA PROVISIONAL (ADR-0047): esta consola web muere cuando la operación pase a
+// `wapp-client-console`, la consola de administración del cliente (Plan 047). El destino ya no es la
+// app KMP: el Plan 045 está al 0 % y esa app está declarada diferida, así que aquel marcador apuntaba
+// a algo que nadie había empezado y no era ejecutable. Lo que NO cambia es el estado: sigue siendo
+// provisional en el BFF. Está construida para ser borrada de una pieza —handler, plantillas y puerto
 // propios—, no para crecer.
 type IntakesHandler struct {
 	cfg  *config.Config

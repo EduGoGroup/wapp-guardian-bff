@@ -1,6 +1,18 @@
 {{ define "flow_detail.html" }}
 <section class="stack">
 
+    {{/* Esta pantalla nace con fecha de caducidad y lo dice en voz alta: la edición de flujos se va a
+         `wapp-client-console`, la consola de administración del cliente (Plan 047, ADR-0047).
+         El destino ya no es la app KMP —el Plan 045 está al 0 % y esa app está declarada diferida—,
+         así que el marcador dejó de apuntar a algo que nadie ha empezado.
+
+         🔴 ESTE DISTINTIVO NO ESTABA, y su ausencia era una asimetría (ADR-0047 §2): la bandeja y el
+         import se lo decían al usuario, y flujos y disparadores lo decían sólo en un comentario de
+         `server.go`. O lo dicen las tres o no lo dice ninguna. */}}
+    <div class="snackbar snackbar--info" role="note">
+        <span>PROVISIONAL — migra a la consola de administración (Plan 047, ADR-0047)</span>
+    </div>
+
     {{ if .Notice }}
     <div class="snackbar {{ if .Notice.Success }}snackbar--success{{ else }}snackbar--error{{ end }}" role="alert">
         <span>{{ .Notice.Message }}</span>

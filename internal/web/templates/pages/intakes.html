@@ -2,10 +2,12 @@
 <section class="stack">
 
     {{/* Esta pantalla nace con fecha de caducidad y se dice en voz alta: la operación de solicitudes
-         se va a la app KMP (planes 045/047, ADR-0035). Lo mínimo imprescindible para trabajar hoy,
-         nada que merezca cariño. */}}
+         se va a `wapp-client-console`, la consola de administración del cliente (Plan 047, ADR-0047).
+         El destino ya no es la app KMP —el Plan 045 está al 0 % y esa app está declarada diferida—,
+         así que el marcador dejó de apuntar a algo que nadie ha empezado. Lo mínimo imprescindible
+         para trabajar hoy, nada que merezca cariño. */}}
     <div class="snackbar snackbar--info" role="note">
-        <span>PROVISIONAL — migra a KMP (Plan 045/047, ADR-0035)</span>
+        <span>PROVISIONAL — migra a la consola de administración (Plan 047, ADR-0047)</span>
     </div>
 
     {{ if .Notice }}

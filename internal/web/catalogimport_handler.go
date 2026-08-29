@@ -145,7 +145,10 @@ func (v catalogImportView) NoChanges() bool {
 // CatalogImportHandler sirve la pantalla de import de catálogo: pegar o subir el documento,
 // comprobarlo y —en un segundo paso explícito— aplicarlo.
 //
-// PANTALLA PROVISIONAL (ADR-0035): muere cuando la operación pase a la app KMP (planes 045/047).
+// PANTALLA PROVISIONAL (ADR-0047): muere cuando la operación pase a `wapp-client-console`, la consola
+// de administración del cliente (Plan 047). El destino ya no es la app KMP: el Plan 045 está al 0 % y
+// esa app está declarada diferida, así que aquel marcador apuntaba a algo que nadie había empezado y
+// no era ejecutable. Lo que NO cambia es el estado: sigue siendo provisional en el BFF.
 // Está construida para borrarse de una pieza —handler, plantilla y puerto propios—, no para crecer.
 type CatalogImportHandler struct {
 	cfg  *config.Config

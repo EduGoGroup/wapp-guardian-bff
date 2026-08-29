@@ -2,8 +2,8 @@
 <section class="stack">
 
     {{/* Esta pantalla NO lleva marca de provisionalidad, al revés que las de negocio (bandeja,
-         catálogo): elegir quién interpreta los mensajes es CAPA TÉCNICA (ADR-0035, D-047.5/D-047.9) y
-         se queda en la consola. No migra a KMP. */}}
+         catálogo): elegir quién interpreta los mensajes es CAPA TÉCNICA (ADR-0035 §3,
+         D-047.5/D-047.9) y no migra: se queda en el BFF. */}}
 
     {{ if .Notice }}
     <div class="snackbar {{ if .Notice.Success }}snackbar--success{{ else }}snackbar--error{{ end }}" role="alert">

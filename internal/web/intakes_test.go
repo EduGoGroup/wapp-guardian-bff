@@ -87,7 +87,7 @@ func TestIntakesListRendersTable(t *testing.T) {
 	if strings.Contains(out, "<script") {
 		t.Error("la pantalla no debe introducir JS (ADR-0035: server-side, cero framework)")
 	}
-	if !strings.Contains(out, "PROVISIONAL — migra a KMP (Plan 045/047, ADR-0035)") {
+	if !strings.Contains(out, "PROVISIONAL — migra a la consola de administración (Plan 047, ADR-0047)") {
 		t.Error("la marca PROVISIONAL debía estar en el listado")
 	}
 }
@@ -273,7 +273,7 @@ func TestIntakeDetailRendersItemsAndAllowedTransitions(t *testing.T) {
 	if strings.Count(out, "<option") != 4 {
 		t.Errorf("el desplegable debía tener exactamente 4 opciones, got %d", strings.Count(out, "<option"))
 	}
-	if !strings.Contains(out, "PROVISIONAL — migra a KMP (Plan 045/047, ADR-0035)") {
+	if !strings.Contains(out, "PROVISIONAL — migra a la consola de administración (Plan 047, ADR-0047)") {
 		t.Error("la marca PROVISIONAL debía estar en el detalle")
 	}
 }

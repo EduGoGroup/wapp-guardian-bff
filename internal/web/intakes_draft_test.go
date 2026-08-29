@@ -129,7 +129,7 @@ func TestIntakeDraftRendersAmbarWithoutFakingAPrice(t *testing.T) {
 		t.Error("la pantalla no debe introducir JS (ADR-0035: server-side, cero framework)")
 	}
 	// NO-REGRESIÓN: la marca PROVISIONAL sigue estando (T4.2 la conserva, no la vuelve a poner).
-	if !strings.Contains(out, "PROVISIONAL — migra a KMP (Plan 045/047, ADR-0035)") {
+	if !strings.Contains(out, "PROVISIONAL — migra a la consola de administración (Plan 047, ADR-0047)") {
 		t.Error("la marca PROVISIONAL debía seguir en el detalle")
 	}
 }

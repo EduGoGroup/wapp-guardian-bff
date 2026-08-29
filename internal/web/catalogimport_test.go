@@ -291,7 +291,7 @@ func TestCatalogImportShowsFormPromptAndTemplates(t *testing.T) {
 			t.Errorf("la pantalla debía contener %q", want)
 		}
 	}
-	if !strings.Contains(out, "PROVISIONAL — migra a KMP (Plan 045/047, ADR-0035)") {
+	if !strings.Contains(out, "PROVISIONAL — migra a la consola de administración (Plan 047, ADR-0047)") {
 		t.Error("la marca PROVISIONAL debía estar en la pantalla de import")
 	}
 	if strings.Contains(out, "<script") {

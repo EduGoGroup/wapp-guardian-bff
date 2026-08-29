@@ -47,8 +47,8 @@ type tenantVarsNotice struct {
 // TenantVariablesHandler sirve la pantalla de variables de empresa: pares clave→valor que wApp
 // guarda y devuelve tal cual, sin interpretarlos.
 //
-// Es una pantalla PERMANENTE (ADR-0035): las variables son capa técnica del producto, no una
-// operación de negocio, así que no migra a la app KMP y no lleva marca de provisionalidad.
+// Es una pantalla PERMANENTE (ADR-0035 §3): las variables son capa técnica del producto, no una
+// operación de negocio, así que no migra —se queda en el BFF— y no lleva marca de provisionalidad.
 type TenantVariablesHandler struct {
 	cfg  *config.Config
 	api  TenantVariablesManager

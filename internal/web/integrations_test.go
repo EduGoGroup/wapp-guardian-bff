@@ -510,7 +510,7 @@ func TestIntegrationsIsPermanent(t *testing.T) {
 	defer api.close()
 
 	out := getWithCookie(NewRouter(authTestCfg(api.srv.URL)), "/integrations", validSessionCookie(t)).Body.String()
-	for _, forbidden := range []string{"PROVISIONAL", "migra a KMP", "045/047"} {
+	for _, forbidden := range []string{"PROVISIONAL", "migra a la consola de administración", "ADR-0047"} {
 		if strings.Contains(out, forbidden) {
 			t.Errorf("la pantalla de integraciones no debe llevar la marca provisional (%q)", forbidden)
 		}

@@ -108,9 +108,9 @@ func (v tenantLLMView) Providers() []tenantLLMProvider { return tenantLLMProvide
 // sus clientes —el equipo del propio local o un proveedor externo—, con qué proveedor y modelo, y con
 // qué credencial.
 //
-// Es una pantalla PERMANENTE (ADR-0035, D-047.5 / D-047.9): configurar el proveedor de inferencia es
-// capa técnica del producto, no una operación de negocio, así que no migra a la app KMP y no lleva
-// marca de provisionalidad.
+// Es una pantalla PERMANENTE (ADR-0035 §3, D-047.5 / D-047.9): configurar el proveedor de inferencia
+// es capa técnica del producto, no una operación de negocio, así que no migra —se queda en el BFF— y
+// no lleva marca de provisionalidad.
 type TenantLLMHandler struct {
 	cfg  *config.Config
 	api  TenantLLMAPI

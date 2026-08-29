@@ -1,10 +1,12 @@
 {{ define "intake-detail.html" }}
 <section class="stack">
 
-    {{/* Misma advertencia que en el listado, y por el mismo motivo: esto se borra cuando la app KMP
-         asuma la operación (planes 045/047, ADR-0035). */}}
+    {{/* Misma advertencia que en el listado, y por el mismo motivo: esto se borra cuando
+         `wapp-client-console` asuma la operación (Plan 047, ADR-0047). El destino ya no es la app KMP:
+         el Plan 045 está al 0 % y esa app está declarada diferida, así que aquel marcador no era
+         ejecutable. */}}
     <div class="snackbar snackbar--info" role="note">
-        <span>PROVISIONAL — migra a KMP (Plan 045/047, ADR-0035)</span>
+        <span>PROVISIONAL — migra a la consola de administración (Plan 047, ADR-0047)</span>
     </div>
 
     {{ if .Notice }}

@@ -201,8 +201,8 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	protected.Use(requestDeadlineByRoute(cfg))
 	// PORTADA: el índice de lo que ESTA consola conserva (plan y capacidades del tenant + accesos a las
 	// pantallas vivas).
-	// PANTALLA PERMANENTE: es el destino de las redirecciones del plano de autenticación y no migra a
-	// KMP.
+	// PANTALLA PERMANENTE: es el destino de las redirecciones del plano de autenticación, así que es
+	// capa técnica y no migra: se queda en el BFF (ADR-0035 §3, que el ADR-0047 deja intacto).
 	//
 	// 📌 Este marcador nació SIN ponerse, para no desajustar el recuento con el que se verificó la
 	// tarea (se esperaban 2 permanentes, y con la portada son 3). Fue el criterio equivocado y se
@@ -224,8 +224,17 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	// un flujo = publicar versión N+1 (POST /flows); "editar" un trigger = borrar + crear.
 	//
 	// El marcador cubre las SEIS rutas de una vez porque el código ya las trata como un bloque y las dos
-	// pantallas coinciden en destino y en disparo: esperan al Plan 045 y se van juntas.
-	// PANTALLA PROVISIONAL: migra a KMP (planes 045/047, ADR-0035).
+	// pantallas coinciden en destino y en disparo: esperan a la consola de administración y se van juntas.
+	// PANTALLA PROVISIONAL: migra a `wapp-client-console` (Plan 047, ADR-0047).
+	//
+	// 🔴 EL DESTINO CAMBIÓ, y el estado no: antes decía «migra a KMP (planes 045/047, ADR-0035)», y dejó
+	// de decirlo porque el Plan 045 está al 0 % y la app KMP está declarada diferida. Un marcador que
+	// apunta a un destino que nadie ha empezado no es ejecutable —es un permanente que no se atreve a
+	// decir su nombre—, y el destino nuevo existe, corre y está desplegado.
+	//
+	// Y estas tres pantallas —flujos, detalle de flujo y disparadores— ahora lo dicen TAMBIÉN EN LA
+	// PANTALLA (ADR-0047 §2): tenerlo sólo aquí era una asimetría con la bandeja y el import, que sí se
+	// lo decían al usuario. O lo dicen las tres o no lo dice ninguna.
 	protected.GET("/flows", h.ShowFlows)
 	protected.GET("/flows/:id", h.ShowFlowDetail)
 	protected.POST("/flows", h.DoPublishFlow)
@@ -236,13 +245,15 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	// Variables de empresa (Plan 041 · T2.1): pares clave→valor que wApp no interpreta. Va SIN gate de
 	// feature. El POST guarda el conjunto entero, que es la única forma que da la API de quitar una
 	// variable.
-	// PANTALLA PERMANENTE: es capa técnica (ADR-0035) y no migra a KMP.
+	// PANTALLA PERMANENTE: es capa técnica y no migra (ADR-0035 §3): se queda en el BFF.
 	protected.GET("/variables", h.ShowTenantVariables)
 	protected.POST("/variables", h.DoSaveTenantVariables)
 
 	// Bandeja de solicitudes (Plan 041 · T1.5 y T4.10), gateada por la feature `cart_basic` en la
-	// plantilla y por RequireFeature en la plataforma. PANTALLA PROVISIONAL: migra a KMP (planes
-	// 045/047, ADR-0035).
+	// plantilla y por RequireFeature en la plataforma. PANTALLA PROVISIONAL: migra a
+	// `wapp-client-console` (Plan 047, ADR-0047). El destino cambió —ya no es la app KMP— porque el
+	// Plan 045 está al 0 % y esa app está declarada diferida: un marcador que apuntaba ahí no era
+	// ejecutable.
 	//
 	// El POST de líneas es POST y no PUT aunque la ruta de la API lo sea: un formulario HTML solo
 	// sabe emitir GET y POST, y fingir el verbo con un campo oculto añadiría una convención que
@@ -294,7 +305,9 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	// Import de catálogo (Plan 041 · T3.5), gateado por la feature `catalog_import` en la plantilla y
 	// por RequireFeature en la plataforma. El POST atiende los dos pasos —comprobar y aplicar— y cuál
 	// se pide lo dice el botón: el que escribe solo existe después de haber enseñado el diff.
-	// PANTALLA PROVISIONAL: migra a KMP (planes 045/047, ADR-0035).
+	// PANTALLA PROVISIONAL: migra a `wapp-client-console` (Plan 047, ADR-0047). El destino cambió —ya
+	// no es la app KMP— porque el Plan 045 está al 0 % y esa app está declarada diferida: un marcador
+	// que apuntaba ahí no era ejecutable.
 	protected.GET(catalogImportRoute, h.ShowCatalogImport)
 	protected.POST(catalogImportRoute, h.DoCatalogImport)
 	protected.GET(catalogImportRoute+"/template", h.DownloadCatalogTemplate)
@@ -302,7 +315,7 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	// Integraciones (Plan 042 · T5.2): la configuración del puente CRM del tenant —por dónde salen los
 	// pedidos, a qué endpoint y con qué secreto de firma—, gateada por la feature `crm_bridge` en la
 	// plantilla y por RequireFeature en la plataforma, que la exige en los TRES verbos (también el GET).
-	// PANTALLA PERMANENTE: es capa técnica (ADR-0035, doc 14 D-03/D-14) y no migra a KMP.
+	// PANTALLA PERMANENTE: es capa técnica y no migra (ADR-0035 §3, doc 14 D-03/D-14): se queda en el BFF.
 	//
 	// El borrado cuelga de una ruta propia y va por POST porque un formulario HTML solo sabe GET y
 	// POST; fingir el DELETE con un campo oculto añadiría una convención que esta consola no tiene en
@@ -317,7 +330,7 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	// los mensajes del tenant —el equipo de su local o un proveedor externo—, con qué modelo y con qué
 	// credencial. Gateada por la feature `api_llm` en la plantilla y por RequireFeature en la
 	// plataforma, que la exige en los TRES verbos (también el GET).
-	// PANTALLA PERMANENTE: es capa técnica (ADR-0035, D-047.5/D-047.9) y no migra a KMP.
+	// PANTALLA PERMANENTE: es capa técnica y no migra (ADR-0035 §3, D-047.5/D-047.9): se queda en el BFF.
 	//
 	// El borrado cuelga de una ruta propia y va por POST por lo mismo que el de integraciones: un
 	// formulario HTML solo sabe GET y POST, y la traducción al verbo real la hace el apiclient. Va
