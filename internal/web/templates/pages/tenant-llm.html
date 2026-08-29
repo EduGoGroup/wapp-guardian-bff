@@ -105,7 +105,7 @@
 
             <div class="field">
                 <label class="field__label" for="consented">
-                    <input type="checkbox" id="consented" name="consented" value="on" {{ if .View.IsAPI }}checked{{ end }}>
+                    <input type="checkbox" id="consented" name="consented" value="on" {{ if .View.Consented }}checked{{ end }}>
                     Autorizo que el texto de las conversaciones salga hacia el proveedor externo
                 </label>
                 <p class="supporting">Es obligatorio para usar un proveedor externo, y con razón: lo que

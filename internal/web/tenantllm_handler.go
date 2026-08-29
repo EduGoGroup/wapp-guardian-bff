@@ -79,6 +79,18 @@ type tenantLLMView struct {
 	UpdatedAt   string
 	// Loaded distingue «este tenant no tiene configuración» de «no se pudo leer».
 	Loaded bool
+	// Consented es lo que la persona marcó EN ESTE ENVÍO, y solo eso.
+	//
+	// 🔴 No se deriva de la vía, y el motivo se descubrió pisando la pantalla en UAT el 2026-08-29:
+	// la plantilla marcaba la casilla con `IsAPI`, así que un rechazo POR FALTA DE CONSENTIMIENTO
+	// devolvía el formulario CON EL CONSENTIMIENTO MARCADO, y el siguiente clic autorizaba que el
+	// texto de los clientes saliera hacia un tercero sin que nadie lo hubiera decidido. Elegir
+	// proveedor externo NO es consentir: son dos decisiones, y esta casilla existe para separarlas.
+	//
+	// En un GET vale false SIEMPRE, igual que la credencial vuelve vacía: el PUT exige consentimiento
+	// explícito en cada guardado de la vía `api`, así que pre-marcarlo convertiría un acto deliberado
+	// en un descuido.
+	Consented bool
 }
 
 // IsAPI responde si la interpretación sale hacia un tercero. La plantilla lo usa para marcar la opción
@@ -312,10 +324,11 @@ func tenantLLMFromForm(c *gin.Context) (apiclient.TenantLLMSettings, tenantLLMVi
 
 	// La vista de re-pintado se arma SIN la clave tecleada (a propósito): el campo vuelve vacío.
 	typed := tenantLLMView{
-		Via:      via,
-		Provider: provider,
-		Model:    model,
-		Loaded:   true,
+		Via:       via,
+		Provider:  provider,
+		Model:     model,
+		Consented: consented,
+		Loaded:    true,
 	}
 
 	if via != tenantLLMViaLocal && via != tenantLLMViaAPI {

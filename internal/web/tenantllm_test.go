@@ -371,6 +371,74 @@ func TestTenantLLMShowsPlatformRejection(t *testing.T) {
 	}
 }
 
+// TestTenantLLMRechazoNoDevuelveElConsentimientoMarcado vigila el defecto que se descubrió PISANDO la
+// pantalla en UAT el 2026-08-29, con todos los tests de este fichero en verde.
+//
+// La plantilla marcaba la casilla del consentimiento con `IsAPI`, es decir: con la VÍA elegida. Así que
+// un rechazo POR FALTA DE CONSENTIMIENTO devolvía el formulario CON EL CONSENTIMIENTO YA MARCADO, y el
+// siguiente clic en «Guardar» autorizaba que el texto de los clientes saliera hacia un tercero sin que
+// nadie lo hubiera decidido. Elegir proveedor externo NO es consentir: son dos decisiones distintas, y
+// esa casilla existe justo para separarlas.
+//
+// 🔴 El test tiene DOS mitades a propósito. La negativa sola sería vacua: pasaría también si la casilla
+// no se marcara NUNCA, que rompería el re-pintado de quien sí consintió y falló por otra cosa.
+func TestTenantLLMRechazoNoDevuelveElConsentimientoMarcado(t *testing.T) {
+	casos := []struct {
+		nombre    string
+		consented bool
+		upstream  string
+		quiere    bool
+	}{
+		{
+			nombre:    "sin consentir: la casilla vuelve VACÍA",
+			consented: false,
+			upstream:  `{"error":"consent_required","detail":"hay que consentir explícitamente"}`,
+			quiere:    false,
+		},
+		{
+			nombre:    "consintió y falló por otra cosa: la casilla se conserva marcada",
+			consented: true,
+			upstream:  `{"error":"model es obligatorio y no puede pasar de 128 caracteres"}`,
+			quiere:    true,
+		},
+	}
+
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			api := newTenantLLMServer(configuredLLMRow(), testAPIKey, "api_llm")
+			api.override = func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = io.WriteString(w, c.upstream)
+			}
+			defer api.close()
+
+			form := tenantLLMForm("api", "anthropic", "claude-sonnet-4-5", testAPIKey, c.consented)
+			rec := postFormWithCookie(NewRouter(authTestCfg(api.srv.URL)), "/tenant-llm", form, validSessionCookie(t))
+
+			tag := tagDelConsentimiento(t, rec.Body.String())
+			if marcada := strings.Contains(tag, "checked"); marcada != c.quiere {
+				t.Errorf("casilla marcada = %v, quiero %v; el input era:\n%s", marcada, c.quiere, tag)
+			}
+		})
+	}
+}
+
+// tagDelConsentimiento devuelve el `<input>` del consentimiento entero, para poder afirmar sobre SU
+// atributo `checked` y no sobre cualquier «checked» que aparezca en otra parte del HTML.
+func tagDelConsentimiento(t *testing.T, html string) string {
+	t.Helper()
+	i := strings.Index(html, `id="consented"`)
+	if i < 0 {
+		t.Fatalf("la pantalla no trae el input del consentimiento; HTML:\n%s", html)
+	}
+	inicio := strings.LastIndex(html[:i], "<")
+	fin := strings.Index(html[i:], ">")
+	if inicio < 0 || fin < 0 {
+		t.Fatal("no se pudo delimitar el input del consentimiento")
+	}
+	return html[inicio : i+fin+1]
+}
+
 // TestTenantLLMRejectionKeepsLegiblePlatformMessages es la otra mitad: los 400 que YA vienen redactados
 // (los de modelo y credencial) se enseñan tal cual, porque son lo único que dice qué corregir.
 //
