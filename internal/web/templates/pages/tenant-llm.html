@@ -1,0 +1,145 @@
+{{ define "tenant-llm.html" }}
+<section class="stack">
+
+    {{/* Esta pantalla NO lleva marca de provisionalidad, al revés que las de negocio (bandeja,
+         catálogo): elegir quién interpreta los mensajes es CAPA TÉCNICA (ADR-0035, D-047.5/D-047.9) y
+         se queda en la consola. No migra a KMP. */}}
+
+    {{ if .Notice }}
+    <div class="snackbar {{ if .Notice.Success }}snackbar--success{{ else }}snackbar--error{{ end }}" role="alert">
+        <span>{{ .Notice.Message }}</span>
+    </div>
+    {{ end }}
+
+    {{/* GATE SERVER-SIDE POR FEATURE (patrón del Plan 040 · T2.5, D-040.6). Sin `api_llm` no se emite
+         NADA de lo de abajo: ni el formulario, ni el proveedor, ni el modelo, ni el estado de la
+         credencial. No queda escondido por CSS ni por JS, no está en el HTML. El gate decide lo que se
+         PINTA; lo que se PUEDE lo corta RequireFeature en la plataforma —en los TRES verbos, también
+         el GET—, que sigue siendo la autoridad. */}}
+    {{ if .Entitlements.Has "api_llm" }}
+
+    <div class="card" id="section-tenant-llm">
+        <h1 class="headline">Proveedor de IA</h1>
+        <p class="supporting">Aquí decides QUIÉN interpreta los mensajes que te escriben tus clientes:
+            el equipo que tienes en tu local, o un proveedor externo al que le pagas tú. Las dos cosas
+            hacen el mismo trabajo; lo que cambia es dónde se hace y quién ve el texto.</p>
+
+        {{ if not .View.Loaded }}
+        <p class="body">No hay nada que mostrar hasta que la plataforma vuelva a responder.</p>
+        {{ else }}
+
+        <p class="body">
+            {{ if .View.IsAPI }}
+            <span class="chip chip--info">interpreta · un proveedor externo</span>
+            {{ else }}
+            <span class="chip chip--neutral">interpreta · el equipo de tu local</span>
+            {{ end }}
+            {{ if .View.Provider }}<span class="chip chip--neutral">proveedor · {{ .View.Provider }}</span>{{ end }}
+            {{ if .View.Model }}<span class="chip chip--neutral">modelo · {{ .View.Model }}</span>{{ end }}
+            {{/* La credencial se representa por su ESTADO, y ese estado es un booleano. El valor no
+                 está aquí ni puede estar: la API no lo devuelve —tampoco enmascarado ni por su
+                 huella— y la vista no tiene dónde guardarlo. */}}
+            {{ if .View.KeySet }}
+            <span class="chip chip--ok">credencial guardada</span>
+            {{ else }}
+            <span class="chip chip--neutral">sin credencial</span>
+            {{ end }}
+        </p>
+        {{ if .View.ConsentedAt }}<p class="supporting">Consentimiento registrado: {{ .View.ConsentedAt }} (UTC).</p>{{ end }}
+        {{ if .View.UpdatedAt }}<p class="supporting">Último cambio: {{ .View.UpdatedAt }} (UTC).</p>{{ end }}
+
+        <form method="POST" action="/tenant-llm" class="stack" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+
+            <div class="field">
+                <label class="field__label" for="via">¿Quién interpreta los mensajes?</label>
+                <select class="field__control" id="via" name="via">
+                    <option value="local" {{ if not .View.IsAPI }}selected{{ end }}>El equipo de mi local (no sale nada a Internet)</option>
+                    <option value="api" {{ if .View.IsAPI }}selected{{ end }}>Un proveedor externo (lo pago yo)</option>
+                </select>
+                <p class="supporting">Con «el equipo de mi local» el texto de tus clientes no sale de tu
+                    equipo y no pagas nada a nadie; a cambio, va al ritmo de tu máquina. Los tres campos de
+                    abajo SOLO se usan con un proveedor externo: si eliges tu local se ignoran, y no hace
+                    falta que rellenes ninguno.</p>
+            </div>
+
+            {{/* Los campos del proveedor se emiten SIEMPRE, también en la vía local, y es deliberado:
+                 esconderlos exigiría JavaScript en línea —que la CSP de esta consola no admite— o un
+                 re-render por cada cambio del desplegable. Que estén visibles y explicados es más
+                 honesto que un formulario que cambia de forma solo. El servidor no los manda cuando la
+                 vía es local (ver tenantLLMFromForm). */}}
+            <div class="field">
+                <label class="field__label" for="provider">Proveedor externo</label>
+                <select class="field__control" id="provider" name="provider">
+                    {{ range .View.Providers }}
+                    <option value="{{ .Value }}" {{ if $.View.IsProvider .Value }}selected{{ end }}>{{ .Label }}</option>
+                    {{ end }}
+                </select>
+                <p class="supporting">Solo se usa si arriba elegiste «un proveedor externo».</p>
+            </div>
+
+            <div class="field">
+                <label class="field__label" for="model">Modelo</label>
+                <input class="field__control" type="text" id="model" name="model"
+                       value="{{ .View.Model }}" placeholder="claude-sonnet-4-5" maxlength="128">
+                <p class="supporting">El nombre exacto del modelo, tal como lo llama tu proveedor. wApp no
+                    comprueba que exista: si te equivocas, el error llega cuando se use.</p>
+            </div>
+
+            {{/* CAMPO DE ESCRITURA PURA. Lo que ya está guardado NO se pinta —el contrato no lo
+                 devuelve y esta pantalla no lo pide—, así que el campo sale siempre vacío, también
+                 después de un rechazo. */}}
+            <div class="field">
+                <label class="field__label" for="api_key">Credencial del proveedor (API key)</label>
+                <input class="field__control" type="password" id="api_key" name="api_key"
+                       value="" autocomplete="new-password" maxlength="512"
+                       placeholder="La que te da tu proveedor">
+                <p class="body" id="aviso-reteclear-credencial"><strong>Cada vez que guardes con un proveedor
+                    externo tienes que volver a escribir la credencial completa.</strong> No es un descuido de
+                    esta pantalla: wApp no te la devuelve nunca —ni entera, ni recortada, ni en clave— y por eso
+                    tampoco puede reenviarla por ti. Ténla a mano antes de darle a guardar; si solo quieres
+                    cambiar el modelo, vas a tener que pegarla otra vez.</p>
+                <p class="supporting">Guárdala también donde tú la tengas: si la pierdes, aquí no hay forma de
+                    recuperarla, solo de reemplazarla por otra.</p>
+            </div>
+
+            <div class="field">
+                <label class="field__label" for="consented">
+                    <input type="checkbox" id="consented" name="consented" value="on" {{ if .View.IsAPI }}checked{{ end }}>
+                    Autorizo que el texto de las conversaciones salga hacia el proveedor externo
+                </label>
+                <p class="supporting">Es obligatorio para usar un proveedor externo, y con razón: lo que
+                    escriben tus clientes viaja a una empresa de fuera para que lo interprete. Con «el equipo de
+                    mi local» no hace falta, porque no sale nada.</p>
+            </div>
+
+            <div class="row">
+                <button type="submit" class="btn btn--filled">Guardar configuración</button>
+            </div>
+        </form>
+        {{ end }}
+    </div>
+
+    {{/* Quitar va en su propio formulario porque es otra operación y tiene otra consecuencia: borra la
+         fila entera, credencial y consentimiento incluidos. */}}
+    {{ if .View.Configured }}
+    <div class="card" id="section-tenant-llm-remove">
+        <h2 class="title title--m">Quitar el proveedor de IA</h2>
+        <p class="body">El tenant vuelve a lo de siempre: interpreta el equipo de tu local, y se borran a la
+            vez la credencial y tu consentimiento. Un permiso que sobreviviera a la credencial no serviría
+            para nada y sí para confundir.</p>
+        <form method="POST" action="/tenant-llm/delete">
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+            <button type="submit" class="btn btn--outlined">Quitar el proveedor de IA</button>
+        </form>
+    </div>
+    {{ end }}
+
+    {{ else }}
+    <div class="card">
+        <h1 class="headline">Proveedor de IA</h1>
+        <p class="body">El plan de este tenant no incluye configurar un proveedor de IA propio.</p>
+    </div>
+    {{ end }}
+</section>
+{{ end }}

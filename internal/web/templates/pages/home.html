@@ -96,6 +96,15 @@
     </div>
     {{ end }}
 
+    {{ if .Entitlements.Has "api_llm" }}
+    <div class="card" id="section-tenant-llm-access">
+        <h2 class="title">Proveedor de IA</h2>
+        <p class="supporting">Quién interpreta los mensajes de tus clientes: el equipo de tu local o un
+            proveedor externo con su credencial y tu consentimiento explícito.</p>
+        <p class="body"><a href="/tenant-llm" class="btn btn--outlined">Abrir el proveedor de IA</a></p>
+    </div>
+    {{ end }}
+
     {{ if .Entitlements.Has "llm_intent" }}
     <div class="card" id="section-llm-intent">
         <h2 class="title">Clasificador de intenciones</h2>

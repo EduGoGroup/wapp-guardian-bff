@@ -73,6 +73,7 @@ func (h *HomeHandler) ShowHome(c *gin.Context) {
 		intakesNavDataKey:       entitlements.Has(intakesFeature),
 		catalogImportNavDataKey: entitlements.Has(catalogImportFeature),
 		integrationsNavDataKey:  entitlements.Has(integrationsFeature),
+		tenantLLMNavDataKey:     entitlements.Has(tenantLLMFeature),
 		sessionsMovedDataKey:    h.cfg.ClientConsoleURL,
 	})
 }

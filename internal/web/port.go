@@ -165,6 +165,35 @@ type IntegrationsAPI interface {
 	EntitlementsReader
 }
 
+// TenantLLMManager define el contrato de la CONFIGURACIÓN LLM DEL TENANT (Plan 047 · T3.4, sobre la
+// API que el Plan 044 dejó construida): leer la del tenant, guardarla entera y quitarla.
+//
+// 🔴 LA CREDENCIAL ENTRA POR `SaveTenantLLM` Y NO SALE POR NINGÚN MÉTODO, y eso es el contrato dicho
+// en tipos: `apiclient.TenantLLM` no tiene campo donde ponerla. Por eso ninguna vista de esta consola
+// puede pintarla aunque quiera —lo que se pinta es `KeySet`, un booleano— y por eso el criterio «la
+// clave nunca se re-pinta en el HTML» se cumple por construcción y no por disciplina.
+//
+// 🔴 Y AQUÍ NO HAY «DEJA LA QUE ESTÁ», al revés que en IntegrationsManager: la plataforma exige la
+// clave en CADA PUT de la vía `api` porque el PUT es un reemplazo completo. La pantalla no disimula la
+// consecuencia (hay que volver a teclearla); avisarlo es más honesto que inventar aquí una semántica
+// que el cloud no tiene.
+//
+// Va segregado del resto por lo mismo que la bandeja: es un frente de pago (feature `api_llm`, que la
+// plataforma exige en los TRES verbos, también el GET). A diferencia de la bandeja, su pantalla es
+// PERMANENTE: es capa técnica (ADR-0035, D-047.5/D-047.9) y no migra a KMP.
+type TenantLLMManager interface {
+	GetTenantLLM(ctx context.Context, accessToken string) (*apiclient.TenantLLM, error)
+	SaveTenantLLM(ctx context.Context, accessToken string, s apiclient.TenantLLMSettings) (*apiclient.TenantLLM, error)
+	DeleteTenantLLM(ctx context.Context, accessToken string) error
+}
+
+// TenantLLMAPI es lo que la pantalla de configuración LLM consume: el CRUD más las features efectivas,
+// que son las que deciden si la sección se emite siquiera.
+type TenantLLMAPI interface {
+	TenantLLMManager
+	EntitlementsReader
+}
+
 // EditorManager define el contrato para la edición de flujos y la gestión de reglas de disparo.
 type EditorManager interface {
 	ListFlows(ctx context.Context, accessToken string) ([]apiclient.FlowSummary, error)
@@ -184,6 +213,7 @@ type APIPort interface {
 	TenantVariablesManager
 	CatalogImporter
 	IntegrationsManager
+	TenantLLMManager
 }
 
 // Verificación en compilación de que los clientes concretos satisfacen las interfaces segregadas.
@@ -202,6 +232,7 @@ var (
 	_ TenantVariablesManager = (*apiclient.TenantVariablesClient)(nil)
 	_ CatalogImporter        = (*apiclient.CatalogImportClient)(nil)
 	_ IntegrationsManager    = (*apiclient.IntegrationsClient)(nil)
+	_ TenantLLMManager       = (*apiclient.TenantLLMClient)(nil)
 	_ APIPort                = (*apiclient.Client)(nil)
 	_ APIPort                = (*apiclient.DelegatedClient)(nil)
 )

@@ -46,6 +46,10 @@ type fakeAPIPort struct {
 	deleteIntegration  func(ctx context.Context, accessToken string) error
 	getOutboxCounters  func(ctx context.Context, accessToken string) (*apiclient.OutboxCounters, error)
 	outboxCounterCalls int
+
+	getTenantLLM    func(ctx context.Context, accessToken string) (*apiclient.TenantLLM, error)
+	saveTenantLLM   func(ctx context.Context, accessToken string, s apiclient.TenantLLMSettings) (*apiclient.TenantLLM, error)
+	deleteTenantLLM func(ctx context.Context, accessToken string) error
 }
 
 var _ APIPort = (*fakeAPIPort)(nil)
@@ -224,6 +228,35 @@ func (f *fakeAPIPort) GetOutboxCounters(ctx context.Context, at string) (*apicli
 	// El default es una cola vacía: 200 con todo a cero, que es lo que responde la plataforma para un
 	// tenant que nunca encoló nada. NO es un error, y por eso el doble tampoco lo trata como tal.
 	return &apiclient.OutboxCounters{}, nil
+}
+
+func (f *fakeAPIPort) GetTenantLLM(ctx context.Context, at string) (*apiclient.TenantLLM, error) {
+	if f.getTenantLLM != nil {
+		return f.getTenantLLM(ctx, at)
+	}
+	// El default es el de la plataforma para un tenant sin fila: la vía local, que NO es «ninguna vía»
+	// sino el default del producto, y sin credencial.
+	return &apiclient.TenantLLM{Via: "local"}, nil
+}
+func (f *fakeAPIPort) SaveTenantLLM(ctx context.Context, at string, s apiclient.TenantLLMSettings) (*apiclient.TenantLLM, error) {
+	if f.saveTenantLLM != nil {
+		return f.saveTenantLLM(ctx, at, s)
+	}
+	// El doble devuelve la foto guardada SIN la credencial, igual que la API: no hay campo donde
+	// ponerla, solo el booleano que dice que la hay.
+	return &apiclient.TenantLLM{
+		Configured: true,
+		Via:        s.Via,
+		Provider:   s.Provider,
+		Model:      s.Model,
+		KeySet:     s.APIKey != "",
+	}, nil
+}
+func (f *fakeAPIPort) DeleteTenantLLM(ctx context.Context, at string) error {
+	if f.deleteTenantLLM != nil {
+		return f.deleteTenantLLM(ctx, at)
+	}
+	return nil
 }
 
 // TestWithAuthRetryRefreshesOn401 ejercita el seam del puerto SIN HTTP: la primera llamada de negocio

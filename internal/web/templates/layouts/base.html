@@ -65,6 +65,13 @@
             {{ if .IntegrationsNav }}
             <a href="/integrations" class="btn btn--text{{ if hasPrefix .CurrentPath "/integrations" }} btn--active{{ end }}">Integraciones</a>
             {{ end }}
+            {{/* Proveedor de IA: capa técnica y gateada, igual que Integraciones — configurar un
+                 proveedor externo es una capacidad de pago (`api_llm`) y sin ella la plataforma corta
+                 hasta el GET. Mismo criterio fail-closed: en una página que no resolvió las features la
+                 clave no existe y el enlace no llega al HTML. */}}
+            {{ if .TenantLLMNav }}
+            <a href="/tenant-llm" class="btn btn--text{{ if hasPrefix .CurrentPath "/tenant-llm" }} btn--active{{ end }}">Proveedor de IA</a>
+            {{ end }}
             <form method="POST" action="/logout" class="app-bar__logout">
                 <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
                 <button type="submit" class="btn btn--text">Cerrar sesión</button>

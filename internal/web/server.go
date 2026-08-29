@@ -313,6 +313,20 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	protected.POST(integrationsRoute, h.DoSaveIntegration)
 	protected.POST(integrationsRoute+"/delete", h.DoDeleteIntegration)
 
+	// Proveedor de IA (Plan 047 · T3.4, sobre la API que el Plan 044 dejó construida): quién interpreta
+	// los mensajes del tenant —el equipo de su local o un proveedor externo—, con qué modelo y con qué
+	// credencial. Gateada por la feature `api_llm` en la plantilla y por RequireFeature en la
+	// plataforma, que la exige en los TRES verbos (también el GET).
+	// PANTALLA PERMANENTE: es capa técnica (ADR-0035, D-047.5/D-047.9) y no migra a KMP.
+	//
+	// El borrado cuelga de una ruta propia y va por POST por lo mismo que el de integraciones: un
+	// formulario HTML solo sabe GET y POST, y la traducción al verbo real la hace el apiclient. Va
+	// aparte del guardado a propósito: borra la credencial Y el consentimiento, que es la única forma
+	// de retirar ninguno de los dos.
+	protected.GET(tenantLLMRoute, h.ShowTenantLLM)
+	protected.POST(tenantLLMRoute, h.DoSaveTenantLLM)
+	protected.POST(tenantLLMRoute+"/delete", h.DoDeleteTenantLLM)
+
 	return router, rateLimiter
 }
 
