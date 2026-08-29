@@ -8,10 +8,10 @@ github.com/EduGoGroup/wapp-shared/iam v0.1.0 h1:XeNTnbMJlqWwY/7yrxrng4F/tDOCat/i
 github.com/EduGoGroup/wapp-shared/iam v0.1.0/go.mod h1:YMh9IIvcYRB4YfbkP2IrEz/mdlYNnk+G3uGtg4vvrxE=
 github.com/EduGoGroup/wapp-shared/logger v0.2.0 h1:5GWxS+fyWqnCrjedsm0t6a368uo59Xl7Om1/OBoJyfU=
 github.com/EduGoGroup/wapp-shared/logger v0.2.0/go.mod h1:jZ8GH59HUREHIEJv21jNpCdLm1P2NthGqTN/s8SrZTg=
-github.com/EduGoGroup/wapp-shared/ui v0.2.0 h1:BDvwdE1wQedteiLOxqcKSXWwwWSG1rLLSyrwtbShCBU=
-github.com/EduGoGroup/wapp-shared/ui v0.2.0/go.mod h1:t8Ms/wm+0DHMsxYXsBwwtWeBhzf92YQo/DKs4kRlVX0=
-github.com/EduGoGroup/wapp-shared/web v0.1.0 h1:4ra1Z02oEeLgA/8pwEKIe4EhX0oZzRT1gT88oWr+pzU=
-github.com/EduGoGroup/wapp-shared/web v0.1.0/go.mod h1:mg21ZnsOZ2wFZwS2i7dGYXupQzzd0SEM+KigWUg3Niw=
+github.com/EduGoGroup/wapp-shared/ui v0.3.0 h1:UiKtbh614R/nk3RH/K8A3pj+z0te7/aIkCL6L9cj3o4=
+github.com/EduGoGroup/wapp-shared/ui v0.3.0/go.mod h1:t8Ms/wm+0DHMsxYXsBwwtWeBhzf92YQo/DKs4kRlVX0=
+github.com/EduGoGroup/wapp-shared/web v0.2.0 h1:BeYxIRvOGSp/7pJpfu8GowwDeQR8s8YaPo2G7KZZFxE=
+github.com/EduGoGroup/wapp-shared/web v0.2.0/go.mod h1:mg21ZnsOZ2wFZwS2i7dGYXupQzzd0SEM+KigWUg3Niw=
 github.com/bytedance/sonic v1.11.6 h1:oUp34TzMlL+OY1OUWxHqsdkgC/Zfc85zGqw9siXjrc0=
 github.com/bytedance/sonic v1.11.6/go.mod h1:LysEHSvpvDySVdC2f87zGWf6CIKJcAvqab1ZaiQtds4=
 github.com/bytedance/sonic/loader v0.1.1 h1:c+e5Pt1k/cy5wMveRDyk2X4B9hF4g7an8N3zCYjJFNM=
