@@ -1,9 +1,6 @@
 package web
 
 import (
-	"bytes"
-	"encoding/json"
-
 	"github.com/gin-gonic/gin"
 
 	webgin "github.com/EduGoGroup/wapp-shared/web/gin"
@@ -29,13 +26,4 @@ func setSessionCookie(cfg *config.Config, c *gin.Context, value string, maxAgeSe
 // clearSessionCookie borra la cookie de sesión.
 func clearSessionCookie(cfg *config.Config, c *gin.Context) {
 	webgin.ClearSessionCookie(c, sessionCookieOptions(cfg))
-}
-
-// prettyJSON re-indenta el JSON para mostrarlo legible en el textarea.
-func prettyJSON(raw json.RawMessage) string {
-	var buf bytes.Buffer
-	if err := json.Indent(&buf, raw, "", "  "); err != nil {
-		return string(raw)
-	}
-	return buf.String()
 }

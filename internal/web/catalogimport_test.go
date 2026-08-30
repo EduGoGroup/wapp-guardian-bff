@@ -942,11 +942,20 @@ func TestCatalogImportRejectsOversizedBody(t *testing.T) {
 		t.Errorf("no debía llegar nada a la plataforma, got %d llamadas", calls)
 	}
 
-	// El techo es de esta ruta y solo de esta: el editor de flujos publica definiciones grandes y no
-	// se le cambia el comportamiento por la puerta de atrás.
-	flow := postFormWithCookie(router, "/flows", url.Values{"definition": {strings.Repeat("b", maxCatalogImportBody+1)}},
+	// El techo es de esta ruta y solo de esta: las demás pantallas de escritura no ven cambiado su
+	// comportamiento por la puerta de atrás.
+	//
+	// 🔴 LA RUTA TESTIGO TIENE QUE ESTAR VIVA. Aquí estaba `POST /flows`, y con la retirada del editor
+	// (Plan 047 · T6.6) ese POST responde 404: el aserto habría seguido VERDE midiendo que un 404 no
+	// es un 413, o sea, midiendo nada. Se cambió a `POST /variables`, que sigue registrada y sin gate
+	// de feature, y se comprueba ADEMÁS que no da 404 — si algún día se retirara, este test lo dice en
+	// vez de degradarse en silencio.
+	otra := postFormWithCookie(router, "/variables", url.Values{"key_0": {"k"}, "value_0": {strings.Repeat("b", maxCatalogImportBody+1)}},
 		validSessionCookie(t))
-	if flow.Code == http.StatusRequestEntityTooLarge {
+	if otra.Code == http.StatusNotFound {
+		t.Fatal("la ruta testigo del techo dejó de existir: el aserto de abajo mediría un 404, no un techo")
+	}
+	if otra.Code == http.StatusRequestEntityTooLarge {
 		t.Error("el techo no debía aplicarse a otras rutas")
 	}
 }

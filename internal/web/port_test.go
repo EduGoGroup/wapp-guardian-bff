@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -73,22 +72,6 @@ func (f *fakeAPIPort) GetEntitlements(ctx context.Context, at string) (*apiclien
 	}
 	return nil, nil
 }
-func (f *fakeAPIPort) ListFlows(context.Context, string) ([]apiclient.FlowSummary, error) {
-	return nil, nil
-}
-func (f *fakeAPIPort) GetFlow(context.Context, string, string) (json.RawMessage, error) {
-	return nil, nil
-}
-func (f *fakeAPIPort) PublishFlow(context.Context, string, []byte) (*apiclient.PublishFlowResult, error) {
-	return nil, nil
-}
-func (f *fakeAPIPort) ListTriggers(context.Context, string) ([]apiclient.Trigger, error) {
-	return nil, nil
-}
-func (f *fakeAPIPort) CreateTrigger(context.Context, string, apiclient.CreateTriggerRequest) (*apiclient.Trigger, error) {
-	return nil, nil
-}
-func (f *fakeAPIPort) DeleteTrigger(context.Context, string, string) error { return nil }
 func (f *fakeAPIPort) ListIntakes(ctx context.Context, at string, filter apiclient.IntakeFilter) (*apiclient.IntakePage, error) {
 	if f.listIntakes != nil {
 		return f.listIntakes(ctx, at, filter)

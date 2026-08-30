@@ -69,16 +69,28 @@
     </div>
     {{ end }}
 
-    {{/* Flujos y triggers no llevan gate de feature: son la capa técnica del motor y salen para
-         cualquier sesión autenticada, igual que sus enlaces de la barra superior. */}}
-    <div class="card" id="section-flows">
+    {{/* 🔴 DÓNDE SE ADMINISTRAN AHORA LOS FLUJOS Y LOS DISPARADORES (Plan 047 · T6.5/T6.6).
+
+         Esta tarjeta ofrecía «Abrir los flujos» y «Abrir los triggers». Las dos pantallas se mudaron
+         a la consola del cliente (`/flujos` y `/disparadores`) y se retiraron de aquí en el mismo
+         ciclo (REQ-08), igual que las sesiones: dos copias de la misma pantalla divergen.
+
+         Mismo criterio que el aviso de arriba con el enlace: solo se ofrece si `ClientConsoleURL`
+         viene puesta por entorno, y su vacío es el caso normal —las dos aplicaciones son loopback en
+         puertos distintos y no hay URL pública que ofrecer—. */}}
+    <div class="card" id="section-editor-moved">
         <h2 class="title">Flujos y reglas de disparo</h2>
-        <p class="supporting">Los menús y encuestas publicados (versionados: editar es publicar la
-            versión siguiente) y las palabras que los disparan.</p>
-        <p class="body">
-            <a href="/flows" class="btn btn--outlined">Abrir los flujos</a>
-            <a href="/triggers" class="btn btn--outlined">Abrir los triggers</a>
-        </p>
+        <div class="snackbar snackbar--info" role="note">
+            <span>Los menús y encuestas publicados y las <strong>palabras que los disparan</strong>
+                <strong>se administran ahora en la consola del cliente</strong>. Desde esta consola ya
+                no se listan, ni se publican, ni se borran.</span>
+        </div>
+        {{ if .ClientConsoleURL }}
+        <p class="body"><a href="{{ .ClientConsoleURL }}" class="btn btn--outlined" rel="noopener noreferrer">Abrir la consola del cliente</a></p>
+        {{ else }}
+        <p class="supporting">Pídele a quien administre el despliegue la dirección de la consola del
+            cliente: esta consola no la publica.</p>
+        {{ end }}
     </div>
 
     <div class="card" id="section-variables">

@@ -2,7 +2,7 @@
 
 > Documenta cómo **este BFF** (`wapp-guardian-bff`) consume la API pública REST de
 > `cloud/wapp-cloud-platform` (`:8103`, Plan 018). Es la implementación de referencia: describe el
-> contrato **tal como el código lo usa hoy** (`internal/apiclient/{auth.go,editor.go,intakes.go,
+> contrato **tal como el código lo usa hoy** (`internal/apiclient/{auth.go,transport.go,intakes.go,
 > entitlements.go,…}`), para que un futuro cliente Android/iOS lo replique sin tener que leer el BFF
 > entero.
 >
@@ -89,7 +89,7 @@ local.
 
 Todas las llamadas de esta sección llevan `Authorization: Bearer <access_token>`
 (`newAuthedRequest`, `transport.go:78`) y usan el patrón refresh+reintento de §2 cuando el
-llamador es un handler de la consola (portada, bandeja, editor…).
+llamador es un handler de la consola (portada, bandeja, import…).
 
 | Método y ruta | Request | Response 2xx | Códigos de error relevantes | Cliente (`apiclient`) |
 |---|---|---|---|---|
@@ -98,12 +98,12 @@ llamador es un handler de la consola (portada, bandeja, editor…).
 | ~~`POST /api/v1/sessions/{id}/role`~~ | 🔴 **RETIRADA** de la plataforma (migración `0064`), junto con el campo `role` de la respuesta de `GET /api/v1/sessions`. Su ciclo de deprecación se cerró sin esperar: al comprobarlo, **no había ningún consumidor** de esa ruta fuera de la propia plataforma. | — | — | — |
 | `POST /api/v1/messages` | `{session_id, to, text}` (`sendMessageRequest`) | `SendResult{acked_command_id, ok, error?}` (200 **incluso si `ok:false`**) | `400` datos inválidos · `401` · `404` sesión ajena · `502` Edge offline · `504` timeout · `500` | 🔴 **ya no en este BFF** (047 · T2.1) — `wapp-client-console` |
 | `GET /api/v1/entitlements` | — | `Entitlements{plan, features[], cache_ttl_seconds}` | `401` · `403` token sin el scope `entitlements.read` | `GetEntitlements` (`entitlements.go`) |
-| `GET /api/v1/flows` | — | `[]FlowSummary{flow_id, version, created_at?}` | `401` | `ListFlows` (`editor.go:102`) |
-| `GET /api/v1/flows/{id}` | — | `model.Flow` crudo (`{flow_id, version, initial, nodes}`), devuelto sin re-serializar | `401` · `404` (ajeno/inexistente, opaco) | `GetFlow` (`editor.go:123`) |
-| `POST /api/v1/flows` | `{definition: <model.Flow>}` (**anidado**, `publishFlowRequest`) | `PublishFlowResult{flow_id, version}` (201) | `401` · `4xx` rechazo de validación (mensaje mostrable) · `5xx` | `PublishFlow` (`editor.go:144`) |
-| `GET /api/v1/triggers` | — | `[]Trigger{trigger_id, kind, keyword?, event_kind?, match_type, flow_id?, priority, enabled, message?, session_id?, shadowed_by_event_list?}` | `401` | `ListTriggers` (`editor.go:188`) |
-| `POST /api/v1/triggers` | `CreateTriggerRequest{kind, keyword?, event_kind?, match_type?, flow_id?, priority, message?, session_id?}` | `Trigger` creado (201) | `401` · `4xx` rechazo de validación (mensaje mostrable) · `5xx` | `CreateTrigger` (`editor.go:209`) |
-| `DELETE /api/v1/triggers/{id}` | — | sin body (204) | `401` · `404` (ajeno/inexistente, opaco) | `DeleteTrigger` (`editor.go:230`) |
+| `GET /api/v1/flows` | — | `[]FlowSummary{flow_id, version, created_at?}` | `401` | 🔴 **ya no en este BFF** (047 · T6.6) — `wapp-client-console` |
+| `GET /api/v1/flows/{id}` | — | `model.Flow` crudo (`{flow_id, version, initial, nodes}`), devuelto sin re-serializar | `401` · `404` (ajeno/inexistente, opaco) | 🔴 **ya no en este BFF** (047 · T6.6) — `wapp-client-console` |
+| `POST /api/v1/flows` | `{definition: <model.Flow>}` (**anidado**, `publishFlowRequest`) | `PublishFlowResult{flow_id, version}` (201) | `401` · `4xx` rechazo de validación (mensaje mostrable) · `5xx` | 🔴 **ya no en este BFF** (047 · T6.6) — `wapp-client-console` |
+| `GET /api/v1/triggers` | — | `[]Trigger{trigger_id, kind, keyword?, event_kind?, match_type, flow_id?, priority, enabled, message?, session_id?, shadowed_by_event_list?}` | `401` | 🔴 **ya no en este BFF** (047 · T6.6) — `wapp-client-console` |
+| `POST /api/v1/triggers` | `CreateTriggerRequest{kind, keyword?, event_kind?, match_type?, flow_id?, priority, message?, session_id?}` | `Trigger` creado (201) | `401` · `4xx` rechazo de validación (mensaje mostrable) · `5xx` | 🔴 **ya no en este BFF** (047 · T6.6) — `wapp-client-console` |
+| `DELETE /api/v1/triggers/{id}` | — | sin body (204) | `401` · `404` (ajeno/inexistente, opaco) | 🔴 **ya no en este BFF** (047 · T6.6) — `wapp-client-console` |
 
 Notas de contrato:
 - **Entitlements: lista de habilitadas, no mapa** (`Entitlements`, `entitlements.go:17`). `features`
@@ -163,12 +163,12 @@ sin acoplarse al string del error:
    inválidos", `404`→"sesión ajena", `502`→"desconectado", `504`→"tardó demasiado", resto→genérico—;
    el patrón sigue vivo en los handlers que quedan). El código se extrae con
    `apiclient.StatusCodeOf(err)` (`transport.go:54`).
-3. **`*RejectionError{Op, StatusCode, Message}`** (`editor.go:55`) — **solo** en endpoints de
+3. **`*RejectionError{Op, StatusCode, Message}`** (`transport.go:101`) — **solo** en endpoints de
    **escritura** (`PublishFlow`, `CreateTrigger`) y **solo** para `4xx` distinto de `401`. Aquí el
    cuerpo de la API **sí** se muestra al usuario (acotado a 500 bytes,
-   `maxRejectionBody`, `editor.go:65`): es un rechazo de **contenido propio del operador** (p. ej.
+   `maxRejectionBody`, `transport.go:113`): es un rechazo de **contenido propio del operador** (p. ej.
    "definición de flujo inválida", "keyword es requerido"), no una traza interna — mostrarlo ayuda a
-   corregir (REQ-E4). Se extrae con `apiclient.RejectionMessageOf(err)` (`editor.go:83`).
+   corregir (REQ-E4). Se extrae con `apiclient.RejectionMessageOf(err)` (`transport.go:116`).
 
 Regla general que un cliente nuevo debería replicar: **nunca mostrar el cuerpo crudo de un error
 que no sea un rechazo de validación sobre contenido propio.** Los `5xx` y los `401` no llevan

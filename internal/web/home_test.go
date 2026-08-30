@@ -17,6 +17,9 @@ import (
 // portada dejara de emitirlo, esta cadena no aparecería en el HTML.
 const sessionsMovedMarker = `id="section-sessions-moved"`
 
+// editorMovedMarker es el mismo ancla para flujos y disparadores (Plan 047 · T6.5/T6.6).
+const editorMovedMarker = `id="section-editor-moved"`
+
 // homeAPI levanta una API pública fake que sirve las features dadas y NADA MÁS: cualquier otra ruta
 // responde 500 y deja constancia de que se llamó.
 //
@@ -162,8 +165,6 @@ func TestPortadaConservaLosAccesosDeLoQueSigueVivoAqui(t *testing.T) {
 		"Plan y capacidades", // la tarjeta de plan
 		`chip chip--info">plan · commerce`,
 		`href="/intakes"`,        // gateado por cart_basic
-		`href="/flows"`,          // sin gate
-		`href="/triggers"`,       // sin gate
 		`href="/catalog-import"`, // gateado por catalog_import
 		`href="/variables"`,      // sin gate
 		`href="/integrations"`,   // gateado por crm_bridge
@@ -193,7 +194,7 @@ func TestPortadaRespetaLosGatesDeLoQueConserva(t *testing.T) {
 		}
 	}
 	// Lo que no depende de features sigue estando: el gate no se lleva por delante lo que no gatea.
-	for _, want := range []string{`href="/flows"`, `href="/variables"`, sessionsMovedMarker} {
+	for _, want := range []string{`href="/variables"`, sessionsMovedMarker, editorMovedMarker} {
 		if !strings.Contains(out, want) {
 			t.Errorf("el gate cerrado no debía llevarse por delante %q", want)
 		}
@@ -356,5 +357,81 @@ func TestPortadaSinCookieRedirigeAlLogin(t *testing.T) {
 	rec := getWithCookie(router, "/", nil)
 	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/login" {
 		t.Errorf("GET / sin cookie debía redirigir a /login, got %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+}
+
+// TestRutasDelEditorYaNoExisten es el gate de la retirada del editor (Plan 047 · T6.6) por el lado del
+// router: flujos y disparadores viven ahora en `wapp-client-console` y aquí no queda ni una de las seis.
+//
+// 🔴 EL CÓDIGO DE ESTADO NO BASTA, Y ESTÁ MEDIDO — es la misma lección que dejó T2.1 y está escrita en
+// TestRutasDelDashboardYaNoExisten: este router nace con HandleMethodNotAllowed en false y responde
+// 404 a un verbo no registrado exactamente igual que a una ruta inexistente. Un test que solo mirase
+// el status daría por retirada una ruta que sigue viva con otro método. Por eso el aserto que mata la
+// mutación —resucitar `GET /flows`— es el que recorre `router.Routes()`, no el que pide la URL.
+//
+// Se compara por el PATRÓN declarado (`/flows/:id`, `/triggers/:id/delete`), no por la URL concreta,
+// porque eso es lo que guarda la tabla de gin.
+func TestRutasDelEditorYaNoExisten(t *testing.T) {
+	api, _ := homeAPI(t, "cart_basic")
+	router := NewRouter(authTestCfg(api.URL))
+
+	casos := []struct {
+		nombre string
+		metodo string
+		ruta   string
+	}{
+		{"listado de flujos", http.MethodGet, "/flows"},
+		{"detalle de flujo", http.MethodGet, "/flows/f-1"},
+		{"publicar flujo", http.MethodPost, "/flows"},
+		{"listado de disparadores", http.MethodGet, "/triggers"},
+		{"crear disparador", http.MethodPost, "/triggers"},
+		{"borrar disparador", http.MethodPost, "/triggers/t-1/delete"},
+	}
+	for _, tc := range casos {
+		t.Run(tc.nombre, func(t *testing.T) {
+			var rec *httptest.ResponseRecorder
+			if tc.metodo == http.MethodPost {
+				rec = postFormWithCookie(router, tc.ruta, url.Values{}, validSessionCookie(t))
+			} else {
+				rec = getWithCookie(router, tc.ruta, validSessionCookie(t))
+			}
+			if rec.Code != http.StatusNotFound {
+				t.Fatalf("%s %s debía responder 404 (retirada), got %d", tc.metodo, tc.ruta, rec.Code)
+			}
+		})
+	}
+
+	// EL ASERTO DEL CRITERIO: ninguno de los seis patrones queda registrado, con NINGÚN verbo.
+	retiradas := map[string]bool{
+		"/flows":               true,
+		"/flows/:id":           true,
+		"/triggers":            true,
+		"/triggers/:id/delete": true,
+	}
+	// Falla si el bucle se queda sin material: un criterio de ausencia lo satisface una tabla vacía, y
+	// este proyecto ya se comió un verde que medía cero. Si `Routes()` no devolviera nada, el aserto de
+	// arriba pasaría sin haber mirado una sola ruta.
+	rutas := NewRouter(authTestCfg(api.URL)).Routes()
+	if len(rutas) == 0 {
+		t.Fatal("router.Routes() vacío: el test no está midiendo nada")
+	}
+	for _, r := range rutas {
+		if retiradas[r.Path] {
+			t.Errorf("la ruta %s %s sigue registrada: la retirada quedó a medias", r.Method, r.Path)
+		}
+	}
+
+	// Y el otro lado de la misma retirada (T6.5): ninguna página emite un enlace a una ruta que esta
+	// casa ya no sirve. Se mira el HTML RENDERIZADO del layout, no la plantilla — un `{{ if }}` mal
+	// puesto deja el literal en el fichero y fuera del HTML, y al revés.
+	out := getWithCookie(router, "/", validSessionCookie(t)).Body.String()
+	for _, prohibido := range []string{`href="/flows"`, `href="/triggers"`, `action="/flows"`, `action="/triggers"`} {
+		if strings.Contains(out, prohibido) {
+			t.Errorf("la portada seguía ofreciendo %q, que esta consola ya no sirve", prohibido)
+		}
+	}
+	// Y el aviso que dice a dónde se fueron: retirar sin decirlo deja al operador buscando.
+	if !strings.Contains(out, editorMovedMarker) {
+		t.Error("la portada debía emitir el bloque que dice dónde se administran ahora flujos y disparadores")
 	}
 }

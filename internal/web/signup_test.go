@@ -279,7 +279,10 @@ func TestPendingState_RedirectsWhenNoTenant(t *testing.T) {
 	}
 	// «Inicio» es el enlace de la raíz desde el Plan 047 · T2.1 (antes «Sesiones»): un aserto sobre el
 	// literal viejo seguiría verde por no existir ya en ninguna parte, que es la peor forma de pasar.
-	if strings.Contains(body, "Inicio") || strings.Contains(body, "Flujos") || strings.Contains(body, "Solicitudes") {
+	// Por eso «Flujos» salió de esta lista con la retirada del editor (T6.6) y entró «Variables», que
+	// sí está en el nav de esta consola: los tres literales que se prohíben aquí tienen que existir en
+	// el layout autenticado, o el test pasa por ausencia y no por gate.
+	if strings.Contains(body, "Inicio") || strings.Contains(body, "Variables") || strings.Contains(body, "Solicitudes") {
 		t.Fatal("la pantalla /pending no debe contener opciones de menú de negocio")
 	}
 }

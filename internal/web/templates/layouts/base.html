@@ -53,8 +53,11 @@
             {{ if .CatalogImportNav }}
             <a href="/catalog-import" class="btn btn--text{{ if hasPrefix .CurrentPath "/catalog-import" }} btn--active{{ end }}">Catálogo</a>
             {{ end }}
-            <a href="/flows" class="btn btn--text{{ if hasPrefix .CurrentPath "/flows" }} btn--active{{ end }}">Flujos</a>
-            <a href="/triggers" class="btn btn--text{{ if hasPrefix .CurrentPath "/triggers" }} btn--active{{ end }}">Triggers</a>
+            {{/* «Flujos» y «Triggers» estuvieron aquí hasta el Plan 047 · T6.5/T6.6: se mudaron a la
+                 consola del cliente (`/flujos` y `/disparadores`) y el enlace se retiró en el mismo
+                 ciclo. Un enlace que promete una pantalla que su propia casa ya no sirve es peor que
+                 no tenerlo: manda al usuario a un 404 de esta consola. Dónde están ahora lo dice la
+                 portada, que es donde vive el aviso de mudanza. */}}
             {{/* Variables de empresa: capa técnica, sin gate de feature, así que el enlace sale para
                  cualquier sesión autenticada (a diferencia del de Solicitudes). */}}
             <a href="/variables" class="btn btn--text{{ if hasPrefix .CurrentPath "/variables" }} btn--active{{ end }}">Variables</a>

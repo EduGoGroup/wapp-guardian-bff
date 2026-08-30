@@ -206,15 +206,18 @@ func TestIntakesGateEmitsBlocksWithFeature(t *testing.T) {
 
 // TestIntakesNavHiddenWhenEntitlementsUnknown (fail-closed): si las features no se pudieron resolver,
 // ninguna página emite el enlace a la bandeja. Vale también para las páginas que ni siquiera las
-// consultan (flujos), donde la clave no existe en los datos de plantilla.
+// consultan (variables), donde la clave no existe en los datos de plantilla.
+//
+// La segunda página era `/flows` hasta que el editor se retiró (Plan 047 · T6.6): sobre una ruta
+// muerta el aserto habría seguido verde comprobando que un 404 no trae el enlace.
 func TestIntakesNavHiddenWhenEntitlementsUnknown(t *testing.T) {
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/v1/entitlements":
 			w.WriteHeader(http.StatusInternalServerError)
-		case "/api/v1/flows":
-			_, _ = io.WriteString(w, `[]`)
+		case "/api/v1/tenant/variables":
+			_, _ = io.WriteString(w, `{"variables":{}}`)
 		default:
 			_, _ = io.WriteString(w, `[]`)
 		}
@@ -223,7 +226,7 @@ func TestIntakesNavHiddenWhenEntitlementsUnknown(t *testing.T) {
 
 	router := NewRouter(authTestCfg(api.URL))
 	cookie := validSessionCookie(t)
-	for _, path := range []string{"/", "/flows"} {
+	for _, path := range []string{"/", "/variables"} {
 		if strings.Contains(getWithCookie(router, path, cookie).Body.String(), `href="/intakes"`) {
 			t.Errorf("%s no debía emitir el enlace a la bandeja sin features resueltas", path)
 		}

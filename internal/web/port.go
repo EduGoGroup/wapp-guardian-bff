@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 )
@@ -196,21 +195,10 @@ type TenantLLMAPI interface {
 	EntitlementsReader
 }
 
-// EditorManager define el contrato para la edición de flujos y la gestión de reglas de disparo.
-type EditorManager interface {
-	ListFlows(ctx context.Context, accessToken string) ([]apiclient.FlowSummary, error)
-	GetFlow(ctx context.Context, accessToken, id string) (json.RawMessage, error)
-	PublishFlow(ctx context.Context, accessToken string, flowJSON []byte) (*apiclient.PublishFlowResult, error)
-	ListTriggers(ctx context.Context, accessToken string) ([]apiclient.Trigger, error)
-	CreateTrigger(ctx context.Context, accessToken string, tr apiclient.CreateTriggerRequest) (*apiclient.Trigger, error)
-	DeleteTrigger(ctx context.Context, accessToken, id string) error
-}
-
 // APIPort es el puerto compuesto por compatibilidad con el cliente unificado de la API pública.
 type APIPort interface {
 	Authenticator
 	EntitlementsReader
-	EditorManager
 	IntakeManager
 	TenantVariablesManager
 	CatalogImporter
@@ -228,7 +216,6 @@ var (
 	_ Authenticator      = (*apiclient.DelegatedAuthenticator)(nil)
 	_ EntitlementsReader = (*apiclient.EntitlementsClient)(nil)
 	_ HomeAPI            = (*apiclient.EntitlementsClient)(nil)
-	_ EditorManager      = (*apiclient.EditorClient)(nil)
 	_ IntakeManager      = (*apiclient.IntakesClient)(nil)
 
 	_ TenantVariablesManager = (*apiclient.TenantVariablesClient)(nil)

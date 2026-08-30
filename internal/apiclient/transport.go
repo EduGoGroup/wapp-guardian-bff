@@ -90,6 +90,48 @@ func statusError(op string, status int) error {
 	return &APIError{Op: op, StatusCode: status}
 }
 
+// RejectionError es un rechazo 4xx (≠401) de un endpoint de escritura que trae un MOTIVO mostrable.
+//
+// 🔴 Vive aquí y no en el fichero de una pantalla concreta. Nació con el editor de flujos
+// (`apiclient/editor.go`), pero cuando ese fichero se retiró con las pantallas —Plan 047 · T6.6— se
+// vio que el tipo lo construyen `reasonedStatusError` (justo debajo) y seis clientes de dominio, y lo
+// consultan una docena de handlers: era infraestructura de transporte alojada de prestado. Un
+// símbolo compartido no se guarda en el fichero de su primer usuario, porque el día que ese usuario
+// se va parece que se puede borrar con él.
+type RejectionError struct {
+	Op         string
+	StatusCode int
+	Message    string
+}
+
+func (e *RejectionError) Error() string {
+	return fmt.Sprintf("apiclient: %s rechazado (%d): %s", e.Op, e.StatusCode, e.Message)
+}
+
+// maxRejectionBody acota cuánto cuerpo del upstream se lee para componer el motivo: lo que acaba en
+// pantalla no lo dimensiona el que responde.
+const maxRejectionBody = 500
+
+// RejectionMessageOf extrae el mensaje mostrable de un *RejectionError.
+func RejectionMessageOf(err error) (string, bool) {
+	var rej *RejectionError
+	if errors.As(err, &rej) {
+		return rej.Message, true
+	}
+	return "", false
+}
+
+// RejectionOf extrae el rechazo entero (status + mensaje). Hace falta cuando el llamante distingue
+// entre varios códigos con motivo —un 400 de forma y un 413 por tamaño piden consejos distintos— y
+// no le basta con el texto.
+func RejectionOf(err error) (*RejectionError, bool) {
+	var rej *RejectionError
+	if errors.As(err, &rej) {
+		return rej, true
+	}
+	return nil, false
+}
+
 // reasonedStatusError traduce un no-2xx conservando el MOTIVO que manda la API (`{"error":"…"}`) solo
 // para los códigos indicados, y dejando el resto como *APIError legible por StatusCodeOf.
 //

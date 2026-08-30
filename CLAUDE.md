@@ -23,7 +23,7 @@ ve el token). **No** empareja teléfonos ni custodia DEK.
 | ~~Sesiones~~ | 🔴 **RETIRADO (Plan 047 · T2.1)** — se administran en `guardian/wapp-client-console` | — |
 | ~~Enviar mensaje~~ | 🔴 **RETIRADO (Plan 047 · T2.1)** — se administra en `guardian/wapp-client-console` | — |
 | Portada | Índice de lo que ESTA consola conserva: plan/capacidades + accesos, y el aviso de dónde se administran ahora las sesiones | `GET entitlements` |
-| Editar menú/encuestas | Listar/ver flows y **publicar versión nueva** (inmutables); triggers listar/crear/borrar | `flows`, `flows/{id}`, `triggers` |
+| ~~Editar menú/encuestas~~ | 🔴 **RETIRADO (Plan 047 · T6.6)** — flujos y disparadores se administran en `guardian/wapp-client-console` (`/flujos` y `/disparadores`) | — |
 | Plan y capacidades | Pinta el plan del tenant y un chip por feature efectiva, y **gatea qué secciones se emiten** (ver abajo) | `GET entitlements` |
 
 ### 🔴 Lo que se RETIRÓ de aquí (Plan 047 · T2.1)
@@ -143,13 +143,13 @@ internal/config/           — Config desde env (WAPP_GUARDIAN_*, WAPP_PUBLIC_AP
 internal/apiclient/        — clientes HTTP (Bearer server-side): transport (request autenticada,
                              ErrUnauthorized/APIError), auth, intakes (bandeja), catalogimport,
                              tenantvariables, integrations,
-                             editor (flows+triggers), entitlements + delegated (el adaptador del
+                             entitlements + delegated (el adaptador del
                              plano de identidad al puerto Authenticator; el cliente de identity y el
                              canje son github.com/EduGoGroup/wapp-shared/iam)
 internal/web/              — server (Gin, cableado de middlewares), policy (nombres de cookie,
                              entropía y opciones del módulo), auth_handler (login/AuthMiddleware/
                              refresh), session (claims del JWT), home_handler (la PORTADA),
-                             intakes_*, editor_handler,
+                             intakes_*,
                              entitlements (vista de features + gate); templates/ +
                              static/css/app.css (//go:embed). El middleware transversal —CSP+nonce,
                              CSRF, rate-limit, deadline, body-limit, single-flight, render— es

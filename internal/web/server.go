@@ -46,7 +46,8 @@ var appCSS []byte
 func funcsDePlantilla(yield func(string, any) (template.HTML, error)) template.FuncMap {
 	return template.FuncMap{
 		// hasPrefix resalta el enlace activo de la navegación (app-bar): la sección se decide por el
-		// prefijo del path (p. ej. "/flows/menu" activa "Flujos").
+		// prefijo del path (p. ej. "/intakes/in-1" activa "Solicitudes"). El ejemplo era "/flows/menu"
+		// hasta el Plan 047 · T6.6: un comentario que ilustra con una ruta retirada envejece a mentira.
 		"hasPrefix": strings.HasPrefix,
 		// statusLabel traduce la clave del ciclo de vida de una solicitud al nombre de negocio. Es
 		// presentación pura: lo que se puede hacer con ese estado lo dice la plataforma, no esta tabla.
@@ -220,27 +221,17 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	// confirmarse el tenant viniendo de /pending—. Borrarla convertiría un login correcto en un 404.
 	protected.GET("/", h.ShowHome)
 
-	// Editor de menú/encuestas (T4): flujos (inmutables versionados) + triggers (crear/borrar). "Editar"
-	// un flujo = publicar versión N+1 (POST /flows); "editar" un trigger = borrar + crear.
+	// 🔴 AQUÍ ESTUVO EL EDITOR DE FLUJOS Y DISPARADORES, y su retirada (Plan 047 · T6.6) se llevó SEIS
+	// rutas: `GET /flows`, `GET /flows/:id`, `POST /flows` (publicar la versión N+1) y las tres de
+	// disparadores, `GET /triggers`, `POST /triggers`, `POST /triggers/:id/delete`. Las dos pantallas
+	// se administran ahora en la consola del cliente (`wapp-client-console`, `/flujos` y
+	// `/disparadores`) y se retiraron de aquí EN EL MISMO CICLO (REQ-08): dos copias de la misma
+	// pantalla divergen, y la que sigue viva contesta antes que la documentación.
 	//
-	// El marcador cubre las SEIS rutas de una vez porque el código ya las trata como un bloque y las dos
-	// pantallas coinciden en destino y en disparo: esperan a la consola de administración y se van juntas.
-	// PANTALLA PROVISIONAL: migra a `wapp-client-console` (Plan 047, ADR-0047).
-	//
-	// 🔴 EL DESTINO CAMBIÓ, y el estado no: antes decía «migra a KMP (planes 045/047, ADR-0035)», y dejó
-	// de decirlo porque el Plan 045 está al 0 % y la app KMP está declarada diferida. Un marcador que
-	// apunta a un destino que nadie ha empezado no es ejecutable —es un permanente que no se atreve a
-	// decir su nombre—, y el destino nuevo existe, corre y está desplegado.
-	//
-	// Y estas tres pantallas —flujos, detalle de flujo y disparadores— ahora lo dicen TAMBIÉN EN LA
-	// PANTALLA (ADR-0047 §2): tenerlo sólo aquí era una asimetría con la bandeja y el import, que sí se
-	// lo decían al usuario. O lo dicen las tres o no lo dice ninguna.
-	protected.GET("/flows", h.ShowFlows)
-	protected.GET("/flows/:id", h.ShowFlowDetail)
-	protected.POST("/flows", h.DoPublishFlow)
-	protected.GET("/triggers", h.ShowTriggers)
-	protected.POST("/triggers", h.DoCreateTrigger)
-	protected.POST("/triggers/:id/delete", h.DoDeleteTrigger)
+	// La retirada la vigila `TestRutasDelEditorYaNoExisten` (home_test.go) contra `router.Routes()`,
+	// no contra el status: este router nace con HandleMethodNotAllowed en false y responde 404 a un
+	// verbo no registrado igual que a una ruta inexistente, así que un test de status daría por
+	// retirada una ruta que sigue viva con otro método.
 
 	// Variables de empresa (Plan 041 · T2.1): pares clave→valor que wApp no interpreta. Va SIN gate de
 	// feature. El POST guarda el conjunto entero, que es la única forma que da la API de quitar una
