@@ -23,7 +23,8 @@ ve el token). **No** empareja teléfonos ni custodia DEK.
 | ~~Sesiones~~ | 🔴 **RETIRADO (Plan 047 · T2.1)** — se administran en `guardian/wapp-client-console` | — |
 | ~~Enviar mensaje~~ | 🔴 **RETIRADO (Plan 047 · T2.1)** — se administra en `guardian/wapp-client-console` | — |
 | Portada | Índice de lo que ESTA consola conserva: plan/capacidades + accesos, y el aviso de dónde se administran ahora las sesiones | `GET entitlements` |
-| Editar menú/encuestas | Listar/ver flows y **publicar versión nueva** (inmutables); triggers listar/crear/borrar | `flows`, `flows/{id}`, `triggers` |
+| ~~Editar menú/encuestas~~ | 🔴 **RETIRADO (Plan 047 · T6.6)** — flujos y disparadores se administran en `guardian/wapp-client-console` (`/flujos` y `/disparadores`) | — |
+| ~~Bandeja de solicitudes~~ | 🔴 **RETIRADO (Plan 047 · T7.7)** — el listado, el detalle y sus ocho acciones se administran en `guardian/wapp-client-console` (`/solicitudes`). Con las diez rutas se fueron el despachador de plazos por ruta y el cliente HTTP de inferencia del `apiclient` | — |
 | Plan y capacidades | Pinta el plan del tenant y un chip por feature efectiva, y **gatea qué secciones se emiten** (ver abajo) | `GET entitlements` |
 
 ### 🔴 Lo que se RETIRÓ de aquí (Plan 047 · T2.1)
@@ -87,9 +88,11 @@ Dos reglas que no se negocian al tocar esto:
 1. **El gate es server-side, en la PLANTILLA.** Sin la feature, el bloque **no se emite en el HTML**.
    Nunca lo escondas con CSS (`display:none`) ni con JS: lo no contratado no debe estar ahí para que
    alguien lo destape con el inspector, y además la CSP no admite `'unsafe-inline'`. En la portada
-   (`templates/pages/home.html`) están gateados los accesos a la bandeja (`cart_basic`), al import de
-   catálogo (`catalog_import`), a integraciones (`crm_bridge`) y el bloque del clasificador
-   (`llm_intent`).
+   (`templates/pages/home.html`) están gateados los accesos a integraciones (`crm_bridge`), al
+   proveedor de IA (`api_llm`) y el bloque del clasificador (`llm_intent`). El acceso al import de
+   catálogo iba gateado por `catalog_import` hasta el Plan 047 · T8.5: la pantalla se mudó a
+   `wapp-client-console` y en su sitio quedó un aviso de mudanza SIN gate, igual que los de sesiones,
+   flujos y solicitudes.
 2. **Fail-closed.** `resolveEntitlements` no devuelve error nunca: ante un fallo o un `403` devuelve
    la vista cero y `Has` responde `false` para todo (`internal/web/entitlements.go`). La pantalla
    sigue sirviendo con un aviso de modo degradado, y con todos los bloques gateados fuera. No añadas
@@ -141,15 +144,14 @@ de autorización, y esconder un botón nunca sustituye a ese corte.
 cmd/guardian-bff/main.go   — punto de entrada (config + logger + web.Run en :8104)
 internal/config/           — Config desde env (WAPP_GUARDIAN_*, WAPP_PUBLIC_API_BASE)
 internal/apiclient/        — clientes HTTP (Bearer server-side): transport (request autenticada,
-                             ErrUnauthorized/APIError), auth, intakes (bandeja), catalogimport,
-                             tenantvariables, integrations,
-                             editor (flows+triggers), entitlements + delegated (el adaptador del
+                             ErrUnauthorized/APIError), auth, catalogimport,
+                             tenantvariables, integrations, tenantllm,
+                             entitlements + delegated (el adaptador del
                              plano de identidad al puerto Authenticator; el cliente de identity y el
                              canje son github.com/EduGoGroup/wapp-shared/iam)
 internal/web/              — server (Gin, cableado de middlewares), policy (nombres de cookie,
                              entropía y opciones del módulo), auth_handler (login/AuthMiddleware/
                              refresh), session (claims del JWT), home_handler (la PORTADA),
-                             intakes_*, editor_handler,
                              entitlements (vista de features + gate); templates/ +
                              static/css/app.css (//go:embed). El middleware transversal —CSP+nonce,
                              CSRF, rate-limit, deadline, body-limit, single-flight, render— es

@@ -42,19 +42,19 @@
                  enlace se llamaba «Sesiones» y se renombró con la retirada — un enlace que promete una
                  pantalla que ya no está es peor que no tenerlo. */}}
             <a href="/" class="btn btn--text{{ if eq .CurrentPath "/" }} btn--active{{ end }}">Inicio</a>
-            {{/* El enlace a la bandeja solo se emite si la página resolvió las features del tenant y
-                 `cart_basic` está contratada. En las páginas que no las resuelven la clave no existe,
-                 se lee como falsa y el enlace no llega al HTML: fail-closed también en la navegación. */}}
-            {{ if .IntakesNav }}
-            <a href="/intakes" class="btn btn--text{{ if hasPrefix .CurrentPath "/intakes" }} btn--active{{ end }}">Solicitudes</a>
-            {{ end }}
-            {{/* Mismo criterio para el import de catálogo: sin `catalog_import` contratada —o en una
-                 página que no resolvió las features— el enlace no llega al HTML. */}}
-            {{ if .CatalogImportNav }}
-            <a href="/catalog-import" class="btn btn--text{{ if hasPrefix .CurrentPath "/catalog-import" }} btn--active{{ end }}">Catálogo</a>
-            {{ end }}
-            <a href="/flows" class="btn btn--text{{ if hasPrefix .CurrentPath "/flows" }} btn--active{{ end }}">Flujos</a>
-            <a href="/triggers" class="btn btn--text{{ if hasPrefix .CurrentPath "/triggers" }} btn--active{{ end }}">Triggers</a>
+            {{/* 🔴 AQUÍ ESTUVIERON «Solicitudes», «Catálogo», «Flujos» y «Triggers», y se fueron con sus
+                 pantallas (Plan 047 · T6.5/T6.6, T7.7 y T8.5): las cuatro se administran en la consola
+                 del cliente y el enlace se retiró EN EL MISMO CICLO (REQ-08). Un enlace que promete una
+                 pantalla que su propia casa ya no sirve manda al usuario a un 404 de esta consola.
+
+                 De «Catálogo» se quitó el bloque ENTERO y no solo su ruta, y ése es el detalle que se
+                 repite: un `{{ if }}` que consulta una clave que ya no pone ningún handler NO ROMPE
+                 NADA —se lee como falso— y por eso mismo nadie vuelve a mirarlo nunca.
+
+                 Dónde están ahora lo dice la portada, que es donde vive el aviso del reparto. Que
+                 ninguna plantilla enlace a una ruta que el router no registra lo comprueba
+                 `TestNingunaPlantillaEnlazaARutaQueElBFFNoSirve` (inventario_test.go): esto ya no
+                 depende de que en la próxima mudanza alguien se acuerde de bajar aquí. */}}
             {{/* Variables de empresa: capa técnica, sin gate de feature, así que el enlace sale para
                  cualquier sesión autenticada (a diferencia del de Solicitudes). */}}
             <a href="/variables" class="btn btn--text{{ if hasPrefix .CurrentPath "/variables" }} btn--active{{ end }}">Variables</a>

@@ -1,3 +1,7 @@
+// refactor_test.go conservaba dos tests del refactor H6/H7. El primero, TestMapEditorError, se fue
+// con el editor de flujos (Plan 047 · T6.6): probaba `mapEditorError` y sus tres specs, que ya no
+// existen. El segundo se queda porque NO es del editor y NADIE MÁS lo cubre: es el único test del BFF
+// que mira la barra autenticada («Cerrar sesión») y que exige que la decida el contexto validado.
 package web
 
 import (
@@ -7,56 +11,7 @@ import (
 	"time"
 
 	sharedweb "github.com/EduGoGroup/wapp-shared/web"
-
-	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 )
-
-// TestMapEditorError verifica que el mapper unificado (H6/T6) preserva status y mensaje por caso y spec:
-// 401→sesión expirada; rechazo→400 con el prefijo de la entidad; 404→aviso "no existe"; genérico→502.
-func TestMapEditorError(t *testing.T) {
-	cases := []struct {
-		name       string
-		err        error
-		spec       upstreamErrorSpec
-		wantStatus int
-		wantMsg    string
-	}{
-		{
-			"unauthorized (publish)", apiclient.ErrUnauthorized, publishFlowErrorSpec,
-			http.StatusUnauthorized, sessionExpiredMessage,
-		},
-		{
-			"rejection (publish)", &apiclient.RejectionError{Op: "publish", StatusCode: 400, Message: "nodo inválido"},
-			publishFlowErrorSpec, http.StatusBadRequest, "La plataforma rechazó la definición: nodo inválido",
-		},
-		{
-			"rejection (create trigger)", &apiclient.RejectionError{Op: "trigger", StatusCode: 400, Message: "keyword requerido"},
-			createTriggerErrorSpec, http.StatusBadRequest, "La plataforma rechazó la regla: keyword requerido",
-		},
-		{
-			"not found (delete trigger)", &apiclient.APIError{Op: "delete", StatusCode: http.StatusNotFound},
-			deleteTriggerErrorSpec, http.StatusNotFound, "Esa regla ya no existe o no es tuya.",
-		},
-		{
-			"genérico (publish)", &apiclient.APIError{Op: "publish", StatusCode: http.StatusBadGateway},
-			publishFlowErrorSpec, http.StatusBadGateway, "No se pudo publicar el flujo. Inténtalo más tarde.",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			status, notice := mapEditorError(tc.err, tc.spec)
-			if status != tc.wantStatus {
-				t.Errorf("status = %d, want %d", status, tc.wantStatus)
-			}
-			if notice == nil || notice.Success {
-				t.Fatalf("notice debía ser un aviso de error, got %+v", notice)
-			}
-			if notice.Message != tc.wantMsg {
-				t.Errorf("mensaje = %q, want %q", notice.Message, tc.wantMsg)
-			}
-		})
-	}
-}
 
 // TestIsAuthenticatedFromContext verifica H7/T6: la barra autenticada se decide por el contexto validado
 // (AuthMiddleware), no por la mera presencia de cookie. Una cookie de sesión caducada en una página pública

@@ -291,15 +291,13 @@ func (h *IntegrationsHandler) render(c *gin.Context, status int, ent entitlement
 		outbox = h.resolveOutbox(c)
 	}
 	render(h.cfg, c, status, "integrations.html", gin.H{
-		"Title":                 "Integraciones",
-		"View":                  view,
-		"Notice":                notice,
-		outboxDataKey:           outbox,
-		entitlementsDataKey:     ent,
-		intakesNavDataKey:       ent.Has(intakesFeature),
-		catalogImportNavDataKey: ent.Has(catalogImportFeature),
-		integrationsNavDataKey:  ent.Has(integrationsFeature),
-		tenantLLMNavDataKey:     ent.Has(tenantLLMFeature),
+		"Title":                "Integraciones",
+		"View":                 view,
+		"Notice":               notice,
+		outboxDataKey:          outbox,
+		entitlementsDataKey:    ent,
+		integrationsNavDataKey: ent.Has(integrationsFeature),
+		tenantLLMNavDataKey:    ent.Has(tenantLLMFeature),
 	})
 }
 

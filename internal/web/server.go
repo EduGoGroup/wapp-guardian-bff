@@ -46,16 +46,22 @@ var appCSS []byte
 func funcsDePlantilla(yield func(string, any) (template.HTML, error)) template.FuncMap {
 	return template.FuncMap{
 		// hasPrefix resalta el enlace activo de la navegación (app-bar): la sección se decide por el
-		// prefijo del path (p. ej. "/flows/menu" activa "Flujos").
+		// prefijo del path (p. ej. "/integrations/delete" activa "Integraciones"). El ejemplo era
+		// "/flows/menu" hasta el Plan 047 · T6.6, "/intakes/in-1" hasta el T7.7 y
+		// "/catalog-import/template" hasta el T8.5: un comentario que ilustra con una ruta retirada
+		// envejece a mentira, y ya lo hizo tres veces.
 		"hasPrefix": strings.HasPrefix,
-		// statusLabel traduce la clave del ciclo de vida de una solicitud al nombre de negocio. Es
-		// presentación pura: lo que se puede hacer con ese estado lo dice la plataforma, no esta tabla.
-		"statusLabel": intakeStatusLabel,
-		// cuenta arma «1 revisión» / «2 revisiones» sin que el singular se cuele en plural. Ya existía
-		// para los plazos de integrations_handler.go; lo que faltaba era exponerlo a las plantillas,
-		// y por eso una de ellas decía «hay 1 revisiones más» desde que se escribió.
-		"cuenta": cuenta,
-		"yield":  yield,
+		// `statusLabel` y `cuenta` estuvieron aquí hasta el Plan 047 · T7.7. Las dos las usaba SOLO la
+		// bandeja de solicitudes: `statusLabel` no tiene ya ni función ni consumidor, y `cuenta` sigue
+		// viva en Go (integrations_handler.go la usa para los plazos) pero ninguna plantilla la llama.
+		// Una clave de FuncMap sin consumidor no falla: se queda esperando, y el día que alguien
+		// escriba `{{ cuenta … }}` con la firma cambiada el error sale en tiempo de ejecución.
+		//
+		// 🔴 ESO YA NO DEPENDE DE QUE ALGUIEN SE ACUERDE (Plan 047 · T9.4). Que toda clave de aquí la
+		// invoque alguna plantilla viva lo comprueba `TestNingunHelperDelFuncMapSeQuedaSinConsumidor`
+		// (funcmap_test.go), derivando la lista de ESTE mapa: el helper que se añada mañana entra solo
+		// y tiene que traerse su consumidor. Las dos que quedan las usa base.html.
+		"yield": yield,
 	}
 }
 
@@ -169,10 +175,19 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 		c.JSON(http.StatusOK, gin.H{"status": "healthy", "time": time.Now().UTC().Format(time.RFC3339)})
 	})
 
-	// Techo del cuerpo para la ÚNICA pantalla que acepta archivos (el import de catálogo). Va antes del
-	// CSRF a propósito: el CSRF lee el formulario para comparar el token y con eso se traga el cuerpo
-	// entero, así que un tope montado después llegaría tarde.
-	router.Use(webgin.BodyLimit(maxCatalogImportBody, catalogImportRoute))
+	// 📌 Aquí vivía el ÚNICO `webgin.BodyLimit` del BFF (Plan 047 · T8.4/T8.5). Acotaba el cuerpo en
+	// 4 MiB para `/catalog-import`, la única pantalla de esta consola que aceptaba archivos, y se
+	// montaba antes del CSRF a propósito: el CSRF lee el formulario para comparar el token y con eso
+	// se traga el cuerpo entero, así que un tope puesto después llegaría tarde.
+	//
+	// 🔴 SE FUE ENTERO, no solo su constante. `webgin.BodyLimit` guarda por ruta EXACTA y esa era la
+	// única que nombraba: dejarlo montado habría sido un middleware en el camino crítico de TODAS las
+	// peticiones comparando contra una ruta que ya no existe, cuya rama nunca se toma. Es la misma
+	// forma que tenía el despachador de plazos que murió en el T7.7, y es la forma que
+	// `TestNingunaConstanteDeRutaNombraUnaRutaFantasma` existe para cazar.
+	//
+	// Con él se fue el techo de cuerpo del BFF: ninguna pantalla que quede acepta subidas. La que
+	// vuelva a aceptarlas tiene que traerse su propio tope, y este comentario es el aviso.
 
 	// Defensa CSRF double-submit (H2): a partir de aquí toda ruta que renderiza formularios o muta estado
 	// lleva el token. Se registra DESPUÉS de /static y /healthz (que no renderizan formularios ni mutan) para
@@ -197,8 +212,16 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	protected.GET("/pending", h.ShowPending)
 	// Deadline por petición: acota TODA la cadena withAuthRetry hacia la API pública (H4) para que un
 	// upstream lento no cuelgue el handler más allá del presupuesto (bajo el WriteTimeout del servidor).
-	// Es UNO POR RUTA y no uno para el grupo: ver requestDeadlineByRoute.
-	protected.Use(requestDeadlineByRoute(cfg))
+	//
+	// 🔴 VUELVE A SER UNO PARA EL GRUPO ENTERO (Plan 047 · T7.7). Entre el Plan 047 · T2.4 y el T7.7
+	// aquí vivía `requestDeadlineByRoute`, un despachador con UNA excepción cableada: la ruta de la
+	// sugerencia de cotización se llevaba 58s en vez de 20s porque esperaba a que un modelo redactara.
+	// Esa ruta se mudó a la consola del cliente, y con ella el único caso que justificaba el
+	// despachador. Dejarlo con una rama que ya nunca se toma no era «código muerto» sin más: era código
+	// muerto EN EL CAMINO CRÍTICO de todas las peticiones del BFF, comparando en cada una un FullPath()
+	// contra una ruta que ya no existe. Que ninguna constante de este paquete nombre una ruta fantasma
+	// lo vigila ahora `TestNingunaConstanteDeRutaNombraUnaRutaFantasma` (rutas_declaradas_test.go).
+	protected.Use(webgin.RequestDeadline(cfg.UpstreamTimeout))
 	// PORTADA: el índice de lo que ESTA consola conserva (plan y capacidades del tenant + accesos a las
 	// pantallas vivas).
 	// PANTALLA PERMANENTE: es el destino de las redirecciones del plano de autenticación, así que es
@@ -220,27 +243,17 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	// confirmarse el tenant viniendo de /pending—. Borrarla convertiría un login correcto en un 404.
 	protected.GET("/", h.ShowHome)
 
-	// Editor de menú/encuestas (T4): flujos (inmutables versionados) + triggers (crear/borrar). "Editar"
-	// un flujo = publicar versión N+1 (POST /flows); "editar" un trigger = borrar + crear.
+	// 🔴 AQUÍ ESTUVO EL EDITOR DE FLUJOS Y DISPARADORES, y su retirada (Plan 047 · T6.6) se llevó SEIS
+	// rutas: `GET /flows`, `GET /flows/:id`, `POST /flows` (publicar la versión N+1) y las tres de
+	// disparadores, `GET /triggers`, `POST /triggers`, `POST /triggers/:id/delete`. Las dos pantallas
+	// se administran ahora en la consola del cliente (`wapp-client-console`, `/flujos` y
+	// `/disparadores`) y se retiraron de aquí EN EL MISMO CICLO (REQ-08): dos copias de la misma
+	// pantalla divergen, y la que sigue viva contesta antes que la documentación.
 	//
-	// El marcador cubre las SEIS rutas de una vez porque el código ya las trata como un bloque y las dos
-	// pantallas coinciden en destino y en disparo: esperan a la consola de administración y se van juntas.
-	// PANTALLA PROVISIONAL: migra a `wapp-client-console` (Plan 047, ADR-0047).
-	//
-	// 🔴 EL DESTINO CAMBIÓ, y el estado no: antes decía «migra a KMP (planes 045/047, ADR-0035)», y dejó
-	// de decirlo porque el Plan 045 está al 0 % y la app KMP está declarada diferida. Un marcador que
-	// apunta a un destino que nadie ha empezado no es ejecutable —es un permanente que no se atreve a
-	// decir su nombre—, y el destino nuevo existe, corre y está desplegado.
-	//
-	// Y estas tres pantallas —flujos, detalle de flujo y disparadores— ahora lo dicen TAMBIÉN EN LA
-	// PANTALLA (ADR-0047 §2): tenerlo sólo aquí era una asimetría con la bandeja y el import, que sí se
-	// lo decían al usuario. O lo dicen las tres o no lo dice ninguna.
-	protected.GET("/flows", h.ShowFlows)
-	protected.GET("/flows/:id", h.ShowFlowDetail)
-	protected.POST("/flows", h.DoPublishFlow)
-	protected.GET("/triggers", h.ShowTriggers)
-	protected.POST("/triggers", h.DoCreateTrigger)
-	protected.POST("/triggers/:id/delete", h.DoDeleteTrigger)
+	// La retirada la vigila `TestRutasDelEditorYaNoExisten` (home_test.go) contra `router.Routes()`,
+	// no contra el status: este router nace con HandleMethodNotAllowed en false y responde 404 a un
+	// verbo no registrado igual que a una ruta inexistente, así que un test de status daría por
+	// retirada una ruta que sigue viva con otro método.
 
 	// Variables de empresa (Plan 041 · T2.1): pares clave→valor que wApp no interpreta. Va SIN gate de
 	// feature. El POST guarda el conjunto entero, que es la única forma que da la API de quitar una
@@ -249,68 +262,38 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	protected.GET("/variables", h.ShowTenantVariables)
 	protected.POST("/variables", h.DoSaveTenantVariables)
 
-	// Bandeja de solicitudes (Plan 041 · T1.5 y T4.10), gateada por la feature `cart_basic` en la
-	// plantilla y por RequireFeature en la plataforma. PANTALLA PROVISIONAL: migra a
-	// `wapp-client-console` (Plan 047, ADR-0047). El destino cambió —ya no es la app KMP— porque el
-	// Plan 045 está al 0 % y esa app está declarada diferida: un marcador que apuntaba ahí no era
-	// ejecutable.
+	// 🔴 AQUÍ ESTUVO LA BANDEJA DE SOLICITUDES, y su retirada (Plan 047 · T7.7) se llevó DIEZ rutas:
+	// `GET /intakes`, `GET /intakes/:id`, `POST /intakes/discard`, `POST /intakes/:id/status`,
+	// `POST /intakes/:id/items`, `POST /intakes/:id/correct`, `POST /intakes/:id/approve`,
+	// `POST /intakes/:id/request-info`, `POST /intakes/:id/reanalyze` y
+	// `POST /intakes/:id/quote-suggestion`. La bandeja se administra ahora en la consola del cliente
+	// (`wapp-client-console`, `/solicitudes`) y se retiró de aquí EN EL MISMO CICLO (REQ-08): dos
+	// copias de la misma pantalla divergen, y la que sigue viva contesta antes que la documentación.
 	//
-	// El POST de líneas es POST y no PUT aunque la ruta de la API lo sea: un formulario HTML solo
-	// sabe emitir GET y POST, y fingir el verbo con un campo oculto añadiría una convención que
-	// esta consola no tiene en ninguna otra pantalla. La traducción a PUT la hace el apiclient,
-	// que es quien habla el contrato.
+	// Con ellas se fueron DOS cosas que no eran rutas y que sostenían solo a ésta: el despachador de
+	// plazos por ruta (arriba, `protected.Use`) y el cliente HTTP de inferencia del apiclient
+	// (`InferenceHTTPClient`, 55s), que existía para la ÚNICA llamada del BFF que esperaba a que un
+	// modelo redactara.
 	//
-	// El descarte por lotes (T4.8) cuelga de una ruta LITERAL bajo /intakes, como en la API pública:
-	// la operación es sobre VARIAS solicitudes, así que ninguna de ellas es el recurso de la URL.
-	// Atiende los dos pasos —revisar y descartar— y cuál se pide lo dice el botón, igual que el
-	// import de catálogo: el que escribe solo existe después de haber enseñado qué se va a matar.
-	protected.GET("/intakes", h.ShowIntakes)
-	protected.GET("/intakes/:id", h.ShowIntakeDetail)
-	protected.POST("/intakes/discard", h.DoDiscardIntakes)
-	protected.POST("/intakes/:id/status", h.DoSetIntakeStatus)
-	protected.POST("/intakes/:id/items", h.DoEditIntakeItems)
+	// La retirada la vigila `TestRutasDeLaBandejaYaNoExisten` (home_test.go) contra `router.Routes()`,
+	// no contra el status: este router nace con HandleMethodNotAllowed en false y responde 404 a un
+	// verbo no registrado igual que a una ruta inexistente, así que un test de status daría por
+	// retirada una ruta que sigue viva con otro método.
 
-	// LAS TRES ACCIONES DEL DUEÑO (Plan 044 · T4.2, T4.3, T4.4). Van por rutas propias y no por un
-	// campo más del cambio de estado porque no son lo mismo y la pantalla tiene que poder decirlo:
-	// éstas LE HABLAN AL CLIENTE por WhatsApp y dejan revisión; el desplegable de `/status` solo
-	// mueve la etiqueta del ciclo de vida.
+	// 📌 Aquí estaba el IMPORT DE CATÁLOGO (Plan 041 · T3.5): `GET /catalog-import` con el formulario,
+	// `POST /catalog-import` atendiendo los dos pasos —comprobar y aplicar— y
+	// `GET /catalog-import/template` sirviendo la plantilla de ejemplo. La pantalla se mudó a la
+	// consola del cliente (`wapp-client-console`) y se retiró de aquí EN EL MISMO CICLO (REQ-08): dos
+	// copias de la misma pantalla divergen, y la que sigue viva contesta antes que la documentación.
 	//
-	// `/correct` es ruta DEL BFF, no de la API: allá corregir es el mismo `PUT …/items` con el campo
-	// `as_correction` (D-044.48 §1), y quien lo traduce es el apiclient. Aquí existe porque son dos
-	// formularios distintos —el del 041 edita `items`, éste edita el borrador— y cada formulario
-	// necesita su acción para que un rechazo repinte en el sitio donde se tecleó.
-	protected.POST("/intakes/:id/correct", h.DoCorrectIntakeItems)
-	protected.POST("/intakes/:id/approve", h.DoApproveIntake)
-	protected.POST("/intakes/:id/request-info", h.DoRequestIntakeInfo)
-
-	// REGENERAR LA INTERPRETACIÓN (Plan 044 · T4.7). Va por ruta propia y NO como un botón más de las
-	// tres de arriba porque no es de la misma familia: las otras le hablan al cliente por WhatsApp y
-	// esta no le habla a nadie —vuelve a interpretar el texto que el cliente ya mandó—. Y sobre todo,
-	// es la única que no devuelve nada que pintar: abre un trabajo y la revisión llega después.
-	protected.POST("/intakes/:id/reanalyze", h.DoReanalyzeIntake)
-
-	// SUGERIR LA RESPUESTA CON LA VOZ DE LA DUEÑA (Plan 047 · T2.4, sobre el endpoint del Plan 044 ·
-	// T5.1). Va por ruta propia por lo mismo que `/reanalyze`: no es de la familia de las tres de
-	// arriba —no le habla a nadie, no escribe en la solicitud y no la mueve de estado—, solo redacta
-	// una propuesta y la deja en el campo de aprobar para que la dueña la lea y decida.
+	// Con las tres rutas se fueron cosas que no eran rutas y que solo las sostenían a ellas: el techo
+	// de cuerpo de 4 MiB (arriba), el cliente `CatalogImportClient` con sus cinco métodos —incluida
+	// `ListTenantContentRefs`, que alimentaba el selector de ref— y el puerto `CatalogImporter`.
 	//
-	// Es POST aunque no escriba nada, y no es por el formulario: consume una inferencia. No es
-	// cacheable, no es gratis, y un GET lo dispararía un prefetch del navegador.
-	//
-	// 🔴 Y ES LA ÚNICA RUTA CON PLAZOS PROPIOS, los tres (cliente HTTP, deadline de petición y write
-	// deadline). El write deadline se instala aquí como middleware de la ruta y no en el grupo:
-	// relevar al WriteTimeout del servidor es exactamente lo que el resto del BFF no debe hacer.
-	protected.POST(quoteSuggestionRoute, quoteSuggestionWriteDeadline(cfg), h.DoSuggestIntakeQuote)
-
-	// Import de catálogo (Plan 041 · T3.5), gateado por la feature `catalog_import` en la plantilla y
-	// por RequireFeature en la plataforma. El POST atiende los dos pasos —comprobar y aplicar— y cuál
-	// se pide lo dice el botón: el que escribe solo existe después de haber enseñado el diff.
-	// PANTALLA PROVISIONAL: migra a `wapp-client-console` (Plan 047, ADR-0047). El destino cambió —ya
-	// no es la app KMP— porque el Plan 045 está al 0 % y esa app está declarada diferida: un marcador
-	// que apuntaba ahí no era ejecutable.
-	protected.GET(catalogImportRoute, h.ShowCatalogImport)
-	protected.POST(catalogImportRoute, h.DoCatalogImport)
-	protected.GET(catalogImportRoute+"/template", h.DownloadCatalogTemplate)
+	// La retirada la vigila `TestRutasDelImportDeCatalogoYaNoExisten` (home_test.go) contra
+	// `router.Routes()`, no contra el status: este router nace con HandleMethodNotAllowed en false y
+	// responde 404 a un verbo no registrado igual que a una ruta inexistente, así que un test de
+	// status daría por retirada una ruta que sigue viva con otro método.
 
 	// Integraciones (Plan 042 · T5.2): la configuración del puente CRM del tenant —por dónde salen los
 	// pedidos, a qué endpoint y con qué secreto de firma—, gateada por la feature `crm_bridge` en la

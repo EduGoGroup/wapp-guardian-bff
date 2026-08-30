@@ -68,12 +68,10 @@ func (h *HomeHandler) ShowHome(c *gin.Context) {
 	}
 
 	render(h.cfg, c, http.StatusOK, "home.html", gin.H{
-		"Title":                 "Inicio",
-		entitlementsDataKey:     entitlements,
-		intakesNavDataKey:       entitlements.Has(intakesFeature),
-		catalogImportNavDataKey: entitlements.Has(catalogImportFeature),
-		integrationsNavDataKey:  entitlements.Has(integrationsFeature),
-		tenantLLMNavDataKey:     entitlements.Has(tenantLLMFeature),
-		sessionsMovedDataKey:    h.cfg.ClientConsoleURL,
+		"Title":                "Inicio",
+		entitlementsDataKey:    entitlements,
+		integrationsNavDataKey: entitlements.Has(integrationsFeature),
+		tenantLLMNavDataKey:    entitlements.Has(tenantLLMFeature),
+		sessionsMovedDataKey:   h.cfg.ClientConsoleURL,
 	})
 }

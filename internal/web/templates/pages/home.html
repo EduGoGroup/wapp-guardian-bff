@@ -17,25 +17,47 @@
         {{ end }}
     </div>
 
-    {{/* 🔴 DÓNDE SE ADMINISTRAN AHORA LAS SESIONES (Plan 047 · T2.1).
+    {{/* 🔴 DÓNDE SE ADMINISTRA AHORA EL NEGOCIO (Plan 047 · T9.3: el cierre de la mudanza).
 
-         Esta consola tenía aquí la tabla de teléfonos vinculados, el desplegable de perfil
-         activa/pasiva y el formulario de envío. Los tres se mudaron a la consola del cliente y se
-         retiraron de aquí en el mismo ciclo: dos copias de la misma pantalla divergen, y la que sigue
-         viva contesta antes que la documentación.
+         Esta tarjeta fue CUATRO tarjetas, una por ola: las sesiones (T2.1), los flujos y disparadores
+         (T6.6), la bandeja de solicitudes (T7.7) y el import de catálogo (T8.5). Cada retirada dejó
+         aquí su aviso con su párrafo y su botón, y las cuatro juntas repetían la misma frase cuatro
+         veces y ofrecían cuatro veces el mismo enlace. Esa era la voz de una mudanza EN CURSO —cada
+         ola acababa de llevarse lo suyo y avisaba de ello—, y ya no hay mudanza: hay un reparto
+         estable. Se dice UNA vez, con UN enlace.
 
-         El aviso NO lleva enlace salvo que `ClientConsoleURL` venga puesta por entorno, y su vacío es
-         el caso normal: las dos aplicaciones son loopback en puertos distintos y no hay URL pública
-         que ofrecer. Un `localhost:8107` escrito aquí sería un enlace roto para todo el que no esté
-         sentado en la máquina. */}}
-    <div class="card" id="section-sessions-moved">
-        <h2 class="title">Sesiones y teléfonos</h2>
+         Los cuatro anclas `id="section-…-moved"` SE CONSERVAN, y no por compatibilidad: cada retirada
+         dejó un test que comprueba que su área sigue anunciada («retirar sin decir a dónde deja al
+         operador buscando»). Fundir los avisos en una tarjeta sin conservarlos habría borrado esa
+         garantía de las cuatro a la vez, en silencio y sin un solo rojo. Quien mude la quinta cosa
+         añade su línea aquí, con su ancla; no otra tarjeta.
+
+         El enlace solo se ofrece si `ClientConsoleURL` viene puesta por entorno, y su vacío es el caso
+         NORMAL, no un fallo de configuración: hoy las dos aplicaciones son loopback en puertos
+         distintos y no hay URL pública que publicar. Un `localhost:8107` escrito aquí serviría un
+         enlace muerto a todo el que no esté sentado en la máquina del despliegue, y quien lo pulsa
+         concluye que la pantalla nueva no existe. Que el enlace apunte de verdad es trabajo del
+         DESPLIEGUE, no de esta plantilla.
+
+         Ninguna línea va gateada por su feature, a diferencia de las tarjetas que sustituye: un aviso
+         que solo se emite con la capacidad contratada deja sin explicación justo al tenant que perdió
+         el acceso, y decir «esto se administra en otra consola» no revela nada que `cart_basic` o
+         `crm_bridge` protejan. */}}
+    <div class="card" id="section-negocio-mudado">
+        <h2 class="title">La operación del negocio</h2>
         <div class="snackbar snackbar--info" role="note">
-            <span>Las sesiones de WhatsApp —los teléfonos vinculados, su perfil
-                <strong>activa</strong>/<strong>pasiva</strong> y el envío de mensajes— <strong>se
-                administran ahora en la consola del cliente</strong>. Desde esta consola ya no se
-                listan ni se cambian.</span>
+            <span>Atender a tus clientes —lo que pasa cada día— <strong>se administra en la consola
+                del cliente</strong>. Esta consola guarda la entrada a wApp y la configuración técnica
+                de tu empresa.</span>
         </div>
+        <p class="supporting" id="section-sessions-moved"><strong>Sesiones y teléfonos</strong>: los
+            números vinculados, su perfil activa o pasiva y el envío de mensajes.</p>
+        <p class="supporting" id="section-intakes-moved"><strong>Solicitudes</strong>: los pedidos que
+            llegan por WhatsApp, su estado, sus líneas y las respuestas que se le mandan al cliente.</p>
+        <p class="supporting" id="section-editor-moved"><strong>Flujos y reglas de disparo</strong>:
+            los menús y encuestas publicados y las palabras que los disparan.</p>
+        <p class="supporting" id="section-catalog-moved"><strong>Catálogo</strong>: cargarlo desde un
+            documento o una planilla, comprobando antes qué cambia.</p>
         {{ if .ClientConsoleURL }}
         <p class="body"><a href="{{ .ClientConsoleURL }}" class="btn btn--outlined" rel="noopener noreferrer">Abrir la consola del cliente</a></p>
         {{ else }}
@@ -46,40 +68,13 @@
 
     {{/* GATE SERVER-SIDE POR FEATURE (Plan 040 · T2.5). El bloque entero solo se emite si la feature
          está en las efectivas del tenant: si falta —o si no se pudieron resolver— no llega al HTML,
-         no queda escondido por CSS. Este es el patrón que copian las secciones del Plan 041:
-             {{ if $.Entitlements.Has "intakes_export" }} … {{ end }}
-             {{ if $.Entitlements.Has "catalog_import" }} … {{ end }}
+         no queda escondido por CSS. El ejemplo era `intakes_export` hasta el Plan 047 · T7.7 —una
+         feature que no existe en el código— y `catalog_import` hasta el T8.5, que se mudó: se
+         ilustra con dos que siguen vivas aquí abajo.
+             {{ if $.Entitlements.Has "crm_bridge" }} … {{ end }}
+             {{ if $.Entitlements.Has "api_llm" }} … {{ end }}
          Ojo: el gate de plantilla decide lo que se PINTA; el que decide lo que se PUEDE es el
          middleware RequireFeature de la plataforma, y esa sigue siendo la autoridad. */}}
-    {{ if .Entitlements.Has "cart_basic" }}
-    <div class="card" id="section-intakes">
-        <h2 class="title">Solicitudes</h2>
-        <p class="supporting">Los pedidos que llegan por WhatsApp, con su estado y sus líneas. Desde
-            ahí se aprueban, se señan o se cierran.</p>
-        <p class="body"><a href="/intakes" class="btn btn--outlined">Abrir la bandeja</a></p>
-    </div>
-    {{ end }}
-
-    {{ if .Entitlements.Has "catalog_import" }}
-    <div class="card" id="section-catalog-import">
-        <h2 class="title">Catálogo</h2>
-        <p class="supporting">Cargar el catálogo del tenant desde un documento o una planilla,
-            comprobando antes qué cambia.</p>
-        <p class="body"><a href="/catalog-import" class="btn btn--outlined">Abrir el import de catálogo</a></p>
-    </div>
-    {{ end }}
-
-    {{/* Flujos y triggers no llevan gate de feature: son la capa técnica del motor y salen para
-         cualquier sesión autenticada, igual que sus enlaces de la barra superior. */}}
-    <div class="card" id="section-flows">
-        <h2 class="title">Flujos y reglas de disparo</h2>
-        <p class="supporting">Los menús y encuestas publicados (versionados: editar es publicar la
-            versión siguiente) y las palabras que los disparan.</p>
-        <p class="body">
-            <a href="/flows" class="btn btn--outlined">Abrir los flujos</a>
-            <a href="/triggers" class="btn btn--outlined">Abrir los triggers</a>
-        </p>
-    </div>
 
     <div class="card" id="section-variables">
         <h2 class="title">Variables de empresa</h2>

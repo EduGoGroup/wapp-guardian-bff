@@ -286,14 +286,12 @@ func (h *TenantLLMHandler) repaint(c *gin.Context, typed tenantLLMView) tenantLL
 // render pinta la pantalla. Es el único embudo por el que pasa todo lo que se emite.
 func (h *TenantLLMHandler) render(c *gin.Context, status int, ent entitlementsView, view tenantLLMView, notice *tenantLLMNotice) {
 	render(h.cfg, c, status, "tenant-llm.html", gin.H{
-		"Title":                 "Proveedor de IA",
-		"View":                  view,
-		"Notice":                notice,
-		entitlementsDataKey:     ent,
-		intakesNavDataKey:       ent.Has(intakesFeature),
-		catalogImportNavDataKey: ent.Has(catalogImportFeature),
-		integrationsNavDataKey:  ent.Has(integrationsFeature),
-		tenantLLMNavDataKey:     ent.Has(tenantLLMFeature),
+		"Title":                "Proveedor de IA",
+		"View":                 view,
+		"Notice":               notice,
+		entitlementsDataKey:    ent,
+		integrationsNavDataKey: ent.Has(integrationsFeature),
+		tenantLLMNavDataKey:    ent.Has(tenantLLMFeature),
 	})
 }
 

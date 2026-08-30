@@ -3,7 +3,6 @@ package web
 import (
 	"crypto/rand"
 	"io"
-	"time"
 
 	sharedweb "github.com/EduGoGroup/wapp-shared/web"
 
@@ -19,16 +18,12 @@ import (
 const (
 	sessionCookieName = "wapp_guardian_session"
 	csrfCookieName    = "wapp_csrf"
-	// quoteCookieName es la cookie EFÍMERA que lleva la cotización recién redactada del POST que la
-	// pide al GET que la pinta (Plan 047 · T3.5). Vive segundos, solo en la pantalla de ESA solicitud,
-	// y la borra el propio GET que la consume.
-	quoteCookieName = "wapp_guardian_cotizacion"
 )
 
-// quoteCookieMaxAge es el TOPE de vida de la cookie de la cotización, NO el mecanismo que la retira:
-// quien la borra de verdad es el GET que la consume (webgin.TakeOneTimeCookie). Es lo que tarda el
-// navegador en seguir el 303 que la puso, con holgura para una red lenta.
-const quoteCookieMaxAge = 60 * time.Second
+// 🔴 AQUÍ VIVÍA LA COOKIE EFÍMERA DE LA COTIZACIÓN (`wapp_guardian_cotizacion`), el sobre de un solo
+// uso del PRG de la sugerencia, con su tope de vida y sus opciones. Se fue con la bandeja (Plan 047 ·
+// T7.7). Este BFF ya no pone NINGUNA cookie de un solo uso: las tres que le quedan —sesión, CSRF y la
+// del CSP— viven mientras dure lo suyo.
 
 // entropy es la fuente de aleatoriedad del nonce CSP y del token CSRF. Es una variable —y no
 // crypto/rand a secas dentro del módulo— para que los tests puedan agotarla y comprobar que ESTE
@@ -63,30 +58,6 @@ func csrfOptions(cfg *config.Config) sharedweb.CSRFOptions {
 func sessionCookieOptions(cfg *config.Config) sharedweb.SessionCookieOptions {
 	return sharedweb.SessionCookieOptions{
 		Name:     sessionCookieName,
-		Secure:   cfg.CookieSecure,
-		SameSite: cfg.CookieSameSite,
-	}
-}
-
-// quoteCookieOptions es la política de la cookie efímera de la cotización, acotada a la pantalla de
-// UNA solicitud.
-//
-// 🔴 EL PATH LLEVA EL ID A PROPÓSITO, y es la primera de dos cerraduras. Con la cookie acotada a
-// `/intakes/{id}`, el navegador NO la manda a la solicitud de al lado: sin eso, pedir la sugerencia
-// de A y abrir B en otra pestaña dentro del minuto siguiente pintaría el texto de A —con los precios
-// de A— en la pantalla de B, y ese texto se le manda a un cliente. La segunda cerradura es el id que
-// viaja DENTRO del sobre y que el lector compara (ver takeQuoteFlash): el Path lo pone el navegador y
-// el id lo comprueba el servidor, y hacen falta las dos porque una sola se cae con que alguien
-// reescriba la ruta.
-//
-// El valor no se cifra ni se firma, por lo razonado en el doc de `web.OneTimeCookieOptions`: lo que
-// viaja aquí es exactamente lo que se le va a pintar en la cara a quien lo pidió, dos milisegundos
-// después.
-func quoteCookieOptions(cfg *config.Config, id string) sharedweb.OneTimeCookieOptions {
-	return sharedweb.OneTimeCookieOptions{
-		Name:     quoteCookieName,
-		Path:     intakeDetailPath(id),
-		MaxAge:   quoteCookieMaxAge,
 		Secure:   cfg.CookieSecure,
 		SameSite: cfg.CookieSameSite,
 	}

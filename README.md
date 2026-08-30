@@ -6,10 +6,9 @@ consola operativa mínima, primer consumidor real de la API pública `/api/v1` d
 ## Qué es
 
 Consola web BFF (Back-For-Frontend) de **operación** de wApp: permite atender la bandeja de
-solicitudes que llegan por WhatsApp, gestionar menús/encuestas (`flows` versionados) y sus
-disparadores (`triggers`), importar el catálogo, configurar el puente CRM y las variables de empresa,
-y ver el **plan y las capacidades contratadas** del tenant —que además deciden qué secciones se
-pintan—.
+solicitudes que llegan por WhatsApp, importar el catálogo, configurar el puente CRM y el proveedor de
+IA, editar las variables de empresa, y ver el **plan y las capacidades contratadas** del tenant —que
+además deciden qué secciones se pintan—.
 
 > 🔴 **Las SESIONES ya no se administran aquí.** Listar los teléfonos vinculados, cambiarles el perfil
 > `active|passive` y enviar un mensaje se mudaron a la **consola del cliente**
@@ -103,7 +102,6 @@ internal/
 ├── apiclient/                — cliente HTTP server-to-server contra /api/v1
 │   ├── transport.go          — request autenticada, ErrUnauthorized/APIError, StatusCodeOf
 │   ├── auth.go               — login/refresh/logout (AuthResult y sus DTO)
-│   ├── editor.go             — flows (listar/ver/publicar) + triggers (listar/crear/borrar)
 │   ├── entitlements.go       — EntitlementsClient: GET /api/v1/entitlements (plan + features)
 │   └── identity.go/exchange.go/delegated.go — identity-api y canje (delegación opcional)
 └── web/
@@ -117,10 +115,9 @@ internal/
     ├── session.go            — sessionData + parse-unverified+exp de los claims
     ├── auth_handler.go       — login/logout, AuthMiddleware, refresh proactivo/pasivo, withAuthRetry
     ├── home_handler.go       — PORTADA: plan/capacidades + accesos a lo que esta consola conserva
-    ├── editor_handler.go     — flows (publicar versión) + triggers (crear/borrar)
     ├── entitlements.go       — vista de plan/features (Has) y gate fail-closed
     ├── static/css/app.css    — design system MD3 embebido (//go:embed)
-    └── templates/            — layout base.html + páginas (login, home, intakes, flows, triggers…)
+    └── templates/            — layout base.html + páginas (login, home, variables, catálogo…)
 docs/contrato-api-publica.md — contrato consumido de /api/v1 (referencia para otros clientes)
 ```
 

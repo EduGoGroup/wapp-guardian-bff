@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/EduGoGroup/wapp-guardian-bff/internal/apiclient"
 )
@@ -33,62 +32,11 @@ type HomeAPI interface {
 	EntitlementsReader
 }
 
-// IntakeManager define el contrato de la bandeja de SOLICITUDES (Plan 041 · T1.5, T4.8 y T4.10):
-// listar con filtros, abrir el detalle, mover el estado del ciclo de vida, corregir las líneas a
-// mano y descartar por lotes lo que ya no va a ninguna parte.
-//
-// Va segregado del resto porque es un frente propio y de pago: sus CINCO rutas exigen la feature
-// `cart_basic` en la plataforma, y la pantalla que lo consume es PROVISIONAL (migra a
-// `wapp-client-console` con el Plan 047, ADR-0047; antes decía «a KMP», y dejó de decirlo porque el
-// Plan 045 está al 0 % y esa app está diferida: el marcador no era ejecutable). Cuando esa pantalla
-// muera, esta interfaz se va con ella sin arrastrar a nadie.
-//
-// `ReplaceIntakeItems` recibe el conjunto COMPLETO de líneas de cliente, no una operación por
-// línea, porque así es el contrato de la plataforma (PUT, no POST): añadir, quitar y corregir son
-// la misma llamada con una lista distinta. Devuelve el detalle ya actualizado —con la revisión
-// `corrected` dentro— para que la pantalla repinte sin un segundo GET.
-//
-// `DiscardIntakes` es la única operación de esta interfaz que trabaja sobre VARIAS solicitudes de
-// una vez, y su resultado se lee por ítem: un lote mixto —unos descartados y otros no— es el caso
-// normal, así que devolver `nil` de error no autoriza a decir «listo».
-//
-// Las TRES acciones del 044 —`CorrectIntakeItems`, `ApproveIntake` y `RequestIntakeInfo`— son de
-// otra naturaleza que el resto y por eso el contrato las nombra aparte: las dos últimas LE HABLAN AL
-// CLIENTE por WhatsApp, y las tres dejan revisión. El desplegable de estado (`SetIntakeStatus`) no
-// hace ninguna de las dos cosas, y confundirlos en la pantalla sería ofrecer «responderle al
-// cliente» donde solo se mueve una etiqueta.
-//
-// `CorrectIntakeItems` es el MISMO PUT que `ReplaceIntakeItems` con el campo `as_correction`: no hay
-// ninguna ruta `/correct` y no debe inventarse una.
-//
-// 🔴 `ReanalyzeIntake` es la ÚNICA que no devuelve un detalle, y no es una asimetría por descuido: la
-// plataforma abre un trabajo que corre por detrás y contesta con el número que la revisión TENDRÁ.
-// Cuando responde, esa revisión NO EXISTE todavía, así que no hay detalle nuevo que devolver — y una
-// firma que lo devolviera obligaría a inventarlo.
-//
-// 🔴 `SuggestIntakeQuote` tampoco devuelve detalle, y por un motivo DISTINTO y más importante: NO
-// CAMBIA NADA. Redacta un texto y lo devuelve; no aprueba, no transiciona y no le manda nada al
-// cliente. Esa estrechez de la firma es lo que sostiene INV-1 —la máquina propone por un camino, la
-// dueña aprueba por otro—, y devolver aquí un `*IntakeDetail` insinuaría que algo se guardó.
-type IntakeManager interface {
-	ListIntakes(ctx context.Context, accessToken string, f apiclient.IntakeFilter) (*apiclient.IntakePage, error)
-	GetIntake(ctx context.Context, accessToken, id string) (*apiclient.IntakeDetail, error)
-	SetIntakeStatus(ctx context.Context, accessToken, id, status string) (*apiclient.Intake, error)
-	ReplaceIntakeItems(ctx context.Context, accessToken, id string, items []apiclient.IntakeItem) (*apiclient.IntakeDetail, error)
-	CorrectIntakeItems(ctx context.Context, accessToken, id string, items []apiclient.IntakeItem) (*apiclient.IntakeDetail, error)
-	ApproveIntake(ctx context.Context, accessToken, id, renderedText string) (*apiclient.IntakeDetail, error)
-	RequestIntakeInfo(ctx context.Context, accessToken, id, question string) (*apiclient.IntakeDetail, error)
-	ReanalyzeIntake(ctx context.Context, accessToken, id, text string) (*apiclient.IntakeReanalysis, error)
-	SuggestIntakeQuote(ctx context.Context, accessToken, id string) (*apiclient.IntakeQuoteSuggestion, error)
-	DiscardIntakes(ctx context.Context, accessToken string, intakeIDs []string) (*apiclient.IntakeDiscardResult, error)
-}
-
-// IntakesAPI es lo que la pantalla de solicitudes consume: la bandeja más las features efectivas,
-// que son las que deciden si la sección se emite siquiera.
-type IntakesAPI interface {
-	IntakeManager
-	EntitlementsReader
-}
+// 🔴 AQUÍ ESTUVIERON `IntakeManager` (10 métodos) e `IntakesAPI`, el contrato de la bandeja de
+// SOLICITUDES. Se fueron con la pantalla (Plan 047 · T7.7): la bandeja se administra ahora en la
+// consola del cliente. Lo que aquí se anticipó —«cuando esa pantalla muera, esta interfaz se va con
+// ella sin arrastrar a nadie»— se cumplió: el puerto segregado hizo que la retirada no tocara ni un
+// handler ajeno.
 
 // TenantVariablesManager define el contrato de las VARIABLES DE EMPRESA (Plan 041 · T2.1): pares
 // clave→valor que wApp no interpreta (D-041.1).
@@ -100,39 +48,6 @@ type IntakesAPI interface {
 type TenantVariablesManager interface {
 	GetTenantVariables(ctx context.Context, accessToken string) (*apiclient.TenantVariables, error)
 	ReplaceTenantVariables(ctx context.Context, accessToken string, vars map[string]string) (*apiclient.TenantVariables, error)
-}
-
-// CatalogImporter define el contrato del IMPORT DE CATÁLOGO (Plan 041 · T3.5): comprobar un
-// documento y aplicarlo, más la plantilla de ejemplo que se descarga.
-//
-// `ImportCatalog` cubre las dos modalidades con un booleano en vez de con dos métodos porque la
-// plataforma responde el MISMO objeto en las dos: dos métodos harían creer que hay dos respuestas
-// que interpretar, y solo hay una con un `Applied` distinto.
-//
-// Va segregado del resto por lo mismo que la bandeja: es un frente de pago (feature
-// `catalog_import`) y la pantalla que lo consume es PROVISIONAL (migra a `wapp-client-console` con el
-// Plan 047, ADR-0047; antes decía «a KMP», y dejó de decirlo porque el Plan 045 está al 0 % y esa app
-// está diferida: el marcador no era ejecutable). Cuando esa pantalla muera, esta interfaz se va con ella.
-// Las dos puertas del import —JSON y planilla— van en el MISMO puerto y no en dos, porque para la
-// pantalla son un solo acto con dos entradas: el paso 2 sale siempre por la de JSON, incluso cuando
-// el paso 1 entró por la planilla (el `document` normalizado que devuelve el tabular es lo que lo
-// hace posible).
-type CatalogImporter interface {
-	ImportCatalog(ctx context.Context, accessToken string, document []byte, apply bool, ref string) (*apiclient.CatalogImportResult, error)
-	ImportCatalogTabular(ctx context.Context, accessToken, filename string, content []byte, apply bool, ref string) (*apiclient.CatalogImportResult, error)
-	GetCatalogTemplate(ctx context.Context, accessToken, format string) (*apiclient.CatalogTemplate, error)
-	GetCatalogPrompt(ctx context.Context, accessToken string) (*apiclient.CatalogPrompt, error)
-	// ListTenantContentRefs alimenta el selector de ref del paso 1. Sin él la pantalla mandaba la ref
-	// vacía y la plataforma caía a su default, enseñando un diff contra un catálogo distinto del que
-	// el operador creía reemplazar (defecto A3 del cierre del Plan 041).
-	ListTenantContentRefs(ctx context.Context, accessToken string) ([]apiclient.TenantContentRef, error)
-}
-
-// CatalogImportAPI es lo que la pantalla de import consume: el import más las features efectivas,
-// que son las que deciden si la sección se emite siquiera.
-type CatalogImportAPI interface {
-	CatalogImporter
-	EntitlementsReader
 }
 
 // IntegrationsManager define el contrato de la CONFIGURACIÓN DEL PUENTE CRM (Plan 042 · T5.2): leer
@@ -196,24 +111,11 @@ type TenantLLMAPI interface {
 	EntitlementsReader
 }
 
-// EditorManager define el contrato para la edición de flujos y la gestión de reglas de disparo.
-type EditorManager interface {
-	ListFlows(ctx context.Context, accessToken string) ([]apiclient.FlowSummary, error)
-	GetFlow(ctx context.Context, accessToken, id string) (json.RawMessage, error)
-	PublishFlow(ctx context.Context, accessToken string, flowJSON []byte) (*apiclient.PublishFlowResult, error)
-	ListTriggers(ctx context.Context, accessToken string) ([]apiclient.Trigger, error)
-	CreateTrigger(ctx context.Context, accessToken string, tr apiclient.CreateTriggerRequest) (*apiclient.Trigger, error)
-	DeleteTrigger(ctx context.Context, accessToken, id string) error
-}
-
 // APIPort es el puerto compuesto por compatibilidad con el cliente unificado de la API pública.
 type APIPort interface {
 	Authenticator
 	EntitlementsReader
-	EditorManager
-	IntakeManager
 	TenantVariablesManager
-	CatalogImporter
 	IntegrationsManager
 	TenantLLMManager
 }
@@ -228,11 +130,8 @@ var (
 	_ Authenticator      = (*apiclient.DelegatedAuthenticator)(nil)
 	_ EntitlementsReader = (*apiclient.EntitlementsClient)(nil)
 	_ HomeAPI            = (*apiclient.EntitlementsClient)(nil)
-	_ EditorManager      = (*apiclient.EditorClient)(nil)
-	_ IntakeManager      = (*apiclient.IntakesClient)(nil)
 
 	_ TenantVariablesManager = (*apiclient.TenantVariablesClient)(nil)
-	_ CatalogImporter        = (*apiclient.CatalogImportClient)(nil)
 	_ IntegrationsManager    = (*apiclient.IntegrationsClient)(nil)
 	_ TenantLLMManager       = (*apiclient.TenantLLMClient)(nil)
 	_ APIPort                = (*apiclient.Client)(nil)
