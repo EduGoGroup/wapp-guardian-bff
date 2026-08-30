@@ -29,10 +29,12 @@ import (
 // caducidad. Recorriendo `router.Routes()` el test cubre lo que HAYA el día que se ejecute, y cubre
 // gratis lo que se añada.
 //
-// 📌 Y funcionó: de los tres frentes anunciados aquí ya cayeron dos —flujos/disparadores (T6.6) y la
-// bandeja de solicitudes (T7.7, ocho POST de golpe)— sin que este fichero se tocara. Queda el import
-// de catálogo, que migra en la Ola 8. El contador `cubiertos` de abajo es lo que impide que la última
-// mudanza deje el test verde sin material.
+// 📌 Y funcionó: los TRES frentes anunciados aquí cayeron —flujos/disparadores (T6.6), la bandeja de
+// solicitudes (T7.7, ocho POST de golpe) y el import de catálogo (T8.5)— sin que este fichero se
+// tocara ni una vez. Quedan CINCO POST protegidos (`/variables`, los dos de `/integrations` y los dos
+// de `/tenant-llm`), todos de pantallas PERMANENTES (ADR-0035 §3), así que el contador `cubiertos` de
+// abajo sigue con material real; es él quien impedirá que la mudanza que venga deje el test verde
+// midiendo cero.
 
 // rutasPOSTExentasDeLaAduana son los POST que legítimamente NO redirigen a /login sin sesión, con el
 // motivo de cada uno. Es una lista EXPLÍCITA a propósito: un POST nuevo que no redirija pone el test

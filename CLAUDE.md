@@ -88,9 +88,11 @@ Dos reglas que no se negocian al tocar esto:
 1. **El gate es server-side, en la PLANTILLA.** Sin la feature, el bloque **no se emite en el HTML**.
    Nunca lo escondas con CSS (`display:none`) ni con JS: lo no contratado no debe estar ahí para que
    alguien lo destape con el inspector, y además la CSP no admite `'unsafe-inline'`. En la portada
-   (`templates/pages/home.html`) están gateados los accesos al import de
-   catálogo (`catalog_import`), a integraciones (`crm_bridge`) y el bloque del clasificador
-   (`llm_intent`).
+   (`templates/pages/home.html`) están gateados los accesos a integraciones (`crm_bridge`), al
+   proveedor de IA (`api_llm`) y el bloque del clasificador (`llm_intent`). El acceso al import de
+   catálogo iba gateado por `catalog_import` hasta el Plan 047 · T8.5: la pantalla se mudó a
+   `wapp-client-console` y en su sitio quedó un aviso de mudanza SIN gate, igual que los de sesiones,
+   flujos y solicitudes.
 2. **Fail-closed.** `resolveEntitlements` no devuelve error nunca: ante un fallo o un `403` devuelve
    la vista cero y `Has` responde `false` para todo (`internal/web/entitlements.go`). La pantalla
    sigue sirviendo con un aviso de modo degradado, y con todos los bloques gateados fuera. No añadas

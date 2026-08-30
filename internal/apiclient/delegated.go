@@ -112,7 +112,6 @@ type DelegatedClient struct {
 	*DelegatedAuthenticator
 	*EntitlementsClient
 	*TenantVariablesClient
-	*CatalogImportClient
 	*IntegrationsClient
 	*TenantLLMClient
 }
@@ -140,7 +139,6 @@ func NewDelegated(platformBaseURL, identityBaseURL string) (*DelegatedClient, er
 		DelegatedAuthenticator: NewDelegatedAuthenticator(identity, t),
 		EntitlementsClient:     NewEntitlementsClient(t),
 		TenantVariablesClient:  NewTenantVariablesClient(t),
-		CatalogImportClient:    NewCatalogImportClient(t),
 		IntegrationsClient:     NewIntegrationsClient(t),
 		TenantLLMClient:        NewTenantLLMClient(t),
 	}, nil

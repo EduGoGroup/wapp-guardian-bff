@@ -21,7 +21,6 @@ type Handler struct {
 	*AuthHandler
 	*HomeHandler
 	*TenantVariablesHandler
-	*CatalogImportHandler
 	*IntegrationsHandler
 	*TenantLLMHandler
 }
@@ -69,7 +68,6 @@ func NewHandlerWithAPI(cfg *config.Config, api APIPort) *Handler {
 	ah := NewAuthHandler(cfg, api, refresh)
 	hh := NewHomeHandler(cfg, api, ah)
 	vh := NewTenantVariablesHandler(cfg, api, ah)
-	ch := NewCatalogImportHandler(cfg, api, ah)
 	gh := NewIntegrationsHandler(cfg, api, ah)
 	lh := NewTenantLLMHandler(cfg, api, ah)
 	return &Handler{
@@ -79,7 +77,6 @@ func NewHandlerWithAPI(cfg *config.Config, api APIPort) *Handler {
 		AuthHandler:            ah,
 		HomeHandler:            hh,
 		TenantVariablesHandler: vh,
-		CatalogImportHandler:   ch,
 		IntegrationsHandler:    gh,
 		TenantLLMHandler:       lh,
 	}

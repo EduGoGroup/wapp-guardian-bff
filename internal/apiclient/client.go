@@ -6,7 +6,6 @@ type Client struct {
 	*AuthClient
 	*EntitlementsClient
 	*TenantVariablesClient
-	*CatalogImportClient
 	*IntegrationsClient
 	*TenantLLMClient
 }
@@ -19,7 +18,6 @@ func New(baseURL string) *Client {
 		AuthClient:            NewAuthClient(t),
 		EntitlementsClient:    NewEntitlementsClient(t),
 		TenantVariablesClient: NewTenantVariablesClient(t),
-		CatalogImportClient:   NewCatalogImportClient(t),
 		IntegrationsClient:    NewIntegrationsClient(t),
 		TenantLLMClient:       NewTenantLLMClient(t),
 	}

@@ -50,39 +50,6 @@ type TenantVariablesManager interface {
 	ReplaceTenantVariables(ctx context.Context, accessToken string, vars map[string]string) (*apiclient.TenantVariables, error)
 }
 
-// CatalogImporter define el contrato del IMPORT DE CATÁLOGO (Plan 041 · T3.5): comprobar un
-// documento y aplicarlo, más la plantilla de ejemplo que se descarga.
-//
-// `ImportCatalog` cubre las dos modalidades con un booleano en vez de con dos métodos porque la
-// plataforma responde el MISMO objeto en las dos: dos métodos harían creer que hay dos respuestas
-// que interpretar, y solo hay una con un `Applied` distinto.
-//
-// Va segregado del resto por lo mismo que la bandeja: es un frente de pago (feature
-// `catalog_import`) y la pantalla que lo consume es PROVISIONAL (migra a `wapp-client-console` con el
-// Plan 047, ADR-0047; antes decía «a KMP», y dejó de decirlo porque el Plan 045 está al 0 % y esa app
-// está diferida: el marcador no era ejecutable). Cuando esa pantalla muera, esta interfaz se va con ella.
-// Las dos puertas del import —JSON y planilla— van en el MISMO puerto y no en dos, porque para la
-// pantalla son un solo acto con dos entradas: el paso 2 sale siempre por la de JSON, incluso cuando
-// el paso 1 entró por la planilla (el `document` normalizado que devuelve el tabular es lo que lo
-// hace posible).
-type CatalogImporter interface {
-	ImportCatalog(ctx context.Context, accessToken string, document []byte, apply bool, ref string) (*apiclient.CatalogImportResult, error)
-	ImportCatalogTabular(ctx context.Context, accessToken, filename string, content []byte, apply bool, ref string) (*apiclient.CatalogImportResult, error)
-	GetCatalogTemplate(ctx context.Context, accessToken, format string) (*apiclient.CatalogTemplate, error)
-	GetCatalogPrompt(ctx context.Context, accessToken string) (*apiclient.CatalogPrompt, error)
-	// ListTenantContentRefs alimenta el selector de ref del paso 1. Sin él la pantalla mandaba la ref
-	// vacía y la plataforma caía a su default, enseñando un diff contra un catálogo distinto del que
-	// el operador creía reemplazar (defecto A3 del cierre del Plan 041).
-	ListTenantContentRefs(ctx context.Context, accessToken string) ([]apiclient.TenantContentRef, error)
-}
-
-// CatalogImportAPI es lo que la pantalla de import consume: el import más las features efectivas,
-// que son las que deciden si la sección se emite siquiera.
-type CatalogImportAPI interface {
-	CatalogImporter
-	EntitlementsReader
-}
-
 // IntegrationsManager define el contrato de la CONFIGURACIÓN DEL PUENTE CRM (Plan 042 · T5.2): leer
 // la del tenant, guardarla entera y quitarla.
 //
@@ -149,7 +116,6 @@ type APIPort interface {
 	Authenticator
 	EntitlementsReader
 	TenantVariablesManager
-	CatalogImporter
 	IntegrationsManager
 	TenantLLMManager
 }
@@ -166,7 +132,6 @@ var (
 	_ HomeAPI            = (*apiclient.EntitlementsClient)(nil)
 
 	_ TenantVariablesManager = (*apiclient.TenantVariablesClient)(nil)
-	_ CatalogImporter        = (*apiclient.CatalogImportClient)(nil)
 	_ IntegrationsManager    = (*apiclient.IntegrationsClient)(nil)
 	_ TenantLLMManager       = (*apiclient.TenantLLMClient)(nil)
 	_ APIPort                = (*apiclient.Client)(nil)

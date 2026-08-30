@@ -73,20 +73,42 @@
 
     {{/* GATE SERVER-SIDE POR FEATURE (Plan 040 · T2.5). El bloque entero solo se emite si la feature
          está en las efectivas del tenant: si falta —o si no se pudieron resolver— no llega al HTML,
-         no queda escondido por CSS. El ejemplo era `intakes_export` hasta el Plan 047 · T7.7, y era
-         una feature que no existe en el código: se cambia por dos que sí, y que se ven aquí debajo.
-             {{ if $.Entitlements.Has "catalog_import" }} … {{ end }}
+         no queda escondido por CSS. El ejemplo era `intakes_export` hasta el Plan 047 · T7.7 —una
+         feature que no existe en el código— y `catalog_import` hasta el T8.5, que se mudó: se
+         ilustra con dos que siguen vivas aquí abajo.
              {{ if $.Entitlements.Has "crm_bridge" }} … {{ end }}
+             {{ if $.Entitlements.Has "api_llm" }} … {{ end }}
          Ojo: el gate de plantilla decide lo que se PINTA; el que decide lo que se PUEDE es el
          middleware RequireFeature de la plataforma, y esa sigue siendo la autoridad. */}}
-    {{ if .Entitlements.Has "catalog_import" }}
-    <div class="card" id="section-catalog-import">
+
+    {{/* 🔴 DÓNDE SE ADMINISTRA AHORA EL IMPORT DE CATÁLOGO (Plan 047 · T8.5).
+
+         Aquí estaba el acceso al import, gateado por `catalog_import`. Las tres rutas —el
+         formulario, los dos pasos del envío y la descarga de la plantilla— se mudaron a la consola
+         del cliente y se retiraron de aquí en el mismo ciclo (REQ-08), igual que las sesiones, los
+         flujos y la bandeja: dos copias de la misma pantalla divergen.
+
+         El aviso NO va gateado por `catalog_import`, a diferencia de la tarjeta que sustituye, y por
+         el mismo motivo que los otros tres: un aviso de mudanza que solo se emite con la feature
+         contratada deja sin explicación justo al tenant que perdió el acceso, y decir «esto se
+         administra en otra consola» no revela nada que `catalog_import` proteja. Mismo criterio con
+         el enlace: solo se ofrece si `ClientConsoleURL` viene puesta por entorno, y su vacío es el
+         caso normal —las dos aplicaciones son loopback en puertos distintos y no hay URL pública que
+         ofrecer—; sin ella se dice a quién preguntar en vez de pintar un enlace roto. */}}
+    <div class="card" id="section-catalog-moved">
         <h2 class="title">Catálogo</h2>
-        <p class="supporting">Cargar el catálogo del tenant desde un documento o una planilla,
-            comprobando antes qué cambia.</p>
-        <p class="body"><a href="/catalog-import" class="btn btn--outlined">Abrir el import de catálogo</a></p>
+        <div class="snackbar snackbar--info" role="note">
+            <span>El catálogo del tenant —cargarlo desde un documento o una planilla y comprobar
+                antes qué cambia— <strong>se administra ahora en la consola del cliente</strong>.
+                Desde esta consola ya no se importa ni se descarga su plantilla.</span>
+        </div>
+        {{ if .ClientConsoleURL }}
+        <p class="body"><a href="{{ .ClientConsoleURL }}" class="btn btn--outlined" rel="noopener noreferrer">Abrir la consola del cliente</a></p>
+        {{ else }}
+        <p class="supporting">Pídele a quien administre el despliegue la dirección de la consola del
+            cliente: esta consola no la publica.</p>
+        {{ end }}
     </div>
-    {{ end }}
 
     {{/* 🔴 DÓNDE SE ADMINISTRAN AHORA LOS FLUJOS Y LOS DISPARADORES (Plan 047 · T6.5/T6.6).
 

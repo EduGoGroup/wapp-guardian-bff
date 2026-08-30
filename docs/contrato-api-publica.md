@@ -220,12 +220,12 @@ Las features de §3 alimentan dos cosas en la UI, y conviene no confundirlas:
 
    El gate vive en la **plantilla**, no en CSS ni en JS: sin la feature el bloque **no llega al
    HTML**, así que no hay nada que destapar con el inspector (y encaja con la CSP sin
-   `'unsafe-inline'`). En la portada (`templates/pages/home.html`) lo usan los accesos al import de
-   catálogo (`catalog_import`), a integraciones (`crm_bridge`), al proveedor de IA (`api_llm`) y el
-   bloque del clasificador (`llm_intent`). El acceso a la bandeja iba gateado por `cart_basic` hasta
-   el Plan 047 · T7.7: la pantalla se mudó a `wapp-client-console` y en su sitio quedó un aviso de
-   mudanza SIN gate —un aviso que solo se emite con la feature contratada deja sin explicación justo
-   al tenant que perdió el acceso—.
+   `'unsafe-inline'`). En la portada (`templates/pages/home.html`) lo usan los accesos a
+   integraciones (`crm_bridge`), al proveedor de IA (`api_llm`) y el bloque del clasificador
+   (`llm_intent`). El acceso a la bandeja iba gateado por `cart_basic` hasta el Plan 047 · T7.7 y el
+   del import de catálogo por `catalog_import` hasta el T8.5: las dos pantallas se mudaron a
+   `wapp-client-console` y en su sitio quedó un aviso de mudanza SIN gate —un aviso que solo se emite
+   con la feature contratada deja sin explicación justo al tenant que perdió el acceso—.
 
 **Fail-closed**: `resolveEntitlements` nunca devuelve error — ante un fallo, un `403` o un endpoint
 que aún no exista, devuelve la vista cero (`internal/web/entitlements.go`), y `Has` sobre esa

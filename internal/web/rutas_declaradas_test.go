@@ -31,10 +31,15 @@ import (
 //
 // El test recorre el AST del paquete en vez de una lista escrita a mano por el mismo motivo que la
 // aduana recorre `router.Routes()`: una lista a mano nace con fecha de caducidad, y la constante que
-// alguien añada mañana entra sola. Hoy tiene TRES sujetos —`catalogImportRoute`, `integrationsRoute`
-// y `tenantLLMRoute`—, y los tres son además excepciones cableadas de algún middleware o registro:
-// `catalogImportRoute` es el patrón que `webgin.BodyLimit` trata aparte (server.go), que es
-// exactamente la misma forma que tenía el despachador de plazos.
+// alguien añada mañana entra sola. Hoy tiene DOS sujetos —`integrationsRoute` y `tenantLLMRoute`—,
+// los dos raíces de rutas que cuelgan de ellas por concatenación (`+"/delete"`), que es el caso que la
+// rama de prefijo de abajo existe para admitir.
+//
+// 📌 Eran TRES hasta el Plan 047 · T8.5. El tercero era `catalogImportRoute`, y era el ejemplo vivo de
+// lo que este test caza: `webgin.BodyLimit` lo trataba aparte en server.go, exactamente la misma forma
+// que tenía el despachador de plazos. Al mudarse el import, ese `BodyLimit` habría quedado nombrando
+// una ruta inexistente —compilando, con `vet` en cero y la suite verde—; se retiró entero con la
+// constante, y este test es lo que habría gritado si no.
 
 // TestNingunaConstanteDeRutaNombraUnaRutaFantasma: toda constante de este paquete cuyo valor tenga
 // forma de patrón de ruta (empieza por "/") está registrada en el router, con algún verbo.

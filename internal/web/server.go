@@ -46,9 +46,10 @@ var appCSS []byte
 func funcsDePlantilla(yield func(string, any) (template.HTML, error)) template.FuncMap {
 	return template.FuncMap{
 		// hasPrefix resalta el enlace activo de la navegación (app-bar): la sección se decide por el
-		// prefijo del path (p. ej. "/catalog-import/template" activa "Catálogo"). El ejemplo era
-		// "/flows/menu" hasta el Plan 047 · T6.6 y "/intakes/in-1" hasta el T7.7: un comentario que
-		// ilustra con una ruta retirada envejece a mentira, y ya lo hizo dos veces.
+		// prefijo del path (p. ej. "/integrations/delete" activa "Integraciones"). El ejemplo era
+		// "/flows/menu" hasta el Plan 047 · T6.6, "/intakes/in-1" hasta el T7.7 y
+		// "/catalog-import/template" hasta el T8.5: un comentario que ilustra con una ruta retirada
+		// envejece a mentira, y ya lo hizo tres veces.
 		"hasPrefix": strings.HasPrefix,
 		// `statusLabel` y `cuenta` estuvieron aquí hasta el Plan 047 · T7.7. Las dos las usaba SOLO la
 		// bandeja de solicitudes: `statusLabel` no tiene ya ni función ni consumidor, y `cuenta` sigue
@@ -169,10 +170,19 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 		c.JSON(http.StatusOK, gin.H{"status": "healthy", "time": time.Now().UTC().Format(time.RFC3339)})
 	})
 
-	// Techo del cuerpo para la ÚNICA pantalla que acepta archivos (el import de catálogo). Va antes del
-	// CSRF a propósito: el CSRF lee el formulario para comparar el token y con eso se traga el cuerpo
-	// entero, así que un tope montado después llegaría tarde.
-	router.Use(webgin.BodyLimit(maxCatalogImportBody, catalogImportRoute))
+	// 📌 Aquí vivía el ÚNICO `webgin.BodyLimit` del BFF (Plan 047 · T8.4/T8.5). Acotaba el cuerpo en
+	// 4 MiB para `/catalog-import`, la única pantalla de esta consola que aceptaba archivos, y se
+	// montaba antes del CSRF a propósito: el CSRF lee el formulario para comparar el token y con eso
+	// se traga el cuerpo entero, así que un tope puesto después llegaría tarde.
+	//
+	// 🔴 SE FUE ENTERO, no solo su constante. `webgin.BodyLimit` guarda por ruta EXACTA y esa era la
+	// única que nombraba: dejarlo montado habría sido un middleware en el camino crítico de TODAS las
+	// peticiones comparando contra una ruta que ya no existe, cuya rama nunca se toma. Es la misma
+	// forma que tenía el despachador de plazos que murió en el T7.7, y es la forma que
+	// `TestNingunaConstanteDeRutaNombraUnaRutaFantasma` existe para cazar.
+	//
+	// Con él se fue el techo de cuerpo del BFF: ninguna pantalla que quede acepta subidas. La que
+	// vuelva a aceptarlas tiene que traerse su propio tope, y este comentario es el aviso.
 
 	// Defensa CSRF double-submit (H2): a partir de aquí toda ruta que renderiza formularios o muta estado
 	// lleva el token. Se registra DESPUÉS de /static y /healthz (que no renderizan formularios ni mutan) para
@@ -265,15 +275,20 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	// verbo no registrado igual que a una ruta inexistente, así que un test de status daría por
 	// retirada una ruta que sigue viva con otro método.
 
-	// Import de catálogo (Plan 041 · T3.5), gateado por la feature `catalog_import` en la plantilla y
-	// por RequireFeature en la plataforma. El POST atiende los dos pasos —comprobar y aplicar— y cuál
-	// se pide lo dice el botón: el que escribe solo existe después de haber enseñado el diff.
-	// PANTALLA PROVISIONAL: migra a `wapp-client-console` (Plan 047, ADR-0047). El destino cambió —ya
-	// no es la app KMP— porque el Plan 045 está al 0 % y esa app está declarada diferida: un marcador
-	// que apuntaba ahí no era ejecutable.
-	protected.GET(catalogImportRoute, h.ShowCatalogImport)
-	protected.POST(catalogImportRoute, h.DoCatalogImport)
-	protected.GET(catalogImportRoute+"/template", h.DownloadCatalogTemplate)
+	// 📌 Aquí estaba el IMPORT DE CATÁLOGO (Plan 041 · T3.5): `GET /catalog-import` con el formulario,
+	// `POST /catalog-import` atendiendo los dos pasos —comprobar y aplicar— y
+	// `GET /catalog-import/template` sirviendo la plantilla de ejemplo. La pantalla se mudó a la
+	// consola del cliente (`wapp-client-console`) y se retiró de aquí EN EL MISMO CICLO (REQ-08): dos
+	// copias de la misma pantalla divergen, y la que sigue viva contesta antes que la documentación.
+	//
+	// Con las tres rutas se fueron cosas que no eran rutas y que solo las sostenían a ellas: el techo
+	// de cuerpo de 4 MiB (arriba), el cliente `CatalogImportClient` con sus cinco métodos —incluida
+	// `ListTenantContentRefs`, que alimentaba el selector de ref— y el puerto `CatalogImporter`.
+	//
+	// La retirada la vigila `TestRutasDelImportDeCatalogoYaNoExisten` (home_test.go) contra
+	// `router.Routes()`, no contra el status: este router nace con HandleMethodNotAllowed en false y
+	// responde 404 a un verbo no registrado igual que a una ruta inexistente, así que un test de
+	// status daría por retirada una ruta que sigue viva con otro método.
 
 	// Integraciones (Plan 042 · T5.2): la configuración del puente CRM del tenant —por dónde salen los
 	// pedidos, a qué endpoint y con qué secreto de firma—, gateada por la feature `crm_bridge` en la
