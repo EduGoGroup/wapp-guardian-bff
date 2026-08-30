@@ -24,10 +24,15 @@ import (
 // Se escribe AHORA, antes de borrar, porque en una retirada anterior de este mismo plan un aserto sin
 // otro dueño (el `<th>Perfil</th>`) estuvo a punto de irse por el desagüe sin que nadie lo notara.
 //
-// Se prueba la REGLA sobre la tabla de rutas y no un puñado de rutas por su nombre: los tres frentes
-// que vienen (flujos/disparadores, la bandeja de solicitudes, el import de catálogo) se llevan rutas
-// concretas, así que cualquier lista escrita a mano nace con fecha de caducidad. Recorriendo
-// `router.Routes()` el test cubre lo que HAYA el día que se ejecute, y cubre gratis lo que se añada.
+// Se prueba la REGLA sobre la tabla de rutas y no un puñado de rutas por su nombre: los frentes que
+// venían se llevan rutas concretas, así que cualquier lista escrita a mano nace con fecha de
+// caducidad. Recorriendo `router.Routes()` el test cubre lo que HAYA el día que se ejecute, y cubre
+// gratis lo que se añada.
+//
+// 📌 Y funcionó: de los tres frentes anunciados aquí ya cayeron dos —flujos/disparadores (T6.6) y la
+// bandeja de solicitudes (T7.7, ocho POST de golpe)— sin que este fichero se tocara. Queda el import
+// de catálogo, que migra en la Ola 8. El contador `cubiertos` de abajo es lo que impide que la última
+// mudanza deje el test verde sin material.
 
 // rutasPOSTExentasDeLaAduana son los POST que legítimamente NO redirigen a /login sin sesión, con el
 // motivo de cada uno. Es una lista EXPLÍCITA a propósito: un POST nuevo que no redirija pone el test
@@ -43,8 +48,9 @@ var rutasPOSTExentasDeLaAduana = map[string]string{
 	"/logout": "ruta pública del plano de autenticación: su 303 lo escribe DoLogout, no el AuthMiddleware",
 }
 
-// rutaConcretaDeParametros convierte el patrón que guarda gin ("/intakes/:id/status") en una URL
-// pedible. El valor del parámetro da igual: la aduana corta ANTES del handler, así que nunca se lee.
+// rutaConcretaDeParametros convierte el patrón que guarda gin ("/integrations/:id/algo") en una URL
+// pedible. El ejemplo era "/intakes/:id/status" hasta el Plan 047 · T7.7: un comentario que ilustra
+// con una ruta retirada envejece a mentira. El valor del parámetro da igual: la aduana corta ANTES del handler, así que nunca se lee.
 func rutaConcretaDeParametros(patron string) string {
 	partes := strings.Split(patron, "/")
 	for i, p := range partes {

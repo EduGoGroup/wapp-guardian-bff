@@ -32,62 +32,11 @@ type HomeAPI interface {
 	EntitlementsReader
 }
 
-// IntakeManager define el contrato de la bandeja de SOLICITUDES (Plan 041 · T1.5, T4.8 y T4.10):
-// listar con filtros, abrir el detalle, mover el estado del ciclo de vida, corregir las líneas a
-// mano y descartar por lotes lo que ya no va a ninguna parte.
-//
-// Va segregado del resto porque es un frente propio y de pago: sus CINCO rutas exigen la feature
-// `cart_basic` en la plataforma, y la pantalla que lo consume es PROVISIONAL (migra a
-// `wapp-client-console` con el Plan 047, ADR-0047; antes decía «a KMP», y dejó de decirlo porque el
-// Plan 045 está al 0 % y esa app está diferida: el marcador no era ejecutable). Cuando esa pantalla
-// muera, esta interfaz se va con ella sin arrastrar a nadie.
-//
-// `ReplaceIntakeItems` recibe el conjunto COMPLETO de líneas de cliente, no una operación por
-// línea, porque así es el contrato de la plataforma (PUT, no POST): añadir, quitar y corregir son
-// la misma llamada con una lista distinta. Devuelve el detalle ya actualizado —con la revisión
-// `corrected` dentro— para que la pantalla repinte sin un segundo GET.
-//
-// `DiscardIntakes` es la única operación de esta interfaz que trabaja sobre VARIAS solicitudes de
-// una vez, y su resultado se lee por ítem: un lote mixto —unos descartados y otros no— es el caso
-// normal, así que devolver `nil` de error no autoriza a decir «listo».
-//
-// Las TRES acciones del 044 —`CorrectIntakeItems`, `ApproveIntake` y `RequestIntakeInfo`— son de
-// otra naturaleza que el resto y por eso el contrato las nombra aparte: las dos últimas LE HABLAN AL
-// CLIENTE por WhatsApp, y las tres dejan revisión. El desplegable de estado (`SetIntakeStatus`) no
-// hace ninguna de las dos cosas, y confundirlos en la pantalla sería ofrecer «responderle al
-// cliente» donde solo se mueve una etiqueta.
-//
-// `CorrectIntakeItems` es el MISMO PUT que `ReplaceIntakeItems` con el campo `as_correction`: no hay
-// ninguna ruta `/correct` y no debe inventarse una.
-//
-// 🔴 `ReanalyzeIntake` es la ÚNICA que no devuelve un detalle, y no es una asimetría por descuido: la
-// plataforma abre un trabajo que corre por detrás y contesta con el número que la revisión TENDRÁ.
-// Cuando responde, esa revisión NO EXISTE todavía, así que no hay detalle nuevo que devolver — y una
-// firma que lo devolviera obligaría a inventarlo.
-//
-// 🔴 `SuggestIntakeQuote` tampoco devuelve detalle, y por un motivo DISTINTO y más importante: NO
-// CAMBIA NADA. Redacta un texto y lo devuelve; no aprueba, no transiciona y no le manda nada al
-// cliente. Esa estrechez de la firma es lo que sostiene INV-1 —la máquina propone por un camino, la
-// dueña aprueba por otro—, y devolver aquí un `*IntakeDetail` insinuaría que algo se guardó.
-type IntakeManager interface {
-	ListIntakes(ctx context.Context, accessToken string, f apiclient.IntakeFilter) (*apiclient.IntakePage, error)
-	GetIntake(ctx context.Context, accessToken, id string) (*apiclient.IntakeDetail, error)
-	SetIntakeStatus(ctx context.Context, accessToken, id, status string) (*apiclient.Intake, error)
-	ReplaceIntakeItems(ctx context.Context, accessToken, id string, items []apiclient.IntakeItem) (*apiclient.IntakeDetail, error)
-	CorrectIntakeItems(ctx context.Context, accessToken, id string, items []apiclient.IntakeItem) (*apiclient.IntakeDetail, error)
-	ApproveIntake(ctx context.Context, accessToken, id, renderedText string) (*apiclient.IntakeDetail, error)
-	RequestIntakeInfo(ctx context.Context, accessToken, id, question string) (*apiclient.IntakeDetail, error)
-	ReanalyzeIntake(ctx context.Context, accessToken, id, text string) (*apiclient.IntakeReanalysis, error)
-	SuggestIntakeQuote(ctx context.Context, accessToken, id string) (*apiclient.IntakeQuoteSuggestion, error)
-	DiscardIntakes(ctx context.Context, accessToken string, intakeIDs []string) (*apiclient.IntakeDiscardResult, error)
-}
-
-// IntakesAPI es lo que la pantalla de solicitudes consume: la bandeja más las features efectivas,
-// que son las que deciden si la sección se emite siquiera.
-type IntakesAPI interface {
-	IntakeManager
-	EntitlementsReader
-}
+// 🔴 AQUÍ ESTUVIERON `IntakeManager` (10 métodos) e `IntakesAPI`, el contrato de la bandeja de
+// SOLICITUDES. Se fueron con la pantalla (Plan 047 · T7.7): la bandeja se administra ahora en la
+// consola del cliente. Lo que aquí se anticipó —«cuando esa pantalla muera, esta interfaz se va con
+// ella sin arrastrar a nadie»— se cumplió: el puerto segregado hizo que la retirada no tocara ni un
+// handler ajeno.
 
 // TenantVariablesManager define el contrato de las VARIABLES DE EMPRESA (Plan 041 · T2.1): pares
 // clave→valor que wApp no interpreta (D-041.1).
@@ -199,7 +148,6 @@ type TenantLLMAPI interface {
 type APIPort interface {
 	Authenticator
 	EntitlementsReader
-	IntakeManager
 	TenantVariablesManager
 	CatalogImporter
 	IntegrationsManager
@@ -216,7 +164,6 @@ var (
 	_ Authenticator      = (*apiclient.DelegatedAuthenticator)(nil)
 	_ EntitlementsReader = (*apiclient.EntitlementsClient)(nil)
 	_ HomeAPI            = (*apiclient.EntitlementsClient)(nil)
-	_ IntakeManager      = (*apiclient.IntakesClient)(nil)
 
 	_ TenantVariablesManager = (*apiclient.TenantVariablesClient)(nil)
 	_ CatalogImporter        = (*apiclient.CatalogImportClient)(nil)

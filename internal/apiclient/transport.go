@@ -16,57 +16,27 @@ import (
 // defaultTimeout acota cada llamada a la API (anti-cuelgue).
 const defaultTimeout = 15 * time.Second
 
-// DefaultInferenceTimeout es el plazo del cliente de INFERENCIA (ver InferenceHTTPClient). 55s
-// porque el cloud se da 48s para redactar la sugerencia y hay que cubrirlos con holgura; el número
-// y sus medidas están razonados en config.QuoteSuggestionTimeout, que es quien lo fija en el
-// arranque. Este default solo manda cuando nadie pasa WithInferenceTimeout (los tests, y cualquier
-// llamante que construya el Transport a mano).
-const DefaultInferenceTimeout = 55 * time.Second
-
 // Transport maneja la configuración base HTTP y las peticiones primitivas.
+//
+// 🔴 AQUÍ HUBO UN SEGUNDO CLIENTE HTTP, `InferenceHTTPClient` (55s), hasta el Plan 047 · T7.7. Existía
+// porque `http.Client.Timeout` NO se puede sobrescribir por petición —es un campo del cliente, no del
+// request, y ante un contexto más largo gana siempre el menor—, así que la ÚNICA llamada del BFF que
+// esperaba a que un modelo redactara (`SuggestIntakeQuote`) necesitaba otro cliente para no darle su
+// plazo a todas las demás. Esa llamada se mudó a la consola del cliente con la bandeja, y con ella se
+// fueron el campo, su `Option` constructora y el test de AST que vigilaba que el uso siguiera siendo
+// uno solo. El razonamiento sigue siendo válido el día que vuelva a haber una llamada así: no es que
+// el segundo cliente fuera un error, es que se quedó sin llamante.
 type Transport struct {
 	BaseURL    string
 	HTTPClient *http.Client
-
-	// InferenceHTTPClient es el cliente de las llamadas que ESPERAN A UN MODELO. Hoy hay una sola
-	// —SuggestIntakeQuote— y un test estructural vigila que siga siendo una sola.
-	//
-	// 🔴 EXISTE PORQUE http.Client.Timeout NO SE PUEDE SOBRESCRIBIR POR PETICIÓN: es un campo del
-	// cliente, no del request, y ante un contexto más largo gana SIEMPRE el menor de los dos. Así que
-	// un ctx de 58s sobre el cliente de 15s se sigue cortando a los 15s, y el único modo de darle a
-	// una llamada un plazo mayor sin dárselo a todas es que esa llamada use OTRO cliente.
-	//
-	// Comparte el RoundTripper (los dos van con Transport nil == http.DefaultTransport), así que
-	// comparte el pool de conexiones con el cliente general: lo que cambia es el plazo, no el cable.
-	InferenceHTTPClient *http.Client
 }
 
-// Option ajusta la construcción del Transport (y, por él, la de Client y DelegatedClient).
-type Option func(*Transport)
-
-// WithInferenceTimeout fija el plazo del cliente de inferencia. Un valor <= 0 se ignora y deja
-// DefaultInferenceTimeout: un cero significa «no configurado», nunca «sin plazo», que en un cliente
-// HTTP es un cuelgue indefinido.
-func WithInferenceTimeout(d time.Duration) Option {
-	return func(t *Transport) {
-		if d > 0 {
-			t.InferenceHTTPClient.Timeout = d
-		}
+// NewTransport construye un Transport con el timeout predeterminado (15s).
+func NewTransport(baseURL string) *Transport {
+	return &Transport{
+		BaseURL:    strings.TrimRight(baseURL, "/"),
+		HTTPClient: &http.Client{Timeout: defaultTimeout},
 	}
-}
-
-// NewTransport construye un Transport con el timeout predeterminado (15s) y el cliente de
-// inferencia (55s salvo WithInferenceTimeout).
-func NewTransport(baseURL string, opts ...Option) *Transport {
-	t := &Transport{
-		BaseURL:             strings.TrimRight(baseURL, "/"),
-		HTTPClient:          &http.Client{Timeout: defaultTimeout},
-		InferenceHTTPClient: &http.Client{Timeout: DefaultInferenceTimeout},
-	}
-	for _, opt := range opts {
-		opt(t)
-	}
-	return t
 }
 
 // ErrUnauthorized señala un 401 de la API (credenciales inválidas o token expirado).

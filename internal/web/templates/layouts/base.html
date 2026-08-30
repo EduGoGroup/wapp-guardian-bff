@@ -42,12 +42,11 @@
                  enlace se llamaba «Sesiones» y se renombró con la retirada — un enlace que promete una
                  pantalla que ya no está es peor que no tenerlo. */}}
             <a href="/" class="btn btn--text{{ if eq .CurrentPath "/" }} btn--active{{ end }}">Inicio</a>
-            {{/* El enlace a la bandeja solo se emite si la página resolvió las features del tenant y
-                 `cart_basic` está contratada. En las páginas que no las resuelven la clave no existe,
-                 se lee como falsa y el enlace no llega al HTML: fail-closed también en la navegación. */}}
-            {{ if .IntakesNav }}
-            <a href="/intakes" class="btn btn--text{{ if hasPrefix .CurrentPath "/intakes" }} btn--active{{ end }}">Solicitudes</a>
-            {{ end }}
+            {{/* «Solicitudes» estuvo aquí hasta el Plan 047 · T7.7: la bandeja se mudó a la consola del
+                 cliente (`/solicitudes`) y el enlace se retiró en el mismo ciclo (REQ-08), igual que
+                 «Flujos» y «Triggers». Mismo motivo que abajo: un enlace que promete una pantalla que
+                 su propia casa ya no sirve manda al usuario a un 404 de esta consola. Dónde está ahora
+                 lo dice la portada, que es donde vive el aviso de mudanza. */}}
             {{/* Mismo criterio para el import de catálogo: sin `catalog_import` contratada —o en una
                  página que no resolvió las features— el enlace no llega al HTML. */}}
             {{ if .CatalogImportNav }}

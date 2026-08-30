@@ -18,19 +18,8 @@ import (
 // en un campo función si está puesto; si no, devuelve el cero correspondiente. Verifica en compilación que
 // cumple el puerto.
 type fakeAPIPort struct {
-	refresh         func(ctx context.Context, refreshToken string) (*apiclient.AuthResult, error)
-	getEntitlements func(ctx context.Context, accessToken string) (*apiclient.Entitlements, error)
-	listIntakes     func(ctx context.Context, accessToken string, f apiclient.IntakeFilter) (*apiclient.IntakePage, error)
-	getIntake       func(ctx context.Context, accessToken, id string) (*apiclient.IntakeDetail, error)
-	setIntakeStatus func(ctx context.Context, accessToken, id, status string) (*apiclient.Intake, error)
-	replaceItems    func(ctx context.Context, accessToken, id string, items []apiclient.IntakeItem) (*apiclient.IntakeDetail, error)
-	correctItems    func(ctx context.Context, accessToken, id string, items []apiclient.IntakeItem) (*apiclient.IntakeDetail, error)
-	approveIntake   func(ctx context.Context, accessToken, id, renderedText string) (*apiclient.IntakeDetail, error)
-	requestInfo     func(ctx context.Context, accessToken, id, question string) (*apiclient.IntakeDetail, error)
-	reanalyze       func(ctx context.Context, accessToken, id, text string) (*apiclient.IntakeReanalysis, error)
-	suggestQuote    func(ctx context.Context, accessToken, id string) (*apiclient.IntakeQuoteSuggestion, error)
-	discardIntakes  func(ctx context.Context, accessToken string, intakeIDs []string) (*apiclient.IntakeDiscardResult, error)
-
+	refresh                func(ctx context.Context, refreshToken string) (*apiclient.AuthResult, error)
+	getEntitlements        func(ctx context.Context, accessToken string) (*apiclient.Entitlements, error)
 	getTenantVariables     func(ctx context.Context, accessToken string) (*apiclient.TenantVariables, error)
 	replaceTenantVariables func(ctx context.Context, accessToken string, vars map[string]string) (*apiclient.TenantVariables, error)
 
@@ -71,68 +60,6 @@ func (f *fakeAPIPort) GetEntitlements(ctx context.Context, at string) (*apiclien
 		return f.getEntitlements(ctx, at)
 	}
 	return nil, nil
-}
-func (f *fakeAPIPort) ListIntakes(ctx context.Context, at string, filter apiclient.IntakeFilter) (*apiclient.IntakePage, error) {
-	if f.listIntakes != nil {
-		return f.listIntakes(ctx, at, filter)
-	}
-	return &apiclient.IntakePage{Intakes: []apiclient.Intake{}, Page: 1, PageSize: 50}, nil
-}
-func (f *fakeAPIPort) GetIntake(ctx context.Context, at, id string) (*apiclient.IntakeDetail, error) {
-	if f.getIntake != nil {
-		return f.getIntake(ctx, at, id)
-	}
-	return &apiclient.IntakeDetail{}, nil
-}
-func (f *fakeAPIPort) SetIntakeStatus(ctx context.Context, at, id, status string) (*apiclient.Intake, error) {
-	if f.setIntakeStatus != nil {
-		return f.setIntakeStatus(ctx, at, id, status)
-	}
-	return &apiclient.Intake{}, nil
-}
-func (f *fakeAPIPort) ReplaceIntakeItems(ctx context.Context, at, id string, items []apiclient.IntakeItem) (*apiclient.IntakeDetail, error) {
-	if f.replaceItems != nil {
-		return f.replaceItems(ctx, at, id, items)
-	}
-	return &apiclient.IntakeDetail{}, nil
-}
-func (f *fakeAPIPort) CorrectIntakeItems(ctx context.Context, at, id string, items []apiclient.IntakeItem) (*apiclient.IntakeDetail, error) {
-	if f.correctItems != nil {
-		return f.correctItems(ctx, at, id, items)
-	}
-	return &apiclient.IntakeDetail{}, nil
-}
-func (f *fakeAPIPort) ApproveIntake(ctx context.Context, at, id, renderedText string) (*apiclient.IntakeDetail, error) {
-	if f.approveIntake != nil {
-		return f.approveIntake(ctx, at, id, renderedText)
-	}
-	return &apiclient.IntakeDetail{}, nil
-}
-func (f *fakeAPIPort) RequestIntakeInfo(ctx context.Context, at, id, question string) (*apiclient.IntakeDetail, error) {
-	if f.requestInfo != nil {
-		return f.requestInfo(ctx, at, id, question)
-	}
-	return &apiclient.IntakeDetail{}, nil
-}
-func (f *fakeAPIPort) ReanalyzeIntake(ctx context.Context, at, id, text string) (*apiclient.IntakeReanalysis, error) {
-	if f.reanalyze != nil {
-		return f.reanalyze(ctx, at, id, text)
-	}
-	return &apiclient.IntakeReanalysis{}, nil
-}
-func (f *fakeAPIPort) SuggestIntakeQuote(ctx context.Context, at, id string) (*apiclient.IntakeQuoteSuggestion, error) {
-	if f.suggestQuote != nil {
-		return f.suggestQuote(ctx, at, id)
-	}
-	return &apiclient.IntakeQuoteSuggestion{}, nil
-}
-func (f *fakeAPIPort) DiscardIntakes(ctx context.Context, at string, ids []string) (*apiclient.IntakeDiscardResult, error) {
-	if f.discardIntakes != nil {
-		return f.discardIntakes(ctx, at, ids)
-	}
-	// Las dos listas van vacías y NO nil, como las emite la plataforma: un doble que devolviera
-	// `null` dejaría pasar código que confunde «no se descartó nada» con «no hubo respuesta».
-	return &apiclient.IntakeDiscardResult{Discarded: []string{}, Skipped: []apiclient.IntakeDiscardSkip{}}, nil
 }
 func (f *fakeAPIPort) GetTenantVariables(ctx context.Context, at string) (*apiclient.TenantVariables, error) {
 	if f.getTenantVariables != nil {

@@ -5,22 +5,19 @@ type Client struct {
 	*Transport
 	*AuthClient
 	*EntitlementsClient
-	*IntakesClient
 	*TenantVariablesClient
 	*CatalogImportClient
 	*IntegrationsClient
 	*TenantLLMClient
 }
 
-// New construye el cliente unificado con un http.Client de timeout por defecto (15s) y el cliente
-// de inferencia aparte, que solo usa la sugerencia de cotización (ver Transport.InferenceHTTPClient).
-func New(baseURL string, opts ...Option) *Client {
-	t := NewTransport(baseURL, opts...)
+// New construye el cliente unificado con un http.Client de timeout por defecto (15s).
+func New(baseURL string) *Client {
+	t := NewTransport(baseURL)
 	return &Client{
 		Transport:             t,
 		AuthClient:            NewAuthClient(t),
 		EntitlementsClient:    NewEntitlementsClient(t),
-		IntakesClient:         NewIntakesClient(t),
 		TenantVariablesClient: NewTenantVariablesClient(t),
 		CatalogImportClient:   NewCatalogImportClient(t),
 		IntegrationsClient:    NewIntegrationsClient(t),

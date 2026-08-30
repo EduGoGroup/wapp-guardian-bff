@@ -290,7 +290,6 @@ func (h *TenantLLMHandler) render(c *gin.Context, status int, ent entitlementsVi
 		"View":                  view,
 		"Notice":                notice,
 		entitlementsDataKey:     ent,
-		intakesNavDataKey:       ent.Has(intakesFeature),
 		catalogImportNavDataKey: ent.Has(catalogImportFeature),
 		integrationsNavDataKey:  ent.Has(integrationsFeature),
 		tenantLLMNavDataKey:     ent.Has(tenantLLMFeature),

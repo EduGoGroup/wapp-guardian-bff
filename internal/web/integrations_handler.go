@@ -296,7 +296,6 @@ func (h *IntegrationsHandler) render(c *gin.Context, status int, ent entitlement
 		"Notice":                notice,
 		outboxDataKey:           outbox,
 		entitlementsDataKey:     ent,
-		intakesNavDataKey:       ent.Has(intakesFeature),
 		catalogImportNavDataKey: ent.Has(catalogImportFeature),
 		integrationsNavDataKey:  ent.Has(integrationsFeature),
 		tenantLLMNavDataKey:     ent.Has(tenantLLMFeature),

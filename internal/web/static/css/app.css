@@ -107,8 +107,6 @@ a{ color:inherit; text-decoration:none; }
        color:var(--md-on-surface-variant); }
 .supporting{ font-size:.875rem; line-height:1.25rem; font-weight:400; margin:0;
              color:var(--md-on-surface-variant); }
-.eyebrow{ font-size:.75rem; line-height:1rem; font-weight:500; letter-spacing:.08em;
-          text-transform:uppercase; margin:0; color:var(--md-primary); }
 
 /* ===== App bar (top) ===== */
 .app-bar{
@@ -221,52 +219,19 @@ textarea.field__control{ height:auto; min-height:120px; padding:var(--md-space-3
   border-bottom:1px solid var(--md-outline-variant);
   color:var(--md-on-surface-variant);
 }
-/* Sub-línea dentro de una celda: hoy, la personalización pegada a su artículo (Plan 041 · T4.1b,
-   D-041.17). Es instrucción de producción, no adorno, así que va con el color plano de la superficie
-   —más marcado que el resto de la celda— y un filete de marca. Solo existe cuando hay texto: la
-   plantilla no emite el span en las líneas sin personalización. */
-.cell-note{
-  display:block; margin-top:var(--md-space-1);
-  padding-left:var(--md-space-2); border-left:2px solid var(--md-primary);
-  font-size:.8125rem; line-height:1.125rem;
-  color:var(--md-on-surface);
-}
-
 .table tbody tr{ transition:background-color .1s ease; }
 .table tbody tr:hover{
   /* state-layer sutil sobre la fila */
   background:color-mix(in srgb, var(--md-on-surface) 6%, transparent);
 }
 
-/* ===== Indicación del PEDIDO (Plan 041 · T4.1c, D-041.19) =====
-   Hermana de `.cell-note` y deliberadamente DISTINTA: aquella cuelga de la celda de un artículo y
-   esta vive en la cabecera de la ficha, porque «dejarlo en portería» aplica al pedido entero. Se
-   pinta como aviso —fondo propio y filete— para que no se lea como un párrafo más de metadatos. La
-   escribe un cliente por WhatsApp, así que `overflow-wrap` corta también una parrafada sin espacios
-   antes de que desborde la tarjeta. */
-.order-note{
-  margin:0;
-  padding:var(--md-space-3) var(--md-space-4);
-  border-left:3px solid var(--md-primary);
-  border-radius:var(--md-shape-sm);
-  background:var(--md-surface-container-high);
-  color:var(--md-on-surface);
-  font-size:.875rem; line-height:1.25rem;
-  overflow-wrap:anywhere;
-}
-.order-note__label{ font-weight:600; }
-
-/* ===== Comparación en DOS COLUMNAS (Plan 044 · T4.7, design §7.6) =====
-   El original del cliente va AL LADO de lo interpretado, no debajo, y esa es la tarea entera: con
-   una columna encima de la otra el dueño tiene que acordarse de lo que acaba de leer para notar que
-   pidió una hamburguesa y se entendieron tres. Cada columna crece desde 18rem, así que en una
-   pantalla estrecha caen una debajo de otra sin necesidad de una media query propia. El `min-width:0`
-   deja que un texto largo de WhatsApp se parta en vez de estirar la fila. */
-.compare{ align-items:stretch; }
-.compare__col{
-  flex:1 1 18rem; min-width:0;
-  display:flex; flex-direction:column; gap:var(--md-space-2);
-}
+/* 🔴 AQUÍ ESTUVIERON LAS SEIS CLASES DE LA BANDEJA DE SOLICITUDES, retiradas con ella en el Plan 047
+   · T7.7: `.eyebrow` (arriba, con la tipografía), `.cell-note` y `.order-note`/`.order-note__label`
+   (la personalización de una línea y la indicación del pedido entero) y `.compare`/`.compare__col`
+   (el original del cliente al lado de lo interpretado). Ninguna la usaba otra plantilla —se comprobó
+   por diferencia contra las ocho que se quedan más el layout—, y una regla CSS sin selector vivo no
+   la borra nadie: se queda engordando el fichero que se sirve en cada carga. Si vuelven a hacer
+   falta, están en `wapp-client-console`, que es donde vive ahora la pantalla. */
 
 /* ===== Chip / badge de estado ===== */
 .chip{

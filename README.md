@@ -117,7 +117,7 @@ internal/
     ├── home_handler.go       — PORTADA: plan/capacidades + accesos a lo que esta consola conserva
     ├── entitlements.go       — vista de plan/features (Has) y gate fail-closed
     ├── static/css/app.css    — design system MD3 embebido (//go:embed)
-    └── templates/            — layout base.html + páginas (login, home, intakes, variables…)
+    └── templates/            — layout base.html + páginas (login, home, variables, catálogo…)
 docs/contrato-api-publica.md — contrato consumido de /api/v1 (referencia para otros clientes)
 ```
 

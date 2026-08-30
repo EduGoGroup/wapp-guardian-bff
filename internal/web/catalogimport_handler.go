@@ -303,7 +303,6 @@ func (h *CatalogImportHandler) render(c *gin.Context, status int, ent entitlemen
 		"View":                   view,
 		"Notice":                 notice,
 		entitlementsDataKey:      ent,
-		intakesNavDataKey:        ent.Has(intakesFeature),
 		catalogImportNavDataKey:  ent.Has(catalogImportFeature),
 		integrationsNavDataKey:   ent.Has(integrationsFeature),
 		tenantLLMNavDataKey:      ent.Has(tenantLLMFeature),

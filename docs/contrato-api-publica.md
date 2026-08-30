@@ -2,7 +2,7 @@
 
 > Documenta cómo **este BFF** (`wapp-guardian-bff`) consume la API pública REST de
 > `cloud/wapp-cloud-platform` (`:8103`, Plan 018). Es la implementación de referencia: describe el
-> contrato **tal como el código lo usa hoy** (`internal/apiclient/{auth.go,transport.go,intakes.go,
+> contrato **tal como el código lo usa hoy** (`internal/apiclient/{auth.go,transport.go,
 > entitlements.go,…}`), para que un futuro cliente Android/iOS lo replique sin tener que leer el BFF
 > entero.
 >
@@ -72,7 +72,7 @@ Request (`refreshRequest`, `auth.go:30`): `{ "refresh_token": "…" }`. Response
 `AuthResult` que login (nuevo `access_token`+`refresh_token`).
 
 **Patrón refresh + reintento** (`internal/web/auth_handler.go:190`, función `withAuthRetry`,
-reusada por portada/flows/triggers/intakes/entitlements): toda llamada de negocio se ejecuta primero con el
+reusada por portada/variables/catálogo/integraciones/entitlements): toda llamada de negocio se ejecuta primero con el
 `access_token` vigente; si la API responde `401` (`apiclient.ErrUnauthorized`), el BFF llama
 `Refresh` una vez, re-emite la cookie (`refreshSession`, `internal/web/auth_handler.go:159`) y
 **reintenta la llamada original una sola vez**. Si el refresh también falla, el error original se
@@ -220,9 +220,12 @@ Las features de §3 alimentan dos cosas en la UI, y conviene no confundirlas:
 
    El gate vive en la **plantilla**, no en CSS ni en JS: sin la feature el bloque **no llega al
    HTML**, así que no hay nada que destapar con el inspector (y encaja con la CSP sin
-   `'unsafe-inline'`). En la portada (`templates/pages/home.html`) lo usan los accesos a la bandeja
-   (`cart_basic`), al import de catálogo (`catalog_import`), a integraciones (`crm_bridge`) y el
-   bloque del clasificador (`llm_intent`).
+   `'unsafe-inline'`). En la portada (`templates/pages/home.html`) lo usan los accesos al import de
+   catálogo (`catalog_import`), a integraciones (`crm_bridge`), al proveedor de IA (`api_llm`) y el
+   bloque del clasificador (`llm_intent`). El acceso a la bandeja iba gateado por `cart_basic` hasta
+   el Plan 047 · T7.7: la pantalla se mudó a `wapp-client-console` y en su sitio quedó un aviso de
+   mudanza SIN gate —un aviso que solo se emite con la feature contratada deja sin explicación justo
+   al tenant que perdió el acceso—.
 
 **Fail-closed**: `resolveEntitlements` nunca devuelve error — ante un fallo, un `403` o un endpoint
 que aún no exista, devuelve la vista cero (`internal/web/entitlements.go`), y `Has` sobre esa

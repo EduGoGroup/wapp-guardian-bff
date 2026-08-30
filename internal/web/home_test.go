@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	sharedweb "github.com/EduGoGroup/wapp-shared/web"
 )
 
@@ -19,6 +21,27 @@ const sessionsMovedMarker = `id="section-sessions-moved"`
 
 // editorMovedMarker es el mismo ancla para flujos y disparadores (Plan 047 · T6.5/T6.6).
 const editorMovedMarker = `id="section-editor-moved"`
+
+// intakesMovedMarker es el mismo ancla para la bandeja de solicitudes (Plan 047 · T7.7).
+const intakesMovedMarker = `id="section-intakes-moved"`
+
+// exigeRutaRegistrada aborta si el patrón dado no está en la tabla de rutas del router.
+//
+// 🔴 EXISTE POR UN FALLO MEDIDO, dos veces en este mismo plan: un test de OTRA pantalla que usa una
+// ruta ajena como TESTIGO —«la portada sigue ofreciendo X»— se queda VERDE midiendo el vacío en cuanto
+// esa ruta se retira, porque un aserto de ausencia lo satisface una página que ya no existe. El
+// testigo se ancla en una ruta que se queda, y esto lo comprueba en voz alta: el día que alguien mude
+// la pantalla del ancla, el test no envejece en silencio, se cae y pide otro ancla.
+func exigeRutaRegistrada(t *testing.T, router *gin.Engine, metodo, patron string) {
+	t.Helper()
+	for _, r := range router.Routes() {
+		if r.Method == metodo && r.Path == patron {
+			return
+		}
+	}
+	t.Fatalf("la ruta testigo %s %s ya no está registrada: este test dejó de medir lo que dice medir. "+
+		"Ánclalo en otra ruta que se quede en el BFF", metodo, patron)
+}
 
 // homeAPI levanta una API pública fake que sirve las features dadas y NADA MÁS: cualquier otra ruta
 // responde 500 y deja constancia de que se llamó.
@@ -153,18 +176,29 @@ func TestPortadaNoInventaElEnlaceALaConsolaDelCliente(t *testing.T) {
 	}
 }
 
-// TestPortadaConservaLosAccesosDeLoQueSigueVivoAqui: la retirada se lleva las sesiones y NADA MÁS. La
+// TestPortadaConservaLosAccesosDeLoQueSigueVivoAqui: cada retirada se lleva LO SUYO y nada más. La
 // portada es el índice de esta consola, así que tiene que seguir ofreciendo lo que no se mudó, con los
 // gates que cada cosa ya tenía.
+//
+// 🔴 `href="/intakes"` estuvo en esta lista hasta el Plan 047 · T7.7 y fue el testigo que ROMPIÓ al
+// retirar la bandeja —el caso bueno: se ve—. Los peligrosos son sus hermanos de abajo, que se quedan
+// verdes midiendo el vacío. Por eso cada acceso que queda va con `exigeRutaRegistrada`: el testigo
+// afirma que la portada OFRECE el enlace, y eso solo significa algo mientras el enlace lleve a alguna
+// parte.
 func TestPortadaConservaLosAccesosDeLoQueSigueVivoAqui(t *testing.T) {
-	api, _ := homeAPI(t, "cart_basic", "catalog_import", "crm_bridge", "llm_intent")
+	api, _ := homeAPI(t, "catalog_import", "crm_bridge", "llm_intent")
 
-	out := getWithCookie(NewRouter(authTestCfg(api.URL)), "/", validSessionCookie(t)).Body.String()
+	router := NewRouter(authTestCfg(api.URL))
+	// Los dos anclas PERMANENTES (ADR-0035 §3): capa técnica que no migra. `/catalog-import` está en
+	// la lista de abajo porque hoy está vivo, pero NO sirve de ancla: migra en la Ola 8.
+	exigeRutaRegistrada(t, router, http.MethodGet, "/variables")
+	exigeRutaRegistrada(t, router, http.MethodGet, "/integrations")
+
+	out := getWithCookie(router, "/", validSessionCookie(t)).Body.String()
 
 	for _, want := range []string{
 		"Plan y capacidades", // la tarjeta de plan
 		`chip chip--info">plan · commerce`,
-		`href="/intakes"`,        // gateado por cart_basic
 		`href="/catalog-import"`, // gateado por catalog_import
 		`href="/variables"`,      // sin gate
 		`href="/integrations"`,   // gateado por crm_bridge
@@ -178,13 +212,21 @@ func TestPortadaConservaLosAccesosDeLoQueSigueVivoAqui(t *testing.T) {
 // TestPortadaRespetaLosGatesDeLoQueConserva es el contraste del test anterior: los accesos gateados no
 // se emiten sin su feature. Sin este, «conserva los accesos» pasaría con una portada que los pinta
 // SIEMPRE, que es justo el fallo que el gate server-side existe para evitar.
+//
+// 🔴 AQUÍ VIVÍA UN TESTIGO QUE SE HABRÍA QUEDADO VERDE MIDIENDO EL VACÍO (Plan 047 · T7.7). La lista
+// de prohibidos incluía `href="/intakes"` y «Abrir la bandeja», y con la bandeja retirada el aserto
+// seguía pasando —no porque el gate funcione, sino porque el sujeto ya no existe—. Se quitaron los
+// dos, y los que quedan van respaldados por `exigeRutaRegistrada`: un aserto de ausencia solo prueba
+// algo cuando el ausente PODÍA estar.
 func TestPortadaRespetaLosGatesDeLoQueConserva(t *testing.T) {
-	api, _ := homeAPI(t, "menu") // ni cart_basic, ni catalog_import, ni crm_bridge, ni llm_intent
+	api, _ := homeAPI(t, "menu") // ni catalog_import, ni crm_bridge, ni llm_intent
 
-	out := getWithCookie(NewRouter(authTestCfg(api.URL)), "/", validSessionCookie(t)).Body.String()
+	router := NewRouter(authTestCfg(api.URL))
+	exigeRutaRegistrada(t, router, http.MethodGet, "/integrations")
+
+	out := getWithCookie(router, "/", validSessionCookie(t)).Body.String()
 
 	for _, prohibido := range []string{
-		`href="/intakes"`, "Abrir la bandeja",
 		`href="/catalog-import"`, "Abrir el import de catálogo",
 		`href="/integrations"`, "Abrir las integraciones",
 		`id="section-llm-intent"`,
@@ -194,7 +236,9 @@ func TestPortadaRespetaLosGatesDeLoQueConserva(t *testing.T) {
 		}
 	}
 	// Lo que no depende de features sigue estando: el gate no se lleva por delante lo que no gatea.
-	for _, want := range []string{`href="/variables"`, sessionsMovedMarker, editorMovedMarker} {
+	// Los tres avisos de mudanza entran aquí a propósito: NINGUNO va gateado, porque un aviso que solo
+	// se emite con la feature contratada deja sin explicación justo al tenant que perdió el acceso.
+	for _, want := range []string{`href="/variables"`, sessionsMovedMarker, editorMovedMarker, intakesMovedMarker} {
 		if !strings.Contains(out, want) {
 			t.Errorf("el gate cerrado no debía llevarse por delante %q", want)
 		}
@@ -433,5 +477,154 @@ func TestRutasDelEditorYaNoExisten(t *testing.T) {
 	// Y el aviso que dice a dónde se fueron: retirar sin decirlo deja al operador buscando.
 	if !strings.Contains(out, editorMovedMarker) {
 		t.Error("la portada debía emitir el bloque que dice dónde se administran ahora flujos y disparadores")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// La retirada de la BANDEJA DE SOLICITUDES (Plan 047 · T7.7)
+// ---------------------------------------------------------------------------
+
+// TestRutasDeLaBandejaYaNoExisten es el gate de la retirada por el lado del router, y es el ASERTO DEL
+// CRITERIO: `router.Routes()` no contiene ninguna de las diez.
+//
+// 🔴 EL CÓDIGO DE ESTADO NO BASTA, y está medido (ver TestRutasDelDashboardYaNoExisten): este router
+// nace con HandleMethodNotAllowed en false y responde 404 a un verbo no registrado exactamente igual
+// que a una ruta inexistente. Un test que solo mirase el status daría por retirada una ruta que sigue
+// viva con otro método. El que mata la mutación —resucitar `GET /intakes`— es el que recorre la tabla.
+//
+// Se compara por el PATRÓN declarado (`/intakes/:id/status`), no por la URL concreta, porque eso es lo
+// que guarda gin.
+func TestRutasDeLaBandejaYaNoExisten(t *testing.T) {
+	api, _ := homeAPI(t, "cart_basic") // con la feature CONTRATADA: la retirada no depende del plan.
+	router := NewRouter(authTestCfg(api.URL))
+
+	casos := []struct {
+		nombre string
+		metodo string
+		ruta   string
+	}{
+		{"listado de la bandeja", http.MethodGet, "/intakes"},
+		{"detalle de una solicitud", http.MethodGet, "/intakes/in-1"},
+		{"descarte por lotes", http.MethodPost, "/intakes/discard"},
+		{"cambio de estado", http.MethodPost, "/intakes/in-1/status"},
+		{"edición de líneas", http.MethodPost, "/intakes/in-1/items"},
+		{"corrección del borrador", http.MethodPost, "/intakes/in-1/correct"},
+		{"aprobación", http.MethodPost, "/intakes/in-1/approve"},
+		{"petición de información", http.MethodPost, "/intakes/in-1/request-info"},
+		{"re-análisis", http.MethodPost, "/intakes/in-1/reanalyze"},
+		{"sugerencia de cotización", http.MethodPost, "/intakes/in-1/quote-suggestion"},
+	}
+	for _, tc := range casos {
+		t.Run(tc.nombre, func(t *testing.T) {
+			var rec *httptest.ResponseRecorder
+			if tc.metodo == http.MethodPost {
+				rec = postFormWithCookie(router, tc.ruta, url.Values{}, validSessionCookie(t))
+			} else {
+				rec = getWithCookie(router, tc.ruta, validSessionCookie(t))
+			}
+			if rec.Code != http.StatusNotFound {
+				t.Fatalf("%s %s debía responder 404 (retirada), got %d", tc.metodo, tc.ruta, rec.Code)
+			}
+		})
+	}
+
+	// EL ASERTO DEL CRITERIO: ninguno de los diez patrones queda registrado, con NINGÚN verbo.
+	retiradas := map[string]bool{
+		"/intakes":                      true,
+		"/intakes/:id":                  true,
+		"/intakes/discard":              true,
+		"/intakes/:id/status":           true,
+		"/intakes/:id/items":            true,
+		"/intakes/:id/correct":          true,
+		"/intakes/:id/approve":          true,
+		"/intakes/:id/request-info":     true,
+		"/intakes/:id/reanalyze":        true,
+		"/intakes/:id/quote-suggestion": true,
+	}
+	// Falla si el bucle se queda sin material: un criterio de ausencia lo satisface una tabla vacía, y
+	// este proyecto ya se comió un verde que medía cero.
+	rutas := router.Routes()
+	if len(rutas) == 0 {
+		t.Fatal("router.Routes() vacío: el test no está midiendo nada")
+	}
+	for _, r := range rutas {
+		if retiradas[r.Path] {
+			t.Errorf("la ruta %s %s sigue registrada: la retirada quedó a medias", r.Method, r.Path)
+		}
+	}
+
+	// Y el otro lado de la misma retirada (REQ-08): ninguna página emite un enlace ni un formulario a
+	// una ruta que esta casa ya no sirve. Se mira el HTML RENDERIZADO del layout —donde vivía el enlace
+	// «Solicitudes» de la barra— y no la plantilla: un `{{ if }}` mal puesto deja el literal en el
+	// fichero y fuera del HTML, y al revés.
+	out := getWithCookie(router, "/", validSessionCookie(t)).Body.String()
+	for _, prohibido := range []string{`href="/intakes"`, `action="/intakes"`, "Abrir la bandeja"} {
+		if strings.Contains(out, prohibido) {
+			t.Errorf("la portada seguía ofreciendo %q, que esta consola ya no sirve", prohibido)
+		}
+	}
+	// Y el aviso que dice a dónde se fue: retirar sin decirlo deja al operador buscando.
+	if !strings.Contains(out, intakesMovedMarker) {
+		t.Error("la portada debía emitir el bloque que dice dónde se administra ahora la bandeja")
+	}
+}
+
+// TestNingunaPaginaEmiteUnEnlaceGateadoSinFeaturesResueltas es un ASERTO RESCATADO (Plan 047 · T7.7).
+//
+// Lo probaba `TestIntakesNavHiddenWhenEntitlementsUnknown` (intakes_test.go), que se fue con la
+// bandeja, y lo que afirmaba no era de la bandeja: la barra de navegación emite sus enlaces gateados
+// SOLO si la página resolvió las features del tenant, y en las páginas que ni las consultan la clave
+// no existe en los datos de plantilla, se lee como falsa y el enlace no llega al HTML. Es fail-closed
+// en la NAVEGACIÓN, y sobrevive a la bandeja porque a base.html le quedan tres enlaces gateados.
+//
+// Es distinto de TestPortadaRespetaLosGatesDeLoQueConserva, que mide el gate con las features
+// RESUELTAS y la capacidad ausente. Aquí las features no se pudieron resolver: el caso en el que un
+// gate mal escrito se abre en vez de cerrarse.
+//
+// 🔴 La segunda página del bucle era `/flows` antes del T6.6 y `/intakes` no era ninguna de las dos:
+// se eligen a propósito rutas PERMANENTES (ADR-0035 §3), y se comprueba que siguen registradas, para
+// que el test no acabe midiendo un 404 que, como es natural, tampoco trae el enlace.
+func TestNingunaPaginaEmiteUnEnlaceGateadoSinFeaturesResueltas(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/entitlements":
+			w.WriteHeader(http.StatusInternalServerError) // no se pudieron resolver
+		case "/api/v1/tenant/variables":
+			_, _ = io.WriteString(w, `{"variables":{}}`)
+		default:
+			_, _ = io.WriteString(w, `[]`)
+		}
+	}))
+	defer api.Close()
+
+	router := NewRouter(authTestCfg(api.URL))
+	cookie := validSessionCookie(t)
+
+	// `/` resuelve las features y le fallan; `/variables` ni las pide. Las dos tienen que quedar sin
+	// enlaces gateados, y por caminos distintos.
+	paginas := []string{"/", "/variables"}
+	for _, p := range paginas {
+		exigeRutaRegistrada(t, router, http.MethodGet, p)
+	}
+	// Los tres enlaces gateados que le quedan a la barra. La lista no puede quedarse vacía: sin ella
+	// el bucle de abajo pasaría sin comprobar nada.
+	gateados := []string{`href="/catalog-import"`, `href="/integrations"`, `href="/tenant-llm"`}
+	if len(gateados) == 0 {
+		t.Fatal("no queda ningún enlace gateado en la barra: este test dejó de tener sujeto")
+	}
+
+	for _, p := range paginas {
+		out := getWithCookie(router, p, cookie).Body.String()
+		// La página SE RENDERIZÓ: sin esto, «no contiene el enlace» lo cumpliría un 500 vacío.
+		if !strings.Contains(out, `class="app-bar__actions"`) {
+			t.Fatalf("%s no pintó la barra de navegación: el aserto de abajo sería vacuo", p)
+		}
+		for _, enlace := range gateados {
+			if strings.Contains(out, enlace) {
+				t.Errorf("%s emitió %s sin haber podido resolver las features: el gate de la "+
+					"navegación tiene que fallar CERRADO", p, enlace)
+			}
+		}
 	}
 }

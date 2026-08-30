@@ -44,22 +44,41 @@
         {{ end }}
     </div>
 
+    {{/* 🔴 DÓNDE SE ADMINISTRA AHORA LA BANDEJA DE SOLICITUDES (Plan 047 · T7.7).
+
+         Aquí estaba «Abrir la bandeja», gateada por `cart_basic`. Las dos pantallas —el listado y el
+         detalle, con sus ocho acciones— se mudaron a la consola del cliente (`/solicitudes`) y se
+         retiraron de aquí en el mismo ciclo (REQ-08), igual que las sesiones y los flujos: dos copias
+         de la misma pantalla divergen.
+
+         El aviso NO va gateado por `cart_basic`, a diferencia de la tarjeta que sustituye. Un aviso
+         de mudanza que solo se emite con la feature contratada deja sin explicación justo al tenant
+         que perdió el acceso, y decir «esto se administra en otra consola» no revela nada que
+         `cart_basic` proteja. Mismo criterio que los otros dos avisos con el enlace: solo se ofrece
+         si `ClientConsoleURL` viene puesta por entorno, y su vacío es el caso normal. */}}
+    <div class="card" id="section-intakes-moved">
+        <h2 class="title">Solicitudes</h2>
+        <div class="snackbar snackbar--info" role="note">
+            <span>Los pedidos que llegan por WhatsApp —su estado, sus líneas y las respuestas que se
+                le mandan al cliente— <strong>se administran ahora en la consola del cliente</strong>.
+                Desde esta consola ya no se listan, ni se editan, ni se aprueban.</span>
+        </div>
+        {{ if .ClientConsoleURL }}
+        <p class="body"><a href="{{ .ClientConsoleURL }}" class="btn btn--outlined" rel="noopener noreferrer">Abrir la consola del cliente</a></p>
+        {{ else }}
+        <p class="supporting">Pídele a quien administre el despliegue la dirección de la consola del
+            cliente: esta consola no la publica.</p>
+        {{ end }}
+    </div>
+
     {{/* GATE SERVER-SIDE POR FEATURE (Plan 040 · T2.5). El bloque entero solo se emite si la feature
          está en las efectivas del tenant: si falta —o si no se pudieron resolver— no llega al HTML,
-         no queda escondido por CSS. Este es el patrón que copian las secciones del Plan 041:
-             {{ if $.Entitlements.Has "intakes_export" }} … {{ end }}
+         no queda escondido por CSS. El ejemplo era `intakes_export` hasta el Plan 047 · T7.7, y era
+         una feature que no existe en el código: se cambia por dos que sí, y que se ven aquí debajo.
              {{ if $.Entitlements.Has "catalog_import" }} … {{ end }}
+             {{ if $.Entitlements.Has "crm_bridge" }} … {{ end }}
          Ojo: el gate de plantilla decide lo que se PINTA; el que decide lo que se PUEDE es el
          middleware RequireFeature de la plataforma, y esa sigue siendo la autoridad. */}}
-    {{ if .Entitlements.Has "cart_basic" }}
-    <div class="card" id="section-intakes">
-        <h2 class="title">Solicitudes</h2>
-        <p class="supporting">Los pedidos que llegan por WhatsApp, con su estado y sus líneas. Desde
-            ahí se aprueban, se señan o se cierran.</p>
-        <p class="body"><a href="/intakes" class="btn btn--outlined">Abrir la bandeja</a></p>
-    </div>
-    {{ end }}
-
     {{ if .Entitlements.Has "catalog_import" }}
     <div class="card" id="section-catalog-import">
         <h2 class="title">Catálogo</h2>

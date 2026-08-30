@@ -46,17 +46,16 @@ var appCSS []byte
 func funcsDePlantilla(yield func(string, any) (template.HTML, error)) template.FuncMap {
 	return template.FuncMap{
 		// hasPrefix resalta el enlace activo de la navegación (app-bar): la sección se decide por el
-		// prefijo del path (p. ej. "/intakes/in-1" activa "Solicitudes"). El ejemplo era "/flows/menu"
-		// hasta el Plan 047 · T6.6: un comentario que ilustra con una ruta retirada envejece a mentira.
+		// prefijo del path (p. ej. "/catalog-import/template" activa "Catálogo"). El ejemplo era
+		// "/flows/menu" hasta el Plan 047 · T6.6 y "/intakes/in-1" hasta el T7.7: un comentario que
+		// ilustra con una ruta retirada envejece a mentira, y ya lo hizo dos veces.
 		"hasPrefix": strings.HasPrefix,
-		// statusLabel traduce la clave del ciclo de vida de una solicitud al nombre de negocio. Es
-		// presentación pura: lo que se puede hacer con ese estado lo dice la plataforma, no esta tabla.
-		"statusLabel": intakeStatusLabel,
-		// cuenta arma «1 revisión» / «2 revisiones» sin que el singular se cuele en plural. Ya existía
-		// para los plazos de integrations_handler.go; lo que faltaba era exponerlo a las plantillas,
-		// y por eso una de ellas decía «hay 1 revisiones más» desde que se escribió.
-		"cuenta": cuenta,
-		"yield":  yield,
+		// `statusLabel` y `cuenta` estuvieron aquí hasta el Plan 047 · T7.7. Las dos las usaba SOLO la
+		// bandeja de solicitudes: `statusLabel` no tiene ya ni función ni consumidor, y `cuenta` sigue
+		// viva en Go (integrations_handler.go la usa para los plazos) pero ninguna plantilla la llama.
+		// Una clave de FuncMap sin consumidor no falla: se queda esperando, y el día que alguien
+		// escriba `{{ cuenta … }}` con la firma cambiada el error sale en tiempo de ejecución.
+		"yield": yield,
 	}
 }
 
@@ -198,8 +197,16 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	protected.GET("/pending", h.ShowPending)
 	// Deadline por petición: acota TODA la cadena withAuthRetry hacia la API pública (H4) para que un
 	// upstream lento no cuelgue el handler más allá del presupuesto (bajo el WriteTimeout del servidor).
-	// Es UNO POR RUTA y no uno para el grupo: ver requestDeadlineByRoute.
-	protected.Use(requestDeadlineByRoute(cfg))
+	//
+	// 🔴 VUELVE A SER UNO PARA EL GRUPO ENTERO (Plan 047 · T7.7). Entre el Plan 047 · T2.4 y el T7.7
+	// aquí vivía `requestDeadlineByRoute`, un despachador con UNA excepción cableada: la ruta de la
+	// sugerencia de cotización se llevaba 58s en vez de 20s porque esperaba a que un modelo redactara.
+	// Esa ruta se mudó a la consola del cliente, y con ella el único caso que justificaba el
+	// despachador. Dejarlo con una rama que ya nunca se toma no era «código muerto» sin más: era código
+	// muerto EN EL CAMINO CRÍTICO de todas las peticiones del BFF, comparando en cada una un FullPath()
+	// contra una ruta que ya no existe. Que ninguna constante de este paquete nombre una ruta fantasma
+	// lo vigila ahora `TestNingunaConstanteDeRutaNombraUnaRutaFantasma` (rutas_declaradas_test.go).
+	protected.Use(webgin.RequestDeadline(cfg.UpstreamTimeout))
 	// PORTADA: el índice de lo que ESTA consola conserva (plan y capacidades del tenant + accesos a las
 	// pantallas vivas).
 	// PANTALLA PERMANENTE: es el destino de las redirecciones del plano de autenticación, así que es
@@ -240,58 +247,23 @@ func newRouterWithLimiter(cfg *config.Config) (*gin.Engine, *sharedweb.KeyedRate
 	protected.GET("/variables", h.ShowTenantVariables)
 	protected.POST("/variables", h.DoSaveTenantVariables)
 
-	// Bandeja de solicitudes (Plan 041 · T1.5 y T4.10), gateada por la feature `cart_basic` en la
-	// plantilla y por RequireFeature en la plataforma. PANTALLA PROVISIONAL: migra a
-	// `wapp-client-console` (Plan 047, ADR-0047). El destino cambió —ya no es la app KMP— porque el
-	// Plan 045 está al 0 % y esa app está declarada diferida: un marcador que apuntaba ahí no era
-	// ejecutable.
+	// 🔴 AQUÍ ESTUVO LA BANDEJA DE SOLICITUDES, y su retirada (Plan 047 · T7.7) se llevó DIEZ rutas:
+	// `GET /intakes`, `GET /intakes/:id`, `POST /intakes/discard`, `POST /intakes/:id/status`,
+	// `POST /intakes/:id/items`, `POST /intakes/:id/correct`, `POST /intakes/:id/approve`,
+	// `POST /intakes/:id/request-info`, `POST /intakes/:id/reanalyze` y
+	// `POST /intakes/:id/quote-suggestion`. La bandeja se administra ahora en la consola del cliente
+	// (`wapp-client-console`, `/solicitudes`) y se retiró de aquí EN EL MISMO CICLO (REQ-08): dos
+	// copias de la misma pantalla divergen, y la que sigue viva contesta antes que la documentación.
 	//
-	// El POST de líneas es POST y no PUT aunque la ruta de la API lo sea: un formulario HTML solo
-	// sabe emitir GET y POST, y fingir el verbo con un campo oculto añadiría una convención que
-	// esta consola no tiene en ninguna otra pantalla. La traducción a PUT la hace el apiclient,
-	// que es quien habla el contrato.
+	// Con ellas se fueron DOS cosas que no eran rutas y que sostenían solo a ésta: el despachador de
+	// plazos por ruta (arriba, `protected.Use`) y el cliente HTTP de inferencia del apiclient
+	// (`InferenceHTTPClient`, 55s), que existía para la ÚNICA llamada del BFF que esperaba a que un
+	// modelo redactara.
 	//
-	// El descarte por lotes (T4.8) cuelga de una ruta LITERAL bajo /intakes, como en la API pública:
-	// la operación es sobre VARIAS solicitudes, así que ninguna de ellas es el recurso de la URL.
-	// Atiende los dos pasos —revisar y descartar— y cuál se pide lo dice el botón, igual que el
-	// import de catálogo: el que escribe solo existe después de haber enseñado qué se va a matar.
-	protected.GET("/intakes", h.ShowIntakes)
-	protected.GET("/intakes/:id", h.ShowIntakeDetail)
-	protected.POST("/intakes/discard", h.DoDiscardIntakes)
-	protected.POST("/intakes/:id/status", h.DoSetIntakeStatus)
-	protected.POST("/intakes/:id/items", h.DoEditIntakeItems)
-
-	// LAS TRES ACCIONES DEL DUEÑO (Plan 044 · T4.2, T4.3, T4.4). Van por rutas propias y no por un
-	// campo más del cambio de estado porque no son lo mismo y la pantalla tiene que poder decirlo:
-	// éstas LE HABLAN AL CLIENTE por WhatsApp y dejan revisión; el desplegable de `/status` solo
-	// mueve la etiqueta del ciclo de vida.
-	//
-	// `/correct` es ruta DEL BFF, no de la API: allá corregir es el mismo `PUT …/items` con el campo
-	// `as_correction` (D-044.48 §1), y quien lo traduce es el apiclient. Aquí existe porque son dos
-	// formularios distintos —el del 041 edita `items`, éste edita el borrador— y cada formulario
-	// necesita su acción para que un rechazo repinte en el sitio donde se tecleó.
-	protected.POST("/intakes/:id/correct", h.DoCorrectIntakeItems)
-	protected.POST("/intakes/:id/approve", h.DoApproveIntake)
-	protected.POST("/intakes/:id/request-info", h.DoRequestIntakeInfo)
-
-	// REGENERAR LA INTERPRETACIÓN (Plan 044 · T4.7). Va por ruta propia y NO como un botón más de las
-	// tres de arriba porque no es de la misma familia: las otras le hablan al cliente por WhatsApp y
-	// esta no le habla a nadie —vuelve a interpretar el texto que el cliente ya mandó—. Y sobre todo,
-	// es la única que no devuelve nada que pintar: abre un trabajo y la revisión llega después.
-	protected.POST("/intakes/:id/reanalyze", h.DoReanalyzeIntake)
-
-	// SUGERIR LA RESPUESTA CON LA VOZ DE LA DUEÑA (Plan 047 · T2.4, sobre el endpoint del Plan 044 ·
-	// T5.1). Va por ruta propia por lo mismo que `/reanalyze`: no es de la familia de las tres de
-	// arriba —no le habla a nadie, no escribe en la solicitud y no la mueve de estado—, solo redacta
-	// una propuesta y la deja en el campo de aprobar para que la dueña la lea y decida.
-	//
-	// Es POST aunque no escriba nada, y no es por el formulario: consume una inferencia. No es
-	// cacheable, no es gratis, y un GET lo dispararía un prefetch del navegador.
-	//
-	// 🔴 Y ES LA ÚNICA RUTA CON PLAZOS PROPIOS, los tres (cliente HTTP, deadline de petición y write
-	// deadline). El write deadline se instala aquí como middleware de la ruta y no en el grupo:
-	// relevar al WriteTimeout del servidor es exactamente lo que el resto del BFF no debe hacer.
-	protected.POST(quoteSuggestionRoute, quoteSuggestionWriteDeadline(cfg), h.DoSuggestIntakeQuote)
+	// La retirada la vigila `TestRutasDeLaBandejaYaNoExisten` (home_test.go) contra `router.Routes()`,
+	// no contra el status: este router nace con HandleMethodNotAllowed en false y responde 404 a un
+	// verbo no registrado igual que a una ruta inexistente, así que un test de status daría por
+	// retirada una ruta que sigue viva con otro método.
 
 	// Import de catálogo (Plan 041 · T3.5), gateado por la feature `catalog_import` en la plantilla y
 	// por RequireFeature en la plataforma. El POST atiende los dos pasos —comprobar y aplicar— y cuál

@@ -20,7 +20,6 @@ type Handler struct {
 
 	*AuthHandler
 	*HomeHandler
-	*IntakesHandler
 	*TenantVariablesHandler
 	*CatalogImportHandler
 	*IntegrationsHandler
@@ -42,17 +41,16 @@ func NewHandler(cfg *config.Config) *Handler {
 //
 // Que la transición se gobierne por env es lo que permite encender, apagar y comparar los dos flujos
 // en el mismo binario, sin desplegar nada distinto.
+//
+// Ya no se le pasa ninguna opción. Hasta el Plan 047 · T7.7 llevaba `WithInferenceTimeout`, el plazo
+// del cliente HTTP que esperaba a que un modelo redactara la sugerencia de cotización; esa llamada se
+// fue con la bandeja y el cliente de inferencia entero con ella.
 func newAPIClient(cfg *config.Config) APIPort {
-	// El plazo del cliente de inferencia va por los DOS caminos, delegado o no: quién autentica no
-	// cambia cuánto tarda el modelo en redactar, y una rama que lo pusiera solo en uno dejaría la
-	// sugerencia rota en el otro sin que ningún test de autenticación lo notara.
-	opts := []apiclient.Option{apiclient.WithInferenceTimeout(cfg.QuoteSuggestionTimeout)}
-
 	identityURL := strings.TrimSpace(cfg.IdentityBaseURL)
 	if identityURL == "" {
-		return apiclient.New(cfg.PublicAPIBaseURL, opts...)
+		return apiclient.New(cfg.PublicAPIBaseURL)
 	}
-	client, err := apiclient.NewDelegated(cfg.PublicAPIBaseURL, identityURL, opts...)
+	client, err := apiclient.NewDelegated(cfg.PublicAPIBaseURL, identityURL)
 	if err != nil {
 		// Fail-closed en el arranque, como la allowlist de proxies y las plantillas: unas URLs con
 		// las que no se puede hablar con el plano de identidad convertirían cada login en un fallo
@@ -70,7 +68,6 @@ func NewHandlerWithAPI(cfg *config.Config, api APIPort) *Handler {
 	refresh := sharedweb.NewRefreshGroup[*apiclient.AuthResult]()
 	ah := NewAuthHandler(cfg, api, refresh)
 	hh := NewHomeHandler(cfg, api, ah)
-	ih := NewIntakesHandler(cfg, api, ah)
 	vh := NewTenantVariablesHandler(cfg, api, ah)
 	ch := NewCatalogImportHandler(cfg, api, ah)
 	gh := NewIntegrationsHandler(cfg, api, ah)
@@ -81,7 +78,6 @@ func NewHandlerWithAPI(cfg *config.Config, api APIPort) *Handler {
 		refresh:                refresh,
 		AuthHandler:            ah,
 		HomeHandler:            hh,
-		IntakesHandler:         ih,
 		TenantVariablesHandler: vh,
 		CatalogImportHandler:   ch,
 		IntegrationsHandler:    gh,
