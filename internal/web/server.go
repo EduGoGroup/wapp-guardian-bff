@@ -56,6 +56,11 @@ func funcsDePlantilla(yield func(string, any) (template.HTML, error)) template.F
 		// viva en Go (integrations_handler.go la usa para los plazos) pero ninguna plantilla la llama.
 		// Una clave de FuncMap sin consumidor no falla: se queda esperando, y el día que alguien
 		// escriba `{{ cuenta … }}` con la firma cambiada el error sale en tiempo de ejecución.
+		//
+		// 🔴 ESO YA NO DEPENDE DE QUE ALGUIEN SE ACUERDE (Plan 047 · T9.4). Que toda clave de aquí la
+		// invoque alguna plantilla viva lo comprueba `TestNingunHelperDelFuncMapSeQuedaSinConsumidor`
+		// (funcmap_test.go), derivando la lista de ESTE mapa: el helper que se añada mañana entra solo
+		// y tiene que traerse su consumidor. Las dos que quedan las usa base.html.
 		"yield": yield,
 	}
 }

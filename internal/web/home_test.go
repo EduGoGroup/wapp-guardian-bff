@@ -130,6 +130,12 @@ func TestPortadaNoLlamaALasRutasDeSesiones(t *testing.T) {
 
 // TestPortadaAvisaDondeSeAdministranLasSesiones es la mitad POSITIVA: retirar una pantalla sin decir a
 // dónde se fue deja al operador buscándola. El aviso es el sustituto de la tabla, no un adorno.
+//
+// 📌 El aserto del texto cambió en el Plan 047 · T9.3 y el motivo es el que la casilla vino a
+// arreglar. Decía «se administran AHORA en la consola del cliente»: la voz de una mudanza recién
+// hecha, escrita cuando la ola acababa de llevarse la tabla. Cerrado el plan ya no hay un «ahora»,
+// hay un reparto —esta consola es la entrada y la configuración técnica; el negocio vive allí—, y el
+// texto lo dice en presente. Lo que se afirma es lo mismo: el aviso NOMBRA la consola del cliente.
 func TestPortadaAvisaDondeSeAdministranLasSesiones(t *testing.T) {
 	api, _ := homeAPI(t, "cart_basic")
 
@@ -142,9 +148,118 @@ func TestPortadaAvisaDondeSeAdministranLasSesiones(t *testing.T) {
 	if !strings.Contains(out, sessionsMovedMarker) {
 		t.Error("la portada debía emitir el bloque que dice dónde se administran ahora las sesiones")
 	}
-	if !strings.Contains(out, "se\n                administran ahora en la consola del cliente") &&
-		!strings.Contains(out, "administran ahora en la consola del cliente") {
-		t.Error("el aviso debía nombrar la consola del cliente como el sitio donde se administran")
+	if !strings.Contains(out, "se administra en la consola\n                del cliente") &&
+		!strings.Contains(out, "se administra en la consola del cliente") {
+		t.Error("el aviso debía nombrar la consola del cliente como el sitio donde se administra el negocio")
+	}
+}
+
+// tarjetaDeLaMudanza recorta del HTML el bloque de la tarjeta que anuncia el reparto, desde su id
+// hasta el arranque de la siguiente tarjeta.
+//
+// Existe porque los asertos de abajo son sobre `href`, y `href` lo hay en toda la página: la marca de
+// la barra y el enlace «Inicio» apuntan los dos a "/". Un aserto de «no hay ningún href a /» sobre la
+// página entera sería incumplible, y uno sobre «no hay href vacío» en la página entera pasaría por
+// casualidad el día que el vacío lo emitiera otra tarjeta. El sujeto es ESTA tarjeta.
+func tarjetaDeLaMudanza(t *testing.T, out string) string {
+	t.Helper()
+	const ancla = `id="section-negocio-mudado"`
+	i := strings.Index(out, ancla)
+	if i < 0 {
+		t.Fatalf("la portada no emitió la tarjeta del reparto (%s): no hay nada que medir", ancla)
+	}
+	resto := out[i:]
+	if j := strings.Index(resto, `<div class="card"`); j > 0 {
+		return resto[:j]
+	}
+	return resto
+}
+
+// TestLaPortadaOfreceUnSoloEnlaceALaConsolaDelCliente es el criterio de T9.3 por el lado de la forma.
+//
+// Hasta el cierre del plan la portada tenía CUATRO tarjetas de mudanza —una por ola— y cada una
+// repetía el mismo párrafo y el mismo botón: cuatro veces «Abrir la consola del cliente» en una misma
+// página, que es lo que pasa cuando cada retirada añade su aviso sin mirar los anteriores. El reparto
+// se anuncia una vez.
+//
+// 🔴 El aserto es de CUENTA EXACTA, no de presencia: «aparece el enlace» lo cumplen también las cuatro
+// copias, que es justo el estado del que se venía.
+func TestLaPortadaOfreceUnSoloEnlaceALaConsolaDelCliente(t *testing.T) {
+	api, _ := homeAPI(t, "cart_basic", "crm_bridge", "api_llm", "llm_intent")
+
+	cfg := authTestCfg(api.URL)
+	cfg.ClientConsoleURL = "https://consola.ejemplo/"
+	out := getWithCookie(NewRouter(cfg), "/", validSessionCookie(t)).Body.String()
+
+	if n := strings.Count(out, "Abrir la consola del cliente"); n != 1 {
+		t.Errorf("la portada ofrecía el enlace a la consola del cliente %d veces; el reparto se "+
+			"anuncia UNA vez, con UN enlace", n)
+	}
+	if n := strings.Count(out, `href="https://consola.ejemplo/"`); n != 1 {
+		t.Errorf("la URL de la consola del cliente aparecía %d veces en el HTML, se esperaba 1", n)
+	}
+
+	// Y las CUATRO áreas mudadas siguen anunciadas, cada una una vez: fundir los avisos no puede
+	// perder ninguna por el camino, que es lo que un aserto de «existe la tarjeta» no vería.
+	for _, ancla := range []string{sessionsMovedMarker, intakesMovedMarker, editorMovedMarker, catalogMovedMarker} {
+		if n := strings.Count(out, ancla); n != 1 {
+			t.Errorf("el ancla %s aparecía %d veces, se esperaba 1", ancla, n)
+		}
+	}
+}
+
+// TestLasTresRedireccionesAterrizanEnLaPortada es el motivo por el que `GET /` no se fue con el
+// dashboard (Plan 047 · T2.1) y sigue aquí al cerrar el plan.
+//
+// El plano de autenticación manda a la raíz desde TRES sitios —el login correcto (DoLogin), la visita
+// al login con sesión ya válida (ShowLogin) y la salida de /pending al confirmarse el tenant
+// (AuthMiddleware)— y las tres estaban probadas por separado... menos la tercera, que no lo estaba por
+// ninguna. Se prueban juntas: lo que hay que sostener no es cada redirección, es que la raíz siga
+// siendo un destino vivo para todas.
+//
+// La primera va por su test entero (TestLoginSigueAterrizandoEnLaPortada) porque además recorre la
+// cadena hasta el 200; aquí se comprueba que emite el 303 a la raíz, que es lo que esta regla afirma.
+func TestLasTresRedireccionesAterrizanEnLaPortada(t *testing.T) {
+	exp := time.Now().Add(time.Hour)
+	access := makeToken(t, exp)
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/auth/login":
+			_, _ = io.WriteString(w, loginBody(access, "r-ok", exp))
+		case "/api/v1/entitlements":
+			_, _ = io.WriteString(w, entitlementsBody("commerce", "cart_basic"))
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer api.Close()
+
+	router := NewRouter(authTestCfg(api.URL))
+	exigeRutaRegistrada(t, router, http.MethodGet, "/")
+
+	// 1) El login correcto.
+	rec := postFormWithCookie(router, "/login",
+		url.Values{"email": {"duena@ejemplo.com"}, "password": {"la-que-sea"}}, nil)
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/" {
+		t.Errorf("DoLogin debía aterrizar en la portada, got %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+
+	// 2) La visita al login con sesión ya válida: no se repinta el formulario, se salta a la portada.
+	rec = getWithCookie(router, "/login", validSessionCookie(t))
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/" {
+		t.Errorf("ShowLogin con sesión válida debía saltar a la portada, got %d %q",
+			rec.Code, rec.Header().Get("Location"))
+	}
+
+	// 3) La salida de /pending al confirmarse el tenant. Es la que no tenía test propio: un usuario
+	// con empresa asignada que vuelve a la sala de espera sale de ella, y sale HACIA la portada.
+	// El token de validSessionCookie ya lleva tenant, que es exactamente el caso.
+	rec = getWithCookie(router, "/pending", validSessionCookie(t))
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/" {
+		t.Errorf("el AuthMiddleware debía sacar de /pending hacia la portada a quien ya tiene empresa, "+
+			"got %d %q", rec.Code, rec.Header().Get("Location"))
 	}
 }
 
@@ -168,6 +283,14 @@ func TestPortadaNoInventaElEnlaceALaConsolaDelCliente(t *testing.T) {
 	}
 	if strings.Contains(out, "Abrir la consola del cliente") {
 		t.Error("sin URL configurada no debe ofrecerse un enlace que no lleva a ninguna parte")
+	}
+
+	// 🔴 Y el aserto que mata la mutación de T9.3: sin URL, la tarjeta del reparto no emite NINGÚN
+	// href. Sin esto, quitarle el `{{ if }}` a la plantilla dejaría un `<a href="">` —un enlace que
+	// recarga la propia página— y los dos asertos de arriba seguirían pasando: no dice «localhost» y
+	// el texto del botón podría cambiarse sin que nada más lo notara.
+	if tarjeta := tarjetaDeLaMudanza(t, out); strings.Contains(tarjeta, "href=") {
+		t.Errorf("sin URL configurada la tarjeta del reparto no puede emitir ningún enlace, y emitió: %s", tarjeta)
 	}
 
 	// Con la URL puesta por entorno, el enlace sí sale: el vacío es un default, no una prohibición.

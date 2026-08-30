@@ -17,52 +17,47 @@
         {{ end }}
     </div>
 
-    {{/* 🔴 DÓNDE SE ADMINISTRAN AHORA LAS SESIONES (Plan 047 · T2.1).
+    {{/* 🔴 DÓNDE SE ADMINISTRA AHORA EL NEGOCIO (Plan 047 · T9.3: el cierre de la mudanza).
 
-         Esta consola tenía aquí la tabla de teléfonos vinculados, el desplegable de perfil
-         activa/pasiva y el formulario de envío. Los tres se mudaron a la consola del cliente y se
-         retiraron de aquí en el mismo ciclo: dos copias de la misma pantalla divergen, y la que sigue
-         viva contesta antes que la documentación.
+         Esta tarjeta fue CUATRO tarjetas, una por ola: las sesiones (T2.1), los flujos y disparadores
+         (T6.6), la bandeja de solicitudes (T7.7) y el import de catálogo (T8.5). Cada retirada dejó
+         aquí su aviso con su párrafo y su botón, y las cuatro juntas repetían la misma frase cuatro
+         veces y ofrecían cuatro veces el mismo enlace. Esa era la voz de una mudanza EN CURSO —cada
+         ola acababa de llevarse lo suyo y avisaba de ello—, y ya no hay mudanza: hay un reparto
+         estable. Se dice UNA vez, con UN enlace.
 
-         El aviso NO lleva enlace salvo que `ClientConsoleURL` venga puesta por entorno, y su vacío es
-         el caso normal: las dos aplicaciones son loopback en puertos distintos y no hay URL pública
-         que ofrecer. Un `localhost:8107` escrito aquí sería un enlace roto para todo el que no esté
-         sentado en la máquina. */}}
-    <div class="card" id="section-sessions-moved">
-        <h2 class="title">Sesiones y teléfonos</h2>
+         Los cuatro anclas `id="section-…-moved"` SE CONSERVAN, y no por compatibilidad: cada retirada
+         dejó un test que comprueba que su área sigue anunciada («retirar sin decir a dónde deja al
+         operador buscando»). Fundir los avisos en una tarjeta sin conservarlos habría borrado esa
+         garantía de las cuatro a la vez, en silencio y sin un solo rojo. Quien mude la quinta cosa
+         añade su línea aquí, con su ancla; no otra tarjeta.
+
+         El enlace solo se ofrece si `ClientConsoleURL` viene puesta por entorno, y su vacío es el caso
+         NORMAL, no un fallo de configuración: hoy las dos aplicaciones son loopback en puertos
+         distintos y no hay URL pública que publicar. Un `localhost:8107` escrito aquí serviría un
+         enlace muerto a todo el que no esté sentado en la máquina del despliegue, y quien lo pulsa
+         concluye que la pantalla nueva no existe. Que el enlace apunte de verdad es trabajo del
+         DESPLIEGUE, no de esta plantilla.
+
+         Ninguna línea va gateada por su feature, a diferencia de las tarjetas que sustituye: un aviso
+         que solo se emite con la capacidad contratada deja sin explicación justo al tenant que perdió
+         el acceso, y decir «esto se administra en otra consola» no revela nada que `cart_basic` o
+         `crm_bridge` protejan. */}}
+    <div class="card" id="section-negocio-mudado">
+        <h2 class="title">La operación del negocio</h2>
         <div class="snackbar snackbar--info" role="note">
-            <span>Las sesiones de WhatsApp —los teléfonos vinculados, su perfil
-                <strong>activa</strong>/<strong>pasiva</strong> y el envío de mensajes— <strong>se
-                administran ahora en la consola del cliente</strong>. Desde esta consola ya no se
-                listan ni se cambian.</span>
+            <span>Atender a tus clientes —lo que pasa cada día— <strong>se administra en la consola
+                del cliente</strong>. Esta consola guarda la entrada a wApp y la configuración técnica
+                de tu empresa.</span>
         </div>
-        {{ if .ClientConsoleURL }}
-        <p class="body"><a href="{{ .ClientConsoleURL }}" class="btn btn--outlined" rel="noopener noreferrer">Abrir la consola del cliente</a></p>
-        {{ else }}
-        <p class="supporting">Pídele a quien administre el despliegue la dirección de la consola del
-            cliente: esta consola no la publica.</p>
-        {{ end }}
-    </div>
-
-    {{/* 🔴 DÓNDE SE ADMINISTRA AHORA LA BANDEJA DE SOLICITUDES (Plan 047 · T7.7).
-
-         Aquí estaba «Abrir la bandeja», gateada por `cart_basic`. Las dos pantallas —el listado y el
-         detalle, con sus ocho acciones— se mudaron a la consola del cliente (`/solicitudes`) y se
-         retiraron de aquí en el mismo ciclo (REQ-08), igual que las sesiones y los flujos: dos copias
-         de la misma pantalla divergen.
-
-         El aviso NO va gateado por `cart_basic`, a diferencia de la tarjeta que sustituye. Un aviso
-         de mudanza que solo se emite con la feature contratada deja sin explicación justo al tenant
-         que perdió el acceso, y decir «esto se administra en otra consola» no revela nada que
-         `cart_basic` proteja. Mismo criterio que los otros dos avisos con el enlace: solo se ofrece
-         si `ClientConsoleURL` viene puesta por entorno, y su vacío es el caso normal. */}}
-    <div class="card" id="section-intakes-moved">
-        <h2 class="title">Solicitudes</h2>
-        <div class="snackbar snackbar--info" role="note">
-            <span>Los pedidos que llegan por WhatsApp —su estado, sus líneas y las respuestas que se
-                le mandan al cliente— <strong>se administran ahora en la consola del cliente</strong>.
-                Desde esta consola ya no se listan, ni se editan, ni se aprueban.</span>
-        </div>
+        <p class="supporting" id="section-sessions-moved"><strong>Sesiones y teléfonos</strong>: los
+            números vinculados, su perfil activa o pasiva y el envío de mensajes.</p>
+        <p class="supporting" id="section-intakes-moved"><strong>Solicitudes</strong>: los pedidos que
+            llegan por WhatsApp, su estado, sus líneas y las respuestas que se le mandan al cliente.</p>
+        <p class="supporting" id="section-editor-moved"><strong>Flujos y reglas de disparo</strong>:
+            los menús y encuestas publicados y las palabras que los disparan.</p>
+        <p class="supporting" id="section-catalog-moved"><strong>Catálogo</strong>: cargarlo desde un
+            documento o una planilla, comprobando antes qué cambia.</p>
         {{ if .ClientConsoleURL }}
         <p class="body"><a href="{{ .ClientConsoleURL }}" class="btn btn--outlined" rel="noopener noreferrer">Abrir la consola del cliente</a></p>
         {{ else }}
@@ -80,59 +75,6 @@
              {{ if $.Entitlements.Has "api_llm" }} … {{ end }}
          Ojo: el gate de plantilla decide lo que se PINTA; el que decide lo que se PUEDE es el
          middleware RequireFeature de la plataforma, y esa sigue siendo la autoridad. */}}
-
-    {{/* 🔴 DÓNDE SE ADMINISTRA AHORA EL IMPORT DE CATÁLOGO (Plan 047 · T8.5).
-
-         Aquí estaba el acceso al import, gateado por `catalog_import`. Las tres rutas —el
-         formulario, los dos pasos del envío y la descarga de la plantilla— se mudaron a la consola
-         del cliente y se retiraron de aquí en el mismo ciclo (REQ-08), igual que las sesiones, los
-         flujos y la bandeja: dos copias de la misma pantalla divergen.
-
-         El aviso NO va gateado por `catalog_import`, a diferencia de la tarjeta que sustituye, y por
-         el mismo motivo que los otros tres: un aviso de mudanza que solo se emite con la feature
-         contratada deja sin explicación justo al tenant que perdió el acceso, y decir «esto se
-         administra en otra consola» no revela nada que `catalog_import` proteja. Mismo criterio con
-         el enlace: solo se ofrece si `ClientConsoleURL` viene puesta por entorno, y su vacío es el
-         caso normal —las dos aplicaciones son loopback en puertos distintos y no hay URL pública que
-         ofrecer—; sin ella se dice a quién preguntar en vez de pintar un enlace roto. */}}
-    <div class="card" id="section-catalog-moved">
-        <h2 class="title">Catálogo</h2>
-        <div class="snackbar snackbar--info" role="note">
-            <span>El catálogo del tenant —cargarlo desde un documento o una planilla y comprobar
-                antes qué cambia— <strong>se administra ahora en la consola del cliente</strong>.
-                Desde esta consola ya no se importa ni se descarga su plantilla.</span>
-        </div>
-        {{ if .ClientConsoleURL }}
-        <p class="body"><a href="{{ .ClientConsoleURL }}" class="btn btn--outlined" rel="noopener noreferrer">Abrir la consola del cliente</a></p>
-        {{ else }}
-        <p class="supporting">Pídele a quien administre el despliegue la dirección de la consola del
-            cliente: esta consola no la publica.</p>
-        {{ end }}
-    </div>
-
-    {{/* 🔴 DÓNDE SE ADMINISTRAN AHORA LOS FLUJOS Y LOS DISPARADORES (Plan 047 · T6.5/T6.6).
-
-         Esta tarjeta ofrecía «Abrir los flujos» y «Abrir los triggers». Las dos pantallas se mudaron
-         a la consola del cliente (`/flujos` y `/disparadores`) y se retiraron de aquí en el mismo
-         ciclo (REQ-08), igual que las sesiones: dos copias de la misma pantalla divergen.
-
-         Mismo criterio que el aviso de arriba con el enlace: solo se ofrece si `ClientConsoleURL`
-         viene puesta por entorno, y su vacío es el caso normal —las dos aplicaciones son loopback en
-         puertos distintos y no hay URL pública que ofrecer—. */}}
-    <div class="card" id="section-editor-moved">
-        <h2 class="title">Flujos y reglas de disparo</h2>
-        <div class="snackbar snackbar--info" role="note">
-            <span>Los menús y encuestas publicados y las <strong>palabras que los disparan</strong>
-                <strong>se administran ahora en la consola del cliente</strong>. Desde esta consola ya
-                no se listan, ni se publican, ni se borran.</span>
-        </div>
-        {{ if .ClientConsoleURL }}
-        <p class="body"><a href="{{ .ClientConsoleURL }}" class="btn btn--outlined" rel="noopener noreferrer">Abrir la consola del cliente</a></p>
-        {{ else }}
-        <p class="supporting">Pídele a quien administre el despliegue la dirección de la consola del
-            cliente: esta consola no la publica.</p>
-        {{ end }}
-    </div>
 
     <div class="card" id="section-variables">
         <h2 class="title">Variables de empresa</h2>

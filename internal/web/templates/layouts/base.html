@@ -42,21 +42,19 @@
                  enlace se llamaba «Sesiones» y se renombró con la retirada — un enlace que promete una
                  pantalla que ya no está es peor que no tenerlo. */}}
             <a href="/" class="btn btn--text{{ if eq .CurrentPath "/" }} btn--active{{ end }}">Inicio</a>
-            {{/* «Solicitudes» estuvo aquí hasta el Plan 047 · T7.7: la bandeja se mudó a la consola del
-                 cliente (`/solicitudes`) y el enlace se retiró en el mismo ciclo (REQ-08), igual que
-                 «Flujos» y «Triggers». Mismo motivo que abajo: un enlace que promete una pantalla que
-                 su propia casa ya no sirve manda al usuario a un 404 de esta consola. Dónde está ahora
-                 lo dice la portada, que es donde vive el aviso de mudanza. */}}
-            {{/* «Catálogo» estuvo aquí hasta el Plan 047 · T8.5: el import se mudó a la consola del
-                 cliente y el enlace se retiró en el mismo ciclo (REQ-08), igual que los anteriores.
-                 Se quitó el bloque ENTERO y no solo su ruta: un gate que consulta una clave que ya
-                 no pone ningún handler no rompe nada —se lee como falso— y por eso mismo nadie lo
-                 vuelve a mirar. Dónde está ahora lo dice la portada. */}}
-            {{/* «Flujos» y «Triggers» estuvieron aquí hasta el Plan 047 · T6.5/T6.6: se mudaron a la
-                 consola del cliente (`/flujos` y `/disparadores`) y el enlace se retiró en el mismo
-                 ciclo. Un enlace que promete una pantalla que su propia casa ya no sirve es peor que
-                 no tenerlo: manda al usuario a un 404 de esta consola. Dónde están ahora lo dice la
-                 portada, que es donde vive el aviso de mudanza. */}}
+            {{/* 🔴 AQUÍ ESTUVIERON «Solicitudes», «Catálogo», «Flujos» y «Triggers», y se fueron con sus
+                 pantallas (Plan 047 · T6.5/T6.6, T7.7 y T8.5): las cuatro se administran en la consola
+                 del cliente y el enlace se retiró EN EL MISMO CICLO (REQ-08). Un enlace que promete una
+                 pantalla que su propia casa ya no sirve manda al usuario a un 404 de esta consola.
+
+                 De «Catálogo» se quitó el bloque ENTERO y no solo su ruta, y ése es el detalle que se
+                 repite: un `{{ if }}` que consulta una clave que ya no pone ningún handler NO ROMPE
+                 NADA —se lee como falso— y por eso mismo nadie vuelve a mirarlo nunca.
+
+                 Dónde están ahora lo dice la portada, que es donde vive el aviso del reparto. Que
+                 ninguna plantilla enlace a una ruta que el router no registra lo comprueba
+                 `TestNingunaPlantillaEnlazaARutaQueElBFFNoSirve` (inventario_test.go): esto ya no
+                 depende de que en la próxima mudanza alguien se acuerde de bajar aquí. */}}
             {{/* Variables de empresa: capa técnica, sin gate de feature, así que el enlace sale para
                  cualquier sesión autenticada (a diferencia del de Solicitudes). */}}
             <a href="/variables" class="btn btn--text{{ if hasPrefix .CurrentPath "/variables" }} btn--active{{ end }}">Variables</a>
