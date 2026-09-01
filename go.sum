@@ -14,6 +14,8 @@ github.com/EduGoGroup/wapp-shared/ui v0.4.0 h1:Fx3jGWjShGT1gPnQaoDAIzVkzpQFRyfTO
 github.com/EduGoGroup/wapp-shared/ui v0.4.0/go.mod h1:t8Ms/wm+0DHMsxYXsBwwtWeBhzf92YQo/DKs4kRlVX0=
 github.com/EduGoGroup/wapp-shared/ui v0.4.1 h1:MC7RNICsw4WftzKkRgN1qAUI1e+15VceVYHZuNwm13o=
 github.com/EduGoGroup/wapp-shared/ui v0.4.1/go.mod h1:t8Ms/wm+0DHMsxYXsBwwtWeBhzf92YQo/DKs4kRlVX0=
+github.com/EduGoGroup/wapp-shared/ui v0.5.0 h1:v1AcZsCP1ot2Mvx+4OTD/R6X6rGPxLklCWfWtPvysp8=
+github.com/EduGoGroup/wapp-shared/ui v0.5.0/go.mod h1:t8Ms/wm+0DHMsxYXsBwwtWeBhzf92YQo/DKs4kRlVX0=
 github.com/EduGoGroup/wapp-shared/web v0.2.0 h1:BeYxIRvOGSp/7pJpfu8GowwDeQR8s8YaPo2G7KZZFxE=
 github.com/EduGoGroup/wapp-shared/web v0.2.0/go.mod h1:mg21ZnsOZ2wFZwS2i7dGYXupQzzd0SEM+KigWUg3Niw=
 github.com/bytedance/sonic v1.11.6 h1:oUp34TzMlL+OY1OUWxHqsdkgC/Zfc85zGqw9siXjrc0=
