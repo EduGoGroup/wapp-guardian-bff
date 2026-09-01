@@ -32,3 +32,16 @@ func accessExp(claims *sharedjwt.Claims) *time.Time {
 	}
 	return &claims.ExpiresAt.Time
 }
+
+// guardianWorkday es el Max-Age de la cookie de sesión: un techo fijo, no el `exp` real del access
+// token. `startSession` la reemite completa en cada refresco, así que mientras el usuario siga
+// volviendo dentro de esta ventana la sesión no expira nunca de verdad — el mismo patrón que
+// `consoleWorkday` en `wapp-client-console` y `wapp-platform-console`.
+//
+// Antes de esto, el Max-Age era `sharedweb.SessionMaxAge(res.ExpiresAt)`: el vencimiento corto del
+// access token. Si el usuario tardaba más que eso en volver, el NAVEGADOR borraba la cookie —y el
+// refresh token que viajaba dentro de ella— antes de que `AuthMiddleware` tuviera ocasión de
+// refrescar nada. Por eso el BFF perdía la sesión mientras las dos consolas no.
+const guardianWorkday = 24 * time.Hour
+
+const guardianSessionCookieMaxAge = int(guardianWorkday / time.Second)

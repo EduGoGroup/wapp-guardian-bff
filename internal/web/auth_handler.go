@@ -262,7 +262,7 @@ func (h *AuthHandler) startSession(c *gin.Context, res *apiclient.AuthResult) er
 	if err != nil {
 		return err
 	}
-	setSessionCookie(h.cfg, c, value, sharedweb.SessionMaxAge(res.ExpiresAt))
+	setSessionCookie(h.cfg, c, value, guardianSessionCookieMaxAge)
 	return nil
 }
 

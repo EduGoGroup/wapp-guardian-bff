@@ -295,9 +295,11 @@ func TestDelegacionLoginCanjeaYCustodiaSoloElContextToken(t *testing.T) {
 	if want := exp.UTC().Format(time.RFC3339); sess.ExpiresAt != want {
 		t.Errorf("la cookie debía custodiar el exp del contexto (%s), got %q", want, sess.ExpiresAt)
 	}
-	// Y la vida de la cookie lo sigue: ~30 min, ni el default de 1h ni los 15 min de identity.
-	if maxAge := sessionCookieMaxAge(t, rec); maxAge < 1700 || maxAge > 1800 {
-		t.Errorf("la cookie debía vivir lo que el Context Token (~1800s), got %d", maxAge)
+	// La vida de la cookie es un techo fijo (guardianWorkday, 24h) y NO el `exp` del Context Token:
+	// atarla al TTL corto del access era justo el bug que hacía que el navegador borrase la cookie
+	// —con el refresh token dentro— antes de que AuthMiddleware llegara a refrescar nada.
+	if maxAge := sessionCookieMaxAge(t, rec); maxAge != guardianSessionCookieMaxAge {
+		t.Errorf("la cookie debía vivir guardianWorkday (%ds), got %d", guardianSessionCookieMaxAge, maxAge)
 	}
 	// El tenant se lee del Context Token; si el de identity hubiera llegado a la cookie, no habría.
 	claims, err := parseAccessClaims(sess.AccessToken)
