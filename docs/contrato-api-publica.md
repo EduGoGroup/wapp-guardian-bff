@@ -242,7 +242,7 @@ que el token vence.
 
 Un cliente móvil que replique el patrón debería replicar también la regla: **pintar por feature es
 cortesía de UI, no control de acceso.** La autorización real la aplica el middleware `RequireFeature`
-de la plataforma (`cloud/wapp-cloud-platform/internal/entitlements/middleware.go`) en cada llamada:
+de la plataforma (`cloud/wapp-cloud-platform/internal/modulos/acceso/entitlements/middleware.go`) en cada llamada:
 corta con `403` y cuerpo `{"error":"feature_not_enabled","feature":"<clave>"}`, y es fail-closed
 (sin identidad o con el resolver caído también corta). Un cliente que se saltara el gate de UI
 seguiría chocando con él.
