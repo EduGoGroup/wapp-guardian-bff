@@ -82,7 +82,8 @@ func TestDoSignup_Success(t *testing.T) {
 }
 
 // signupTestServer levanta un backend fake de POST /api/v1/signup que responde el status y el cuerpo
-// dados EN TEXTO PLANO — el contrato real de wapp-cloud-platform/internal/platformadmin/signup.go
+// dados EN TEXTO PLANO — el contrato real de
+// wapp-cloud-platform/internal/modulos/acceso/platformadmin/signup.go
 // (http.Error para todos sus errores, no JSON) — para probar que el BFF decodifica ese cuerpo y
 // muestra un mensaje honesto en vez de caer siempre al genérico (A-11).
 func signupTestServer(t *testing.T, status int, body string) *httptest.Server {

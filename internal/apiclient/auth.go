@@ -120,9 +120,9 @@ func (c *AuthClient) Signup(ctx context.Context, email, password, firstName, las
 // legible del cuerpo (A-11). A diferencia de reasonedStatusError (pensado para el envelope JSON
 // `{"error":"…"}` que usa el resto de la plataforma, y solo para los status que el llamante marca
 // como "con motivo"), este endpoint responde sus errores en TEXTO PLANO vía http.Error (ver
-// wapp-cloud-platform/internal/platformadmin/signup.go) para CUALQUIER status —400, 409, 429, 502,
-// 503—, y su contrato está en evolución en paralelo (C-03). Por eso se envuelve TODO no-2xx (no solo
-// 4xx, a diferencia de writeStatusError) y el cuerpo se decodifica tolerante en decodeSignupErrorBody:
+// wapp-cloud-platform/internal/modulos/acceso/platformadmin/signup.go) para CUALQUIER status —400,
+// 409, 429, 502, 503—, y su contrato está en evolución en paralelo (C-03). Por eso se envuelve TODO
+// no-2xx (no solo 4xx, a diferencia de writeStatusError) y el cuerpo se decodifica tolerante en decodeSignupErrorBody:
 // el llamante (DoSignup) necesita tanto el status real como el motivo para elegir el mensaje amigable
 // (409 → ya existe, 503 → no disponible, 429 → rate limit), y sin esto un 503 llegaba como *APIError
 // sin mensaje y caía al genérico de "error interno" (A-11).
